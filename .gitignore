@@ -1,0 +1,31 @@
+# Gradle
+.gradle/
+build/
+*/build/
+
+# Local configuration
+local.properties
+
+# Android Studio / IntelliJ / VS Code
+.idea/
+*.iml
+.vscode/
+
+# Build outputs
+*.apk
+*.aab
+*.ap_
+*.dex
+
+# Keystores
+*.keystore
+*.jks
+
+# Model weights
+*.tflite
+*.task
+*.bin
+
+# OS files
+.DS_Store
+Thumbs.db

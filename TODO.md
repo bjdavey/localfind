@@ -1,0 +1,36 @@
+# TODO
+
+> [!NOTE]
+> Follow [AGENTS.md](AGENTS.md). Work on **one item at a time**, top to bottom.
+
+## Current
+
+- [x] Discuss and write [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md)
+
+## Milestone 1: Android MVP
+
+- [x] Initialize git repository and `.gitignore`
+- [ ] Create a minimal Android project in `android/`
+- [ ] Add the embedding model and embed a text string
+- [ ] Store embeddings locally
+- [ ] Import files from device storage
+- [ ] Index text and Markdown files
+- [ ] Search: text query returns ranked results
+- [ ] Results list UI
+- [ ] Index PDFs (text-based only, no OCR) and open at the matching page
+- [ ] Index images and open the matching image
+- [ ] Index audio and play from the matching time
+- [ ] Index video and play from the matching time
+- [ ] Library screen: list indexed files and remove a file
+
+## Backlog
+
+- Filter results by file type
+- Background indexing
+- Folder import
+- iOS app
+- Desktop app
+
+## Done
+
+- [x] Write README.md, AGENTS.md, TODO.md, docs/PRD.md
