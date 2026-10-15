@@ -66,17 +66,28 @@ fun MainScreen() {
         ) {
             Text(text = status, style = MaterialTheme.typography.bodyLarge)
             Button(onClick = {
-                status = "Embedding..."
+                status = "Embedding & storing..."
                 scope.launch {
                     status = withContext(Dispatchers.Default) {
                         try {
-                            Embedder(context).use { "Vector size: ${it.embedText("hello world").size}" }
+                            val vector = Embedder(context).use { it.embedText("hello world") }
+                            com.localfind.data.EmbeddingStore.create(context).use { store ->
+                                store.store(
+                                    id = "sample_1",
+                                    embedding = vector,
+                                    text = "hello world",
+                                    metadata = mapOf("source" to "verification")
+                                )
+                                val retrieved = store.get("sample_1")
+                                val count = store.getAllRecordIds().size
+                                "Saved record (dims: ${retrieved?.embeddings?.size}, total: $count)"
+                            }
                         } catch (e: Throwable) {
                             "Error: ${e.message}"
                         }
                     }
                 }
-            }) { Text("Embed \"hello world\"") }
+            }) { Text("Embed & store \"hello world\"") }
         }
     }
 }

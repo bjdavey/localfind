@@ -13,7 +13,7 @@ Technical decisions for the Android MVP. Scope is defined in [PRD.md](PRD.md).
      Indexer ──> Extract chunks ──> EmbeddingGemma 2 (MediaPipe) <──── Search
                                               │                             │
                                               ▼                             │
-                                  Room (SQLite): files + chunks ────────────┘
+                                SqliteVectorStore (MediaPipe) ──────────────┘
                                                                  cosine top-K
 ```
 
@@ -28,8 +28,8 @@ The text query uses the same model, so a text query can match an image, an audio
 | Min / target SDK | 26 / latest |
 | Embedding model | EmbeddingGemma 2, **740M multimodal** (text + image + audio) |
 | Inference | MediaPipe Tasks on Android (`UniversalEmbedder`, LiteRT under the hood) |
-| Storage | Room (SQLite), embeddings stored as `BLOB` |
-| Vector search | Brute-force cosine in Kotlin, vectors cached in memory |
+| Storage | `SqliteVectorStore` (MediaPipe, SQLite-backed) |
+| Vector search | `SqliteVectorStore` cosine top-K search |
 | PDF text | PdfBox-Android |
 | PDF viewing | Android `PdfRenderer` |
 | Audio / video decode + playback | Media3 (ExoPlayer, `MediaExtractor`/`MediaCodec`, `MediaMetadataRetriever`) |
@@ -64,29 +64,27 @@ Each file is split into **chunks**. Each chunk has one embedding and one **locat
 - Indexing runs in a coroutine on a background dispatcher, so the UI stays responsive.
 - Progress is shown per file. Background indexing (WorkManager) is in the backlog.
 
-## 6. Data Model (Room)
+## 6. Data Model (SqliteVectorStore)
 
-```text
-files
-  id, uri, name, type, sizeBytes, addedAt, status (indexing | ready | missing | error)
+Data is stored locally using MediaPipe's `SqliteVectorStore` (`RetrievalRecord`):
 
-chunks
-  id, fileId (FK -> files.id, ON DELETE CASCADE),
-  location (Long: char offset | page | ms), snippet (text, nullable), embedding (BLOB, float32[768])
-```
+- **id**: Chunk ID (e.g. `"<fileId>_<chunkIndex>"`)
+- **content**: Passage text / snippet (`TextPart`)
+- **embeddings**: 768-dimensional float vector (`float[768]`)
+- **metadata**: Key-value map including:
+  - `fileId`: Identifier of the source file
+  - `uri`: Document URI
+  - `name`: File name
+  - `type`: File mime or category (text, pdf, image, audio, video)
+  - `location`: Location offset (char offset, page number, or ms timestamp)
 
-- Removing a file deletes its row. Its chunks are deleted by cascade (PRD requirement).
+- Removing a file deletes all chunks matching the file's `fileId` via `delete(mapOf("fileId" to fileId))`.
 
 ## 7. Search
 
-1. Embed the query text.
-2. Compare it to all chunk vectors using a dot product (vectors are L2-normalized, so this equals cosine).
-3. Return the top-K chunks, sorted by score.
-
-- Vectors are loaded once into memory as `FloatArray`s and kept in sync on add and remove.
-- This matches Google's AI Edge RAG SDK approach (`SqliteVectorStore`: SQLite + linear scan).
-- Embedding the query takes most of the time; the scan is small for a personal library.
-- If the scan becomes slow, consider ObjectBox (HNSW). Not needed for the MVP.
+1. Embed the query text using `Embedder`.
+2. Query `SqliteVectorStore.search(queryEmbedding, topK)` to find nearest neighbors via cosine similarity.
+3. Return the top-K chunks sorted by similarity score.
 
 ## 8. Opening Results
 
@@ -111,6 +109,6 @@ android/app/src/main/java/.../localfind/
 ├── ui/        # Compose screens: Library, Search, Viewers
 ├── index/     # Chunk extraction per file type + Indexer
 ├── embed/     # MediaPipe embedder wrapper
-├── search/    # In-memory vector search
-└── data/      # Room entities, DAOs, database
+├── search/    # Search operations
+└── data/      # SqliteVectorStore / VectorStore wrapper
 ```

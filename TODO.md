@@ -9,7 +9,7 @@
 - [x] Initialize git repository and `.gitignore`
 - [x] Create a minimal Android project in `android/`
 - [x] Add the embedding model and embed a text string
-- [ ] Store embeddings locally
+- [x] Store embeddings locally
 - [ ] Import files from device storage
 - [ ] Index text and Markdown files
 - [ ] Search: text query returns ranked results

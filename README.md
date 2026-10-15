@@ -10,7 +10,8 @@ localfind/
 ├── android/              # Android app
 ├── docs/
 │   ├── PRD.md            # Product requirements
-│   └── ARCHITECTURE.md   # Technical decisions
+│   ├── ARCHITECTURE.md   # Technical decisions
+│   └── GOOGLE_AI_EDGE_GALLERY.md # Reference patterns from Google AI Edge Gallery
 ├── AGENTS.md             # Rules for AI assistants
 ├── TODO.md               # Task list
 └── README.md
