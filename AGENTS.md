@@ -33,6 +33,7 @@ Instructions for AI assistants working on this repository. Read this before ever
 ## 5. Project Rules
 
 - **100% offline.** No network calls, no cloud APIs, no telemetry, no network permissions.
+- **Explain with comments:** Put comments and notes in all code and tests as much as possible to explain the logic, intent, architectural context, and non-obvious details.
 - Tech choices are defined in [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) and reference patterns in [docs/GOOGLE_AI_EDGE_GALLERY.md](docs/GOOGLE_AI_EDGE_GALLERY.md). Do not invent them.
 - Product scope is defined in [docs/PRD.md](docs/PRD.md). Do not add features outside it.
 - Keep documentation short and up to date when code changes.

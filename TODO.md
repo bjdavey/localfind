@@ -12,7 +12,7 @@
 - [x] Store embeddings locally
 - [x] Import files from device storage
 - [x] Index text and Markdown files
-- [ ] Search: text query returns ranked results
+- [x] Search: text query returns ranked results
 - [ ] Results list UI
 - [ ] Index PDFs (text-based only, no OCR) and open at the matching page
 - [ ] Index images and open the matching image
