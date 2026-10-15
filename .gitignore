@@ -5,6 +5,7 @@ build/
 
 # Local configuration
 local.properties
+.local/
 
 # Android Studio / IntelliJ / VS Code
 .idea/
@@ -25,6 +26,7 @@ local.properties
 *.tflite
 *.task
 *.bin
+*.litertlm
 
 # OS files
 .DS_Store

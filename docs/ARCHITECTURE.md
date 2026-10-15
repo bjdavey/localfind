@@ -35,10 +35,6 @@ The text query uses the same model, so a text query can match an image, an audio
 | Audio / video decode + playback | Media3 (ExoPlayer, `MediaExtractor`/`MediaCodec`, `MediaMetadataRetriever`) |
 | Concurrency | Kotlin coroutines |
 
-> [!IMPORTANT]
-> The exact MediaPipe API for EmbeddingGemma 2 (class names, input format for images and audio, model file) is still **unverified**.
-> Confirm it in the TODO item "Add the embedding model and embed a text string" and update this file.
-
 ## 3. Model Delivery
 
 - No network at runtime, so the model must already be on the device.
