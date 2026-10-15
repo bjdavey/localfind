@@ -23,6 +23,7 @@ import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBar
@@ -39,18 +40,28 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
+import com.localfind.data.EmbeddingStore
 import com.localfind.data.FileImporter
 import com.localfind.data.FileStore
 import com.localfind.data.ImportedFile
 import com.localfind.data.formatFileSize
+import com.localfind.embed.Embedder
+import com.localfind.index.Indexer
 import com.localfind.ui.theme.LocalFindTheme
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 
+/**
+ * Main application activity for LocalFind.
+ *
+ * Implements a single-activity architecture with Jetpack Compose.
+ * All operations run completely offline with no network permissions or broad storage permissions.
+ */
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        // Enable edge-to-edge drawing for modern Android system bars
         enableEdgeToEdge()
         setContent {
             LocalFindTheme {
@@ -60,39 +71,117 @@ class MainActivity : ComponentActivity() {
     }
 }
 
+/**
+ * Primary UI screen for LocalFind:
+ * - Allows picking files from device storage via Storage Access Framework (SAF).
+ * - Persists picked URIs and metadata in [FileStore].
+ * - Automatically indexes text and Markdown files into [EmbeddingStore] via [Indexer].
+ * - Displays imported files list and indexing progress/counts.
+ */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun MainScreen() {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
+
+    // UI state
     var status by remember { mutableStateOf("Ready") }
     var importedFiles by remember { mutableStateOf<List<ImportedFile>>(emptyList()) }
+    var indexedChunksCount by remember { mutableStateOf(0) }
+    var isIndexing by remember { mutableStateOf(false) }
 
-    // Load persisted files on initial launch
+    /**
+     * Queries [EmbeddingStore] on IO dispatcher to count how many total chunks
+     * are stored in the vector database.
+     */
+    suspend fun refreshIndexCount() {
+        withContext(Dispatchers.IO) {
+            try {
+                EmbeddingStore.create(context).use { store ->
+                    indexedChunksCount = store.getAllRecordIds().size
+                }
+            } catch (_: Exception) {
+                // Ignore if database is temporarily busy or uninitialized
+            }
+        }
+    }
+
+    // Load persisted files and vector count when the screen is first composed
     LaunchedEffect(Unit) {
         withContext(Dispatchers.IO) {
             val store = FileStore(context)
             importedFiles = store.getAll()
         }
+        refreshIndexCount()
     }
 
-    // System file picker via Storage Access Framework:
-    // User explicitly selects files; zero broad storage permissions needed.
+    /**
+     * Executes indexing for a given list of [ImportedFile] objects on a background thread.
+     * Keeps UI responsive while updating per-file progress status.
+     */
+    fun indexFiles(filesToIndex: List<ImportedFile>) {
+        scope.launch {
+            isIndexing = true
+            status = "Initializing indexer..."
+            withContext(Dispatchers.Default) {
+                try {
+                    // Open Embedder (loads EmbeddingGemma 2) and EmbeddingStore (SQLite vector store)
+                    Embedder(context).use { embedder ->
+                        EmbeddingStore.create(context).use { store ->
+                            val indexer = Indexer(context, embedder, store)
+                            var indexedFiles = 0
+                            var totalChunks = 0
+
+                            for ((i, file) in filesToIndex.withIndex()) {
+                                if (indexer.isTextFile(file)) {
+                                    // Update status to show current file being processed
+                                    status = "Indexing ${i + 1}/${filesToIndex.size}: ${file.displayName}..."
+                                    val result = indexer.indexTextFile(file)
+                                    if (result.isSuccess) {
+                                        indexedFiles++
+                                        totalChunks += result.chunksCount
+                                    }
+                                }
+                            }
+                            status = "Indexed $indexedFiles file(s) ($totalChunks chunks)"
+                        }
+                    }
+                } catch (e: Exception) {
+                    status = "Indexing failed: ${e.message}"
+                }
+            }
+            // Update total chunk counter after indexing completes
+            refreshIndexCount()
+            isIndexing = false
+        }
+    }
+
+    /**
+     * System file picker launcher using Storage Access Framework (SAF).
+     *
+     * Privacy & Security Note:
+     * - We use ActivityResultContracts.OpenMultipleDocuments() which launches DocumentsUI.
+     * - No broad storage permissions (READ_EXTERNAL_STORAGE / MANAGE_EXTERNAL_STORAGE) are needed.
+     * - The user explicitly chooses which files to share; Android grants read grants for those URIs only.
+     */
     val pickerLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.OpenMultipleDocuments()
     ) { uris ->
         if (uris.isNotEmpty()) {
             scope.launch {
                 status = "Importing ${uris.size} file(s)..."
-                withContext(Dispatchers.IO) {
+                // Resolve URIs, take persistable permissions, and save to FileStore
+                val newFiles = withContext(Dispatchers.IO) {
                     val store = FileStore(context)
-                    val newFiles = uris.map { uri ->
+                    val files = uris.map { uri ->
                         FileImporter.importUri(context.contentResolver, uri)
                     }
-                    store.insertAll(newFiles)
+                    store.insertAll(files)
                     importedFiles = store.getAll()
+                    files
                 }
-                status = "Imported ${uris.size} file(s)"
+                // Automatically index imported text and markdown files
+                indexFiles(newFiles)
             }
         }
     }
@@ -111,40 +200,64 @@ fun MainScreen() {
                 .padding(innerPadding)
                 .padding(horizontal = 16.dp, vertical = 8.dp)
         ) {
+            // Action Buttons (Import files, Re-index all)
             Row(
                 modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.SpaceBetween,
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                Button(onClick = {
-                    pickerLauncher.launch(arrayOf("*/*"))
-                }) {
+                Button(
+                    onClick = { pickerLauncher.launch(arrayOf("*/*")) },
+                    enabled = !isIndexing
+                ) {
                     Text("Import files")
                 }
-                Text(
-                    text = status,
-                    style = MaterialTheme.typography.bodyMedium,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                )
+
+                if (importedFiles.isNotEmpty()) {
+                    OutlinedButton(
+                        onClick = { indexFiles(importedFiles) },
+                        enabled = !isIndexing
+                    ) {
+                        Text("Re-index all")
+                    }
+                }
             }
 
+            // Status feedback line
+            Text(
+                text = "Status: $status",
+                style = MaterialTheme.typography.bodyMedium,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier.padding(top = 4.dp)
+            )
+
+            // Vector store statistics
+            Text(
+                text = "Vector store: $indexedChunksCount chunks indexed",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.outline
+            )
+
+            // Privacy disclosure badge
             Text(
                 text = "Only the files you pick are accessed. No broad storage permissions.",
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.outline,
-                modifier = Modifier.padding(top = 4.dp, bottom = 12.dp)
+                modifier = Modifier.padding(top = 2.dp, bottom = 8.dp)
             )
 
             HorizontalDivider()
 
             Spacer(modifier = Modifier.height(8.dp))
 
+            // Section header
             Text(
                 text = "Imported files (${importedFiles.size})",
                 style = MaterialTheme.typography.titleMedium,
                 modifier = Modifier.padding(vertical = 8.dp)
             )
 
+            // Empty state placeholder
             if (importedFiles.isEmpty()) {
                 Box(
                     modifier = Modifier
@@ -159,6 +272,7 @@ fun MainScreen() {
                     )
                 }
             } else {
+                // Scrollable list of imported files
                 LazyColumn(
                     modifier = Modifier.weight(1f),
                     verticalArrangement = Arrangement.spacedBy(8.dp)

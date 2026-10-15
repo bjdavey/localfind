@@ -5,12 +5,19 @@ import com.google.mediapipe.tasks.retrieval.model.RetrievalRecord
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertNull
-import org.junit.Assert.assertTrue
 import org.junit.Test
 import java.util.concurrent.ConcurrentHashMap
 
+/**
+ * Unit tests for [EmbeddingStore].
+ * Uses a lightweight in-memory [FakeVectorStore] implementation of MediaPipe's [VectorStore] interface.
+ */
 class EmbeddingStoreTest {
 
+    /**
+     * In-memory mock for [VectorStore] to allow fast JVM unit testing
+     * without needing native SQLite or Android instrumentation.
+     */
     private class FakeVectorStore : VectorStore {
         private val records = ConcurrentHashMap<String, RetrievalRecord>()
 
@@ -61,6 +68,7 @@ class EmbeddingStoreTest {
 
     @Test
     fun storeAndRetrieveRecord() {
+        // Validates storing a vector with metadata and retrieving it by ID
         val store = EmbeddingStore(FakeVectorStore())
         val embedding = floatArrayOf(0.1f, 0.2f, 0.3f)
         store.store(
@@ -80,6 +88,7 @@ class EmbeddingStoreTest {
 
     @Test
     fun deleteRecordById() {
+        // Validates deleting a specific record by unique ID
         val store = EmbeddingStore(FakeVectorStore())
         store.store("id1", floatArrayOf(1f))
         store.store("id2", floatArrayOf(2f))
@@ -94,6 +103,7 @@ class EmbeddingStoreTest {
 
     @Test
     fun deleteByMetadata() {
+        // Validates deleting all chunks matching metadata criteria (e.g., fileId)
         val store = EmbeddingStore(FakeVectorStore())
         store.store("f1_c1", floatArrayOf(1f), metadata = mapOf("fileId" to "f1"))
         store.store("f1_c2", floatArrayOf(2f), metadata = mapOf("fileId" to "f1"))
@@ -108,4 +118,3 @@ class EmbeddingStoreTest {
         assertNull(store.get("f1_c2"))
     }
 }
-

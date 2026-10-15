@@ -11,7 +11,7 @@
 - [x] Add the embedding model and embed a text string
 - [x] Store embeddings locally
 - [x] Import files from device storage
-- [ ] Index text and Markdown files
+- [x] Index text and Markdown files
 - [ ] Search: text query returns ranked results
 - [ ] Results list UI
 - [ ] Index PDFs (text-based only, no OCR) and open at the matching page

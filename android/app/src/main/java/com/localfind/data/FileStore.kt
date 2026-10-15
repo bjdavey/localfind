@@ -11,7 +11,18 @@ import android.provider.OpenableColumns
 import java.util.Locale
 
 /**
- * Metadata for a file imported via Storage Access Framework.
+ * Metadata record for a file imported via Android's Storage Access Framework (SAF).
+ *
+ * Privacy / Link Architecture:
+ * - We link, not copy: The original file remains in device storage; we do not duplicate it.
+ * - Minimal permissions: No broad storage permission (READ_EXTERNAL_STORAGE / MANAGE_EXTERNAL_STORAGE)
+ *   is requested. The app only accesses files explicitly chosen by the user in the system picker.
+ *
+ * @property uri Persistable Content URI string (e.g., `content://com.android.providers.downloads.documents/...`).
+ * @property displayName Human-readable file name (e.g., `notes.txt`).
+ * @property mimeType MIME type reported by the system content provider (e.g., `text/plain`, `text/markdown`).
+ * @property size Size of the file in bytes.
+ * @property addedAt Epoch timestamp (ms) when the file was first imported into LocalFind.
  */
 data class ImportedFile(
     val uri: String,
@@ -22,11 +33,14 @@ data class ImportedFile(
 )
 
 /**
- * Formats byte size into human-readable text (e.g. "1.5 MB").
+ * Formats raw byte sizes into human-readable strings (e.g., "512 B", "1.5 KB", "24.0 MB").
+ *
+ * Handles negative or zero values safely by returning "0 B".
  */
 fun formatFileSize(bytes: Long): String {
     if (bytes <= 0) return "0 B"
     val units = arrayOf("B", "KB", "MB", "GB", "TB")
+    // Calculate the scale index (0 = B, 1 = KB, 2 = MB, 3 = GB, 4 = TB)
     val digitGroups = (Math.log10(bytes.toDouble()) / Math.log10(1024.0)).toInt()
         .coerceIn(0, units.size - 1)
     if (digitGroups == 0) return "$bytes B"
@@ -35,22 +49,38 @@ fun formatFileSize(bytes: Long): String {
 }
 
 /**
- * Helper to resolve SAF document URIs and obtain persistable read permission.
+ * Helper utility to resolve SAF document URIs into [ImportedFile] objects.
+ *
+ * Key Steps:
+ * 1. Takes persistable URI read permission via [ContentResolver.takePersistableUriPermission]
+ *    so the app can reopen the file after device reboots or process death.
+ * 2. Queries standard [OpenableColumns.DISPLAY_NAME] and [OpenableColumns.SIZE] from the ContentProvider.
+ * 3. Resolves the MIME type via [ContentResolver.getType].
  */
 object FileImporter {
+    /**
+     * Resolves metadata and acquires persistable read permission for a picked document URI.
+     *
+     * @param contentResolver The Android [ContentResolver] instance.
+     * @param uri The document [Uri] returned by the system file picker.
+     * @return Fully populated [ImportedFile] metadata object.
+     */
     fun importUri(contentResolver: ContentResolver, uri: Uri): ImportedFile {
+        // Take persistable permission to retain access across device reboots and app launches
+        // without copying the file or needing any broad external storage permissions.
         try {
             contentResolver.takePersistableUriPermission(
                 uri,
                 Intent.FLAG_GRANT_READ_URI_PERMISSION
             )
         } catch (_: SecurityException) {
-            // Some providers or temporary URIs may not support persistable permissions
+            // Some providers or temporary test URIs might not support persistable grants
         }
 
         var displayName: String? = null
         var size: Long = 0L
 
+        // Query metadata from the document provider
         try {
             contentResolver.query(
                 uri,
@@ -71,9 +101,10 @@ object FileImporter {
                 }
             }
         } catch (_: Exception) {
-            // Fallback gracefully if query is not supported
+            // Gracefully handle providers that fail cursor querying
         }
 
+        // Fallback to the last URI path segment if display name is unavailable
         val name = displayName ?: uri.lastPathSegment ?: "unknown"
         val mimeType = try {
             contentResolver.getType(uri)
@@ -91,7 +122,14 @@ object FileImporter {
 }
 
 /**
- * SQLite-backed local store for imported file metadata and URIs.
+ * SQLite-backed local store for managing imported files and persistent URIs.
+ *
+ * Uses Android's built-in [SQLiteOpenHelper] with zero external dependencies to persist:
+ * - URI (Primary Key)
+ * - Display Name
+ * - MIME Type
+ * - File Size
+ * - Import Timestamp
  */
 class FileStore(context: Context) : SQLiteOpenHelper(context, DATABASE_NAME, null, DATABASE_VERSION) {
 
@@ -116,9 +154,12 @@ class FileStore(context: Context) : SQLiteOpenHelper(context, DATABASE_NAME, nul
     }
 
     override fun onUpgrade(db: SQLiteDatabase, oldVersion: Int, newVersion: Int) {
-        // No-op for v1
+        // No-op for schema version 1
     }
 
+    /**
+     * Inserts or updates an imported file entry.
+     */
     fun insert(file: ImportedFile) {
         val values = ContentValues().apply {
             put("uri", file.uri)
@@ -135,6 +176,9 @@ class FileStore(context: Context) : SQLiteOpenHelper(context, DATABASE_NAME, nul
         )
     }
 
+    /**
+     * Inserts multiple imported files inside a single atomic database transaction.
+     */
     fun insertAll(files: List<ImportedFile>) {
         val db = writableDatabase
         db.beginTransaction()
@@ -160,6 +204,9 @@ class FileStore(context: Context) : SQLiteOpenHelper(context, DATABASE_NAME, nul
         }
     }
 
+    /**
+     * Retrieves all imported files ordered by most recently added first.
+     */
     fun getAll(): List<ImportedFile> {
         val list = mutableListOf<ImportedFile>()
         val cursor = readableDatabase.query(
@@ -184,6 +231,9 @@ class FileStore(context: Context) : SQLiteOpenHelper(context, DATABASE_NAME, nul
         return list
     }
 
+    /**
+     * Retrieves a single imported file by its URI, or null if not found.
+     */
     fun get(uri: String): ImportedFile? {
         val cursor = readableDatabase.query(
             TABLE_FILES,
@@ -206,10 +256,18 @@ class FileStore(context: Context) : SQLiteOpenHelper(context, DATABASE_NAME, nul
         return null
     }
 
+    /**
+     * Deletes an imported file record by its URI.
+     *
+     * @return True if a row was deleted, false otherwise.
+     */
     fun delete(uri: String): Boolean {
         return writableDatabase.delete(TABLE_FILES, "uri = ?", arrayOf(uri)) > 0
     }
 
+    /**
+     * Returns the total count of imported files currently in the database.
+     */
     fun count(): Int {
         val cursor = readableDatabase.rawQuery("SELECT COUNT(*) FROM $TABLE_FILES", null)
         cursor.use {
@@ -218,8 +276,10 @@ class FileStore(context: Context) : SQLiteOpenHelper(context, DATABASE_NAME, nul
         return 0
     }
 
+    /**
+     * Clears all imported file records.
+     */
     fun deleteAll() {
         writableDatabase.delete(TABLE_FILES, null, null)
     }
 }
-
