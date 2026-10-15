@@ -10,7 +10,7 @@
 ## Milestone 1: Android MVP
 
 - [x] Initialize git repository and `.gitignore`
-- [ ] Create a minimal Android project in `android/`
+- [x] Create a minimal Android project in `android/`
 - [ ] Add the embedding model and embed a text string
 - [ ] Store embeddings locally
 - [ ] Import files from device storage
