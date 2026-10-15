@@ -3,9 +3,6 @@
 > [!NOTE]
 > Follow [AGENTS.md](AGENTS.md). Work on **one item at a time**, top to bottom.
 
-## Current
-
-- [x] Discuss and write [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md)
 
 ## Milestone 1: Android MVP
 
@@ -34,3 +31,4 @@
 ## Done
 
 - [x] Write README.md, AGENTS.md, TODO.md, docs/PRD.md
+- [x] Discuss and write [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md)

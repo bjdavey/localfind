@@ -15,17 +15,22 @@ Instructions for AI assistants working on this repository. Read this before ever
 
 - **Do NOT attempt to implement the entire system.** Work only on a single item from [TODO.md](TODO.md).
 - Implement only the current item, nothing more. Do not start the next item.
-- When the item is done, mark it `[x]` in [TODO.md](TODO.md) and stop.
-- Wait for user confirmation before moving to the next item.
 - New ideas go into the **Backlog** section of [TODO.md](TODO.md), not into code.
 
-## 3. Ask Before Acting
+## 3. Workflow per TODO Item
+
+1. **Implement:** Write only what is needed for the current item.
+2. **Unit test:** If it contains pure business/math logic, add a simple Unit test, no heavy mocks.
+3. **Verify:** Run tests locally (for example ./gradlew test) then verify on device/emulator to verify end-to-end.
+4. **Complete:** Mark `[x]` in [TODO.md](TODO.md) and stop.
+
+## 4. Ask Before Acting
 
 - Ask the user before making architecture or tech-stack decisions.
 - Ask before adding any new dependency.
 - Ask when requirements are unclear.
 
-## 4. Project Rules
+## 5. Project Rules
 
 - **100% offline.** No network calls, no cloud APIs, no telemetry, no network permissions.
 - Tech choices are defined in [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md). Do not invent them.
