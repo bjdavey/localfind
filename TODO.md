@@ -10,7 +10,7 @@
 - [x] Create a minimal Android project in `android/`
 - [x] Add the embedding model and embed a text string
 - [x] Store embeddings locally
-- [ ] Import files from device storage
+- [x] Import files from device storage
 - [ ] Index text and Markdown files
 - [ ] Search: text query returns ranked results
 - [ ] Results list UI
