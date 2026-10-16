@@ -4,6 +4,11 @@
 > Follow [AGENTS.md](AGENTS.md). Work on **one item at a time**, top to bottom.
 
 
+## Milestone 0: Setup & Architecture
+
+- [x] Write README.md, AGENTS.md, TODO.md, docs/PRD.md
+- [x] Discuss and write [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md)
+
 ## Milestone 1: Android MVP
 
 - [x] Initialize git repository and `.gitignore`
@@ -17,24 +22,42 @@
 - [x] Index PDFs (text-based only, no OCR) and open at the matching page
 - [x] Index images and open the matching image
 - [x] Index audio and play from the matching time
-- [ ] Index video and play from the matching time
-- [ ] Library screen: list indexed files and remove a file
+- [x] Index video and play from the matching time
+
+## Milestone 2: Basic
+
+- [ ] Search and download free internet files for local testing
+- [ ] Remove file from library and delete its embeddings
+- [ ] Good builtin viewer for each file type (open at matching time/page/passage) and for whole library file too
+
+## Milestone 3: Enhance UI/UX
+- [ ] Suggest good UI design and enhance overall
+- [ ] Background indexing with progress indicator per file (WorkManager)
+- [ ] Filter search results by file type (All, Video, Audio, Image, Document)
+- [ ] Search inside a specific file
 
 ## Backlog
 
-- Background indexing with progress indicator per file
+### Core
+- Create folders and recursive folder import (DocumentFile / tree URI)
+- Settings page for threshold and all other variables
+- Export / Backup index and "Clear Database" reset
+
+### Search Experience
+- Hybrid search (Vector + SQLite FTS5 keyword search)
+- Search by image (visual similarity query)
+- Recent searches history
+
+### Indexing & Performance
+- Battery / thermal-friendly indexing (pause on low battery / charging-only option)
+- Pause, resume, and cancel indexing queue
 - Try support CPU, GPU, NPU
-- Good builtin viewer for each file type
-- Search inside file
-- PDF OCR
-- Folders
-- Enhance UI
-- Filter results by file type
-- Folder import
+- Vector quantization (FP16 / INT8 embeddings)
+- PDF OCR (ML Kit / on-device OCR for scanned documents)
+- Import from URL without saving the file (streaming keyframe indexing)
+- File staleness detection (handle deleted or modified files)
+- fMP4 remuxing for seekable video (see ARCHITECTURE.md, Indexing)
+
+### Platforms
 - iOS app
 - Desktop app
-
-## Done
-
-- [x] Write README.md, AGENTS.md, TODO.md, docs/PRD.md
-- [x] Discuss and write [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md)
