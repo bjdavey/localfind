@@ -3,6 +3,9 @@ package com.localfind.data
 import android.content.Context
 import android.content.SharedPreferences
 
+/** Default dark mode state (false = light mode, true = dark mode). */
+const val DEFAULT_DARK_MODE = false
+
 /** Default minimum cosine similarity score required for search results (user-requested default: 0.6). */
 const val DEFAULT_SIMILARITY_THRESHOLD = 0.6f
 
@@ -32,6 +35,7 @@ const val DEFAULT_MAX_IMAGE_DIMENSION = 512
  *
  * All settings run 100% offline on-device and are persisted via Android [SharedPreferences].
  *
+ * @property darkMode Whether dark theme is enabled across the application.
  * @property similarityThreshold Minimum cosine similarity cutoff score (0.0 .. 1.0). Matches below
  *                               this threshold are filtered out from search results.
  * @property topK Maximum number of nearest-neighbor results retrieved per search query.
@@ -43,6 +47,7 @@ const val DEFAULT_MAX_IMAGE_DIMENSION = 512
  * @property maxImageDimension Maximum dimension (width/height px) for subsampling image/video inputs.
  */
 data class AppSettings(
+    val darkMode: Boolean = DEFAULT_DARK_MODE,
     val similarityThreshold: Float = DEFAULT_SIMILARITY_THRESHOLD,
     val topK: Int = DEFAULT_TOP_K,
     val textChunkSize: Int = DEFAULT_TEXT_CHUNK_SIZE,
@@ -58,6 +63,7 @@ data class AppSettings(
     fun sanitized(): AppSettings {
         val safeTextChunkSize = textChunkSize.coerceIn(100, 5000)
         return copy(
+            darkMode = darkMode,
             similarityThreshold = similarityThreshold.coerceIn(0.0f, 1.0f),
             topK = topK.coerceIn(1, 100),
             textChunkSize = safeTextChunkSize,
@@ -83,11 +89,25 @@ class SettingsStore(private val prefs: SharedPreferences) {
     )
 
     /**
+     * Checks if the user has explicitly chosen an override for dark mode in settings.
+     */
+    fun hasCustomTheme(): Boolean = prefs.contains(KEY_DARK_MODE)
+
+    /**
      * Loads the current persisted settings, applying defaults for any unset keys and
      * validating bounds via [AppSettings.sanitized].
+     *
+     * @param defaultDarkMode Fallback dark mode value when not explicitly set by user. Defaults
+     *                        to the host device's system dark mode setting.
      */
-    fun load(): AppSettings {
+    fun load(defaultDarkMode: Boolean = false): AppSettings {
+        val isDarkMode = if (prefs.contains(KEY_DARK_MODE)) {
+            prefs.getBoolean(KEY_DARK_MODE, defaultDarkMode)
+        } else {
+            defaultDarkMode
+        }
         return AppSettings(
+            darkMode = isDarkMode,
             similarityThreshold = prefs.getFloat(KEY_SIMILARITY_THRESHOLD, DEFAULT_SIMILARITY_THRESHOLD),
             topK = prefs.getInt(KEY_TOP_K, DEFAULT_TOP_K),
             textChunkSize = prefs.getInt(KEY_TEXT_CHUNK_SIZE, DEFAULT_TEXT_CHUNK_SIZE),
@@ -105,6 +125,7 @@ class SettingsStore(private val prefs: SharedPreferences) {
     fun save(settings: AppSettings) {
         val valid = settings.sanitized()
         prefs.edit()
+            .putBoolean(KEY_DARK_MODE, valid.darkMode)
             .putFloat(KEY_SIMILARITY_THRESHOLD, valid.similarityThreshold)
             .putInt(KEY_TOP_K, valid.topK)
             .putInt(KEY_TEXT_CHUNK_SIZE, valid.textChunkSize)
@@ -119,15 +140,17 @@ class SettingsStore(private val prefs: SharedPreferences) {
     /**
      * Clears all persisted settings and resets to system default values.
      *
+     * @param defaultDarkMode Default dark mode to apply, usually following the phone's system theme.
      * @return Fresh instance of [AppSettings] initialized with defaults.
      */
-    fun reset(): AppSettings {
+    fun reset(defaultDarkMode: Boolean = false): AppSettings {
         prefs.edit().clear().apply()
-        return AppSettings()
+        return load(defaultDarkMode)
     }
 
     companion object {
         const val PREFS_NAME = "localfind_settings"
+        const val KEY_DARK_MODE = "dark_mode"
         const val KEY_SIMILARITY_THRESHOLD = "similarity_threshold"
         const val KEY_TOP_K = "top_k"
         const val KEY_TEXT_CHUNK_SIZE = "text_chunk_size"

@@ -16,6 +16,7 @@ class AppSettingsTest {
     fun defaultValues_matchRequirements() {
         val settings = AppSettings()
 
+        assertEquals(false, settings.darkMode)
         // User explicitly requested Similarity Threshold default 0.6
         assertEquals(0.6f, settings.similarityThreshold, 0.0001f)
         assertEquals(10, settings.topK)
@@ -30,6 +31,7 @@ class AppSettingsTest {
     @Test
     fun sanitized_clampsOutOfBoundsValues() {
         val outOfBounds = AppSettings(
+            darkMode = true,
             similarityThreshold = -0.5f,
             topK = 0,
             textChunkSize = 20,
@@ -42,6 +44,7 @@ class AppSettingsTest {
 
         val clean = outOfBounds.sanitized()
 
+        assertEquals(true, clean.darkMode)
         assertEquals(0.0f, clean.similarityThreshold, 0.0001f)
         assertEquals(1, clean.topK)
         assertEquals(100, clean.textChunkSize)
@@ -60,11 +63,13 @@ class AppSettingsTest {
 
         // 1. Initial load should yield defaults
         val initial = store.load()
+        assertEquals(false, initial.darkMode)
         assertEquals(DEFAULT_SIMILARITY_THRESHOLD, initial.similarityThreshold, 0.0001f)
         assertEquals(DEFAULT_TOP_K, initial.topK)
 
         // 2. Save modified settings
         val modified = AppSettings(
+            darkMode = true,
             similarityThreshold = 0.75f,
             topK = 25,
             textChunkSize = 800,
@@ -77,6 +82,7 @@ class AppSettingsTest {
         store.save(modified)
 
         val reloaded = store.load()
+        assertEquals(true, reloaded.darkMode)
         assertEquals(0.75f, reloaded.similarityThreshold, 0.0001f)
         assertEquals(25, reloaded.topK)
         assertEquals(800, reloaded.textChunkSize)
@@ -88,12 +94,40 @@ class AppSettingsTest {
 
         // 3. Reset settings to default
         val reset = store.reset()
+        assertEquals(false, reset.darkMode)
         assertEquals(DEFAULT_SIMILARITY_THRESHOLD, reset.similarityThreshold, 0.0001f)
         assertEquals(DEFAULT_TOP_K, reset.topK)
         assertEquals(DEFAULT_TEXT_CHUNK_SIZE, reset.textChunkSize)
 
         val afterReset = store.load()
+        assertEquals(false, afterReset.darkMode)
         assertEquals(DEFAULT_SIMILARITY_THRESHOLD, afterReset.similarityThreshold, 0.0001f)
+    }
+
+    @Test
+    fun settingsStore_followsSystemThemeDefaultWhenUnset() {
+        val fakePrefs = FakeSharedPreferences()
+        val store = SettingsStore(fakePrefs)
+
+        // When phone is in dark theme, uncustomized store should load dark mode = true
+        assertEquals(false, store.hasCustomTheme())
+        val systemDarkSettings = store.load(defaultDarkMode = true)
+        assertEquals(true, systemDarkSettings.darkMode)
+
+        // When phone is in light theme, uncustomized store should load dark mode = false
+        val systemLightSettings = store.load(defaultDarkMode = false)
+        assertEquals(false, systemLightSettings.darkMode)
+
+        // Explicitly saving custom theme
+        store.save(systemLightSettings.copy(darkMode = true))
+        assertEquals(true, store.hasCustomTheme())
+        // Even if system theme is light, saved preference wins
+        assertEquals(true, store.load(defaultDarkMode = false).darkMode)
+
+        // Resetting restores fallback to phone system setting
+        val resetSettings = store.reset(defaultDarkMode = true)
+        assertEquals(false, store.hasCustomTheme())
+        assertEquals(true, resetSettings.darkMode)
     }
 
     /**

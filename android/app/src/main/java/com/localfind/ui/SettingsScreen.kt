@@ -1,9 +1,8 @@
 package com.localfind.ui
 
 import androidx.activity.compose.BackHandler
-import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
-import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -12,15 +11,16 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.rememberScrollState
-import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.Button
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Slider
+import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
@@ -31,24 +31,18 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.clip
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import com.localfind.data.AppSettings
 import java.util.Locale
 import kotlin.math.roundToInt
 
 /**
- * Settings Screen allowing the user to configure:
- * - Search parameters: Similarity Threshold (default 0.60), Top-K results (default 10).
- * - Indexing parameters: Text chunk size & overlap, Audio window length, Video window length & frame count, Max image dimension.
- *
- * Implements Milestone 2: "Settings page for threshold and all other variables"
- *
- * @param settings Current active settings.
- * @param onSettingsChange Callback triggered whenever a setting is adjusted by the user.
- * @param onResetDefaults Callback triggered when the user resets settings to default values.
- * @param onClose Callback triggered to exit Settings and return to the main application screen.
+ * Clean, categorized Settings Screen styled after modern Android gallery settings:
+ * - Uppercase accent section headers (`APPEARANCE`, `SEARCH & RETRIEVAL`, `DOCUMENT INDEXING`, `MEDIA INDEXING`, `LIBRARY & INDEXING`, `PRIVACY`).
+ * - Two-line setting items with title, active value subtitle, descriptive caption, switch, button, and slider controls.
+ * - Full reset-to-defaults confirmation modal.
  */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -56,15 +50,41 @@ fun SettingsScreen(
     settings: AppSettings,
     onSettingsChange: (AppSettings) -> Unit,
     onResetDefaults: () -> Unit,
+    onReindexAll: () -> Unit = {},
+    isIndexing: Boolean = false,
+    fileCount: Int = 0,
     onClose: () -> Unit,
     modifier: Modifier = Modifier
 ) {
-    // Intercept hardware and gesture back navigation
     BackHandler {
         onClose()
     }
 
     var showResetDialog by remember { mutableStateOf(false) }
+    var showReindexDialog by remember { mutableStateOf(false) }
+
+    if (showReindexDialog) {
+        AlertDialog(
+            onDismissRequest = { showReindexDialog = false },
+            title = { Text("Reindex library files?") },
+            text = { Text("Clear and regenerate embeddings for all $fileCount imported files using current settings?") },
+            confirmButton = {
+                TextButton(
+                    onClick = {
+                        showReindexDialog = false
+                        onReindexAll()
+                    }
+                ) {
+                    Text("Reindex", color = MaterialTheme.colorScheme.primary)
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { showReindexDialog = false }) {
+                    Text("Cancel")
+                }
+            }
+        )
+    }
 
     if (showResetDialog) {
         AlertDialog(
@@ -93,7 +113,7 @@ fun SettingsScreen(
         modifier = modifier.fillMaxSize(),
         topBar = {
             TopAppBar(
-                title = { Text("Settings", fontWeight = FontWeight.Bold) },
+                title = { Text("Settings", fontWeight = FontWeight.Medium) },
                 navigationIcon = {
                     IconButton(onClick = onClose) {
                         Text("←", style = MaterialTheme.typography.titleLarge)
@@ -112,24 +132,34 @@ fun SettingsScreen(
                 .fillMaxSize()
                 .padding(innerPadding)
                 .verticalScroll(rememberScrollState())
-                .padding(horizontal = 16.dp, vertical = 8.dp),
-            verticalArrangement = Arrangement.spacedBy(16.dp)
+                .padding(vertical = 8.dp)
         ) {
-            // ==========================================
-            // SEARCH SETTINGS SECTION
-            // ==========================================
-            Text(
-                text = "Search Variables",
-                style = MaterialTheme.typography.titleMedium,
-                fontWeight = FontWeight.Bold,
-                color = MaterialTheme.colorScheme.primary
+            // =================================================================
+            // SECTION 1: APPEARANCE (FIRST THING IN SETTINGS)
+            // =================================================================
+            SettingsCategoryHeader("APPEARANCE")
+
+            SettingSwitchRow(
+                title = "Dark mode",
+                subtitle = if (settings.darkMode) "On" else "Off",
+                description = "Switch between light and dark visual themes.",
+                checked = settings.darkMode,
+                onCheckedChange = { isChecked ->
+                    onSettingsChange(settings.copy(darkMode = isChecked))
+                }
             )
 
-            // Similarity Threshold Setting
-            SettingItem(
-                title = "Similarity Threshold",
-                valueText = String.format(Locale.US, "%.2f", settings.similarityThreshold),
-                description = "Minimum cosine similarity score (0.0 to 1.0) required for results. Higher values ensure only high-confidence matches; lower values return broader results. (Default: 0.60)"
+            SettingsSectionDivider()
+
+            // =================================================================
+            // SECTION 2: SEARCH & RETRIEVAL
+            // =================================================================
+            SettingsCategoryHeader("SEARCH & RETRIEVAL")
+
+            SettingSliderRow(
+                title = "Similarity threshold",
+                subtitle = String.format(Locale.US, "%.2f", settings.similarityThreshold),
+                description = "Minimum cosine similarity score required for search matches (Default: 0.60)."
             ) {
                 Slider(
                     value = settings.similarityThreshold,
@@ -142,11 +172,10 @@ fun SettingsScreen(
                 )
             }
 
-            // Top-K Search Results
-            SettingItem(
-                title = "Max Results (Top-K)",
-                valueText = "${settings.topK} results",
-                description = "Maximum number of nearest-neighbor results retrieved per search query. (Default: 10)"
+            SettingSliderRow(
+                title = "Maximum search results (Top-K)",
+                subtitle = "${settings.topK} results",
+                description = "Maximum number of ranked passages or media moments returned (Default: 10)."
             ) {
                 Slider(
                     value = settings.topK.toFloat(),
@@ -154,43 +183,22 @@ fun SettingsScreen(
                         onSettingsChange(settings.copy(topK = newValue.roundToInt()))
                     },
                     valueRange = 5f..50f,
-                    steps = 8, // 5, 10, 15, 20, 25, 30, 35, 40, 45, 50
+                    steps = 8,
                     modifier = Modifier.fillMaxWidth()
                 )
             }
 
-            HorizontalDivider()
+            SettingsSectionDivider()
 
-            // ==========================================
-            // INDEXING SETTINGS SECTION
-            // ==========================================
-            Text(
-                text = "Indexing Variables",
-                style = MaterialTheme.typography.titleMedium,
-                fontWeight = FontWeight.Bold,
-                color = MaterialTheme.colorScheme.primary
-            )
+            // =================================================================
+            // SECTION 2: DOCUMENT & IMAGE INDEXING
+            // =================================================================
+            SettingsCategoryHeader("DOCUMENTS & IMAGES")
 
-            // Explanatory Banner
-            Box(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .clip(RoundedCornerShape(8.dp))
-                    .background(MaterialTheme.colorScheme.surfaceVariant)
-                    .padding(12.dp)
-            ) {
-                Text(
-                    text = "Indexing variables apply to newly imported files. To apply updated chunking to existing documents, tap \"Re-index all\" in the Library tab.",
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                )
-            }
-
-            // Text Chunk Size
-            SettingItem(
-                title = "Text Chunk Size",
-                valueText = "${settings.textChunkSize} chars",
-                description = "Target passage character length when splitting text, Markdown, and PDF documents. (Default: 500 chars)"
+            SettingSliderRow(
+                title = "Text chunk size",
+                subtitle = "${settings.textChunkSize} characters",
+                description = "Target passage length when splitting text, Markdown, and PDF pages."
             ) {
                 Slider(
                     value = settings.textChunkSize.toFloat(),
@@ -203,11 +211,10 @@ fun SettingsScreen(
                 )
             }
 
-            // Text Chunk Overlap
-            SettingItem(
-                title = "Text Chunk Overlap",
-                valueText = "${settings.textChunkOverlap} chars",
-                description = "Character overlap between consecutive chunks when sliding across passages. (Default: 100 chars)"
+            SettingSliderRow(
+                title = "Text chunk overlap",
+                subtitle = "${settings.textChunkOverlap} characters",
+                description = "Overlap between consecutive text passages to preserve boundary context."
             ) {
                 Slider(
                     value = settings.textChunkOverlap.toFloat(),
@@ -220,62 +227,10 @@ fun SettingsScreen(
                 )
             }
 
-            // Audio Window Duration
-            SettingItem(
-                title = "Audio Window Duration",
-                valueText = "${settings.audioWindowSeconds} seconds",
-                description = "Duration of each fixed-time audio slice embedded by the multimodal model. (Default: 10s)"
-            ) {
-                Slider(
-                    value = settings.audioWindowSeconds.toFloat(),
-                    onValueChange = { newValue ->
-                        onSettingsChange(settings.copy(audioWindowSeconds = newValue.roundToInt()))
-                    },
-                    valueRange = 3f..30f,
-                    steps = 26,
-                    modifier = Modifier.fillMaxWidth()
-                )
-            }
-
-            // Video Window Duration
-            SettingItem(
-                title = "Video Window Duration",
-                valueText = "${settings.videoWindowSeconds} seconds",
-                description = "Duration of each sliding time window when chunking video files. (Default: 5s)"
-            ) {
-                Slider(
-                    value = settings.videoWindowSeconds.toFloat(),
-                    onValueChange = { newValue ->
-                        onSettingsChange(settings.copy(videoWindowSeconds = newValue.roundToInt()))
-                    },
-                    valueRange = 2f..20f,
-                    steps = 17,
-                    modifier = Modifier.fillMaxWidth()
-                )
-            }
-
-            // Video Frames Per Window
-            SettingItem(
-                title = "Frames Per Video Window",
-                valueText = "${settings.videoFramesPerWindow} frames",
-                description = "Number of visual JPEG frames sampled and embedded alongside audio per video window. (Default: 2)"
-            ) {
-                Slider(
-                    value = settings.videoFramesPerWindow.toFloat(),
-                    onValueChange = { newValue ->
-                        onSettingsChange(settings.copy(videoFramesPerWindow = newValue.roundToInt()))
-                    },
-                    valueRange = 1f..5f,
-                    steps = 3, // 1, 2, 3, 4, 5
-                    modifier = Modifier.fillMaxWidth()
-                )
-            }
-
-            // Max Image Dimension
-            SettingItem(
-                title = "Max Image Dimension",
-                valueText = "${settings.maxImageDimension} px",
-                description = "Maximum width or height when decoding images and video frames for embedding. (Default: 512 px)"
+            SettingSliderRow(
+                title = "Max image dimension",
+                subtitle = "${settings.maxImageDimension} px",
+                description = "Maximum width or height when decoding images and video keyframes for embedding."
             ) {
                 Slider(
                     value = settings.maxImageDimension.toFloat(),
@@ -288,26 +243,135 @@ fun SettingsScreen(
                 )
             }
 
-            Spacer(modifier = Modifier.height(16.dp))
+            SettingsSectionDivider()
+
+            // =================================================================
+            // SECTION 3: AUDIO & VIDEO INDEXING
+            // =================================================================
+            SettingsCategoryHeader("AUDIO & VIDEO")
+
+            SettingSliderRow(
+                title = "Audio window duration",
+                subtitle = "${settings.audioWindowSeconds} seconds",
+                description = "Length of each fixed-time audio window embedded by the multimodal model."
+            ) {
+                Slider(
+                    value = settings.audioWindowSeconds.toFloat(),
+                    onValueChange = { newValue ->
+                        onSettingsChange(settings.copy(audioWindowSeconds = newValue.roundToInt()))
+                    },
+                    valueRange = 3f..30f,
+                    steps = 26,
+                    modifier = Modifier.fillMaxWidth()
+                )
+            }
+
+            SettingSliderRow(
+                title = "Video window duration",
+                subtitle = "${settings.videoWindowSeconds} seconds",
+                description = "Length of each sliding time window when indexing video files."
+            ) {
+                Slider(
+                    value = settings.videoWindowSeconds.toFloat(),
+                    onValueChange = { newValue ->
+                        onSettingsChange(settings.copy(videoWindowSeconds = newValue.roundToInt()))
+                    },
+                    valueRange = 2f..20f,
+                    steps = 17,
+                    modifier = Modifier.fillMaxWidth()
+                )
+            }
+
+            SettingSliderRow(
+                title = "Sampled frames per video window",
+                subtitle = "${settings.videoFramesPerWindow} frames",
+                description = "Number of visual keyframes sampled alongside audio for each video window."
+            ) {
+                Slider(
+                    value = settings.videoFramesPerWindow.toFloat(),
+                    onValueChange = { newValue ->
+                        onSettingsChange(settings.copy(videoFramesPerWindow = newValue.roundToInt()))
+                    },
+                    valueRange = 1f..5f,
+                    steps = 3,
+                    modifier = Modifier.fillMaxWidth()
+                )
+            }
+
+            SettingsSectionDivider()
+
+            // =================================================================
+            // SECTION 4: LIBRARY & REINDEXING
+            // =================================================================
+            SettingsCategoryHeader("LIBRARY & REINDEXING")
+
+            SettingActionRow(
+                title = "Reindex library",
+                subtitle = if (isIndexing) "Indexing in progress..." else "$fileCount files in library",
+                description = "Clear current vector embeddings and regenerate new embeddings for all imported files using current settings.",
+                buttonText = "Reindex",
+                enabled = !isIndexing && fileCount > 0,
+                onClick = { showReindexDialog = true }
+            )
+
+            SettingsSectionDivider()
+
+            // =================================================================
+            // SECTION 5: PRIVACY & ARCHITECTURE INFO
+            // =================================================================
+            SettingsCategoryHeader("PRIVACY & OFFLINE ENGINE")
+
+            SettingsInfoRow(
+                title = "On-device multimodal model",
+                subtitle = "EmbeddingGemma 2 (740M, 768-dim shared space)"
+            )
+            SettingsInfoRow(
+                title = "Network & telemetry",
+                subtitle = "100% offline • Zero network permissions"
+            )
+            SettingsInfoRow(
+                title = "Storage architecture",
+                subtitle = "Link, don't copy (SAF persistable URI grants)"
+            )
+
+            Spacer(modifier = Modifier.height(24.dp))
         }
     }
 }
 
-/**
- * Reusable layout item for presenting a setting with a title, current value indicator,
- * descriptive context, and custom control (e.g. [Slider]).
- */
 @Composable
-private fun SettingItem(
+private fun SettingsCategoryHeader(title: String) {
+    Text(
+        text = title,
+        style = MaterialTheme.typography.labelMedium.copy(
+            letterSpacing = 0.8.sp,
+            fontWeight = FontWeight.Bold
+        ),
+        color = MaterialTheme.colorScheme.primary,
+        modifier = Modifier.padding(start = 20.dp, end = 20.dp, top = 14.dp, bottom = 6.dp)
+    )
+}
+
+@Composable
+private fun SettingsSectionDivider() {
+    HorizontalDivider(
+        modifier = Modifier.padding(vertical = 8.dp),
+        color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f)
+    )
+}
+
+@Composable
+private fun SettingSliderRow(
     title: String,
-    valueText: String,
+    subtitle: String,
     description: String,
-    modifier: Modifier = Modifier,
-    content: @Composable () -> Unit
+    control: @Composable () -> Unit
 ) {
     Column(
-        modifier = modifier.fillMaxWidth(),
-        verticalArrangement = Arrangement.spacedBy(4.dp)
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(horizontal = 20.dp, vertical = 10.dp),
+        verticalArrangement = Arrangement.spacedBy(2.dp)
     ) {
         Row(
             modifier = Modifier.fillMaxWidth(),
@@ -316,14 +380,14 @@ private fun SettingItem(
         ) {
             Text(
                 text = title,
-                style = MaterialTheme.typography.titleSmall,
-                fontWeight = FontWeight.SemiBold
+                style = MaterialTheme.typography.bodyLarge,
+                color = MaterialTheme.colorScheme.onSurface
             )
             Text(
-                text = valueText,
-                style = MaterialTheme.typography.labelLarge,
+                text = subtitle,
+                style = MaterialTheme.typography.bodyMedium,
                 color = MaterialTheme.colorScheme.primary,
-                fontWeight = FontWeight.Bold
+                fontWeight = FontWeight.SemiBold
             )
         }
         Text(
@@ -331,7 +395,139 @@ private fun SettingItem(
             style = MaterialTheme.typography.bodySmall,
             color = MaterialTheme.colorScheme.onSurfaceVariant
         )
-        content()
+        control()
     }
 }
 
+@Composable
+private fun SettingsInfoRow(
+    title: String,
+    subtitle: String
+) {
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(horizontal = 20.dp, vertical = 10.dp),
+        verticalArrangement = Arrangement.spacedBy(2.dp)
+    ) {
+        Text(
+            text = title,
+            style = MaterialTheme.typography.bodyLarge,
+            color = MaterialTheme.colorScheme.onSurface
+        )
+        Text(
+            text = subtitle,
+            style = MaterialTheme.typography.bodyMedium,
+            color = MaterialTheme.colorScheme.onSurfaceVariant
+        )
+    }
+}
+
+@Composable
+private fun SettingSwitchRow(
+    title: String,
+    subtitle: String,
+    description: String,
+    checked: Boolean,
+    onCheckedChange: (Boolean) -> Unit
+) {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clickable { onCheckedChange(!checked) }
+            .padding(horizontal = 20.dp, vertical = 12.dp),
+        horizontalArrangement = Arrangement.SpaceBetween,
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        Column(
+            modifier = Modifier
+                .weight(1f)
+                .padding(end = 16.dp),
+            verticalArrangement = Arrangement.spacedBy(2.dp)
+        ) {
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                Text(
+                    text = title,
+                    style = MaterialTheme.typography.bodyLarge,
+                    color = MaterialTheme.colorScheme.onSurface
+                )
+                Text(
+                    text = subtitle,
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.primary,
+                    fontWeight = FontWeight.SemiBold
+                )
+            }
+            Text(
+                text = description,
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
+        }
+        Switch(
+            checked = checked,
+            onCheckedChange = onCheckedChange
+        )
+    }
+}
+
+@Composable
+private fun SettingActionRow(
+    title: String,
+    subtitle: String,
+    description: String,
+    buttonText: String,
+    enabled: Boolean,
+    onClick: () -> Unit
+) {
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(horizontal = 20.dp, vertical = 10.dp),
+        verticalArrangement = Arrangement.spacedBy(4.dp)
+    ) {
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Column(
+                modifier = Modifier
+                    .weight(1f)
+                    .padding(end = 12.dp),
+                verticalArrangement = Arrangement.spacedBy(2.dp)
+            ) {
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    Text(
+                        text = title,
+                        style = MaterialTheme.typography.bodyLarge,
+                        color = MaterialTheme.colorScheme.onSurface
+                    )
+                    Text(
+                        text = subtitle,
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = MaterialTheme.colorScheme.primary,
+                        fontWeight = FontWeight.SemiBold
+                    )
+                }
+                Text(
+                    text = description,
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+            }
+            Button(
+                onClick = onClick,
+                enabled = enabled
+            ) {
+                Text(buttonText)
+            }
+        }
+    }
+}

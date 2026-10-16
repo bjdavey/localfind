@@ -32,14 +32,18 @@
 - [x] Settings page for threshold and all other variables
 
 ## Milestone 3: Enhance UI/UX
-- [ ] Suggest good UI design and enhance overall
-- [ ] Background indexing with progress indicator per file (WorkManager)
-- [ ] Filter search results by file type (All, Video, Audio, Image, Document)
+- [x] Suggest good UI design and enhance overall
+- [x] Add light/dark mode switch in settings
+- [ ] Background indexing with progress indicator per file (WorkManager) which can resume if app killed and reopened
+- [x] Filter search results by file type (All, Video, Audio, Image, Document)
 - [ ] Search inside a specific file
+- [ ] Import from URL without saving the file (streaming keyframe indexing)
+- [ ] Try support CPU, GPU, NPU
 
 ## Backlog
 
 ### Core
+- Find large online public dataset for testing
 - Create folders and recursive folder import (DocumentFile / tree URI)
 - Export / Backup index and "Clear Database" reset
 
@@ -51,10 +55,8 @@
 ### Indexing & Performance
 - Battery / thermal-friendly indexing (pause on low battery / charging-only option)
 - Pause, resume, and cancel indexing queue
-- Try support CPU, GPU, NPU
 - Vector quantization (FP16 / INT8 embeddings)
 - PDF OCR (ML Kit / on-device OCR for scanned documents)
-- Import from URL without saving the file (streaming keyframe indexing)
 - File staleness detection (handle deleted or modified files)
 - fMP4 remuxing for seekable video (see ARCHITECTURE.md, Indexing)
 

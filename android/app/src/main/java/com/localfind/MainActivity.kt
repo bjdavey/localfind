@@ -9,33 +9,21 @@ import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import androidx.activity.result.contract.ActivityResultContracts
-import androidx.compose.foundation.clickable
-import androidx.compose.foundation.layout.Arrangement
-import androidx.compose.foundation.layout.Box
-import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.Spacer
+import androidx.compose.animation.AnimatedContent
+import androidx.compose.animation.core.FastOutSlowInEasing
+import androidx.compose.animation.core.tween
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.scaleIn
+import androidx.compose.animation.scaleOut
+import androidx.compose.animation.togetherWith
+import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.layout.fillMaxSize
-import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.height
-import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.lazy.items
 import androidx.compose.material3.AlertDialog
-import androidx.compose.material3.Button
-import androidx.compose.material3.Card
-import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.ExperimentalMaterial3Api
-import androidx.compose.material3.HorizontalDivider
-import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.OutlinedButton
-import androidx.compose.material3.PrimaryTabRow
-import androidx.compose.material3.Scaffold
-import androidx.compose.material3.Tab
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
-import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
@@ -45,24 +33,20 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
-import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
-import androidx.compose.ui.res.stringResource
-import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.tooling.preview.Preview
-import androidx.compose.ui.unit.dp
 import com.localfind.data.AppSettings
 import com.localfind.data.EmbeddingStore
 import com.localfind.data.FileImporter
 import com.localfind.data.FileStore
 import com.localfind.data.ImportedFile
 import com.localfind.data.SettingsStore
-import com.localfind.data.formatFileSize
 import com.localfind.embed.Embedder
 import com.localfind.index.Indexer
 import com.localfind.search.SearchResult
 import com.localfind.search.Searcher
+import com.localfind.ui.GalleryScreen
 import com.localfind.ui.ImageViewerParams
 import com.localfind.ui.ImageViewerScreen
 import com.localfind.ui.MediaPlayerParams
@@ -81,6 +65,20 @@ import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
 
 /**
+ * Active navigation screen key used by [AnimatedContent] to perform seamless
+ * zoom/expand transitions between the Gallery grid, Search view, Settings, and Viewers.
+ */
+private enum class ActiveScreen {
+    GALLERY,
+    SEARCH,
+    SETTINGS,
+    VIEWER_IMAGE,
+    VIEWER_MEDIA,
+    VIEWER_PDF,
+    VIEWER_TEXT
+}
+
+/**
  * Main application activity for LocalFind.
  *
  * Implements a single-activity architecture with Jetpack Compose.
@@ -92,51 +90,74 @@ class MainActivity : ComponentActivity() {
         // Enable edge-to-edge drawing for modern Android system bars
         enableEdgeToEdge()
         setContent {
-            LocalFindTheme {
-                MainScreen()
+            val context = LocalContext.current
+            val systemDark = isSystemInDarkTheme()
+            val settingsStore = remember { SettingsStore(context) }
+            var currentSettings by remember { mutableStateOf(settingsStore.load(defaultDarkMode = systemDark)) }
+
+            // If user hasn't explicitly set a preference, automatically follow the phone's system theme
+            LaunchedEffect(systemDark) {
+                if (!settingsStore.hasCustomTheme()) {
+                    currentSettings = currentSettings.copy(darkMode = systemDark)
+                }
+            }
+
+            LocalFindTheme(darkTheme = currentSettings.darkMode) {
+                MainScreen(
+                    settings = currentSettings,
+                    onSettingsChange = { updated ->
+                        currentSettings = updated
+                        settingsStore.save(updated)
+                    },
+                    onResetDefaults = {
+                        val defaults = settingsStore.reset(defaultDarkMode = systemDark)
+                        currentSettings = defaults
+                    }
+                )
             }
         }
     }
 }
 
 /**
- * Primary UI screen for LocalFind:
- * - Allows picking files from device storage via Storage Access Framework (SAF).
- * - Persists picked URIs and metadata in [FileStore].
- * - Automatically indexes supported files (text, Markdown, PDF, images) into [EmbeddingStore] via [Indexer].
- * - Displays imported files list and indexing progress/counts.
+ * Primary UI coordinator for LocalFind:
+ * - Default view is the Google Photos-inspired [GalleryScreen] with 2-column visual tiles
+ *   and the Option C unified bottom floating dock (`[ 🔍 Search... | + ]`).
+ * - Tapping the bottom search pill transitions smoothly into the dedicated [SearchScreen].
+ * - Tapping any media tile or search result transitions smoothly via scale+fade expansion
+ *   into its builtin viewer ([ImageViewerScreen], [MediaPlayerScreen], [PdfViewerScreen], [TextViewerScreen]).
  */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun MainScreen() {
+fun MainScreen(
+    settings: AppSettings = AppSettings(),
+    onSettingsChange: (AppSettings) -> Unit = {},
+    onResetDefaults: () -> Unit = {}
+) {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
 
     // UI state
     var status by remember { mutableStateOf("Ready") }
     var importedFiles by remember { mutableStateOf<List<ImportedFile>>(emptyList()) }
-    var indexedChunksCount by remember { mutableStateOf(0) }
+    var indexedChunksCount by remember { mutableIntStateOf(0) }
     var isIndexing by remember { mutableStateOf(false) }
 
-    // Tab state (0: Search, 1: Library)
-    var selectedTab by remember { mutableIntStateOf(0) }
-
-    // Search state
+    // Navigation & Search state
+    var isSearchOpen by remember { mutableStateOf(false) }
     var searchQuery by remember { mutableStateOf("") }
     var isSearching by remember { mutableStateOf(false) }
     var hasSearched by remember { mutableStateOf(false) }
     var searchResults by remember { mutableStateOf<List<SearchResult>>(emptyList()) }
     var searchError by remember { mutableStateOf<String?>(null) }
+
+    // Active full-screen viewers
     var activePdfViewer by remember { mutableStateOf<PdfViewerParams?>(null) }
     var activeImageViewer by remember { mutableStateOf<ImageViewerParams?>(null) }
     var activeMediaPlayer by remember { mutableStateOf<MediaPlayerParams?>(null) }
     var activeTextViewer by remember { mutableStateOf<TextViewerParams?>(null) }
     var filePendingDeletion by remember { mutableStateOf<ImportedFile?>(null) }
     var isSettingsOpen by remember { mutableStateOf(false) }
-
-    // Settings state persisted offline via SharedPreferences
-    val settingsStore = remember { SettingsStore(context) }
-    var currentSettings by remember { mutableStateOf(settingsStore.load()) }
 
     // Keep Embedder (485MB EmbeddingGemma 2) and EmbeddingStore warm in memory across the session
     // so indexing and search execute without repeated 1.5–3s model initialization overhead.
@@ -201,13 +222,12 @@ fun MainScreen() {
                     try {
                         val embedder = getOrCreateEmbedder()
                         val store = getOrCreateStore()
-                        val indexer = Indexer(context, embedder, store, currentSettings)
+                        val indexer = Indexer(context, embedder, store, settings)
                         var indexedFiles = 0
                         var totalChunks = 0
 
                         for ((i, file) in filesToIndex.withIndex()) {
                             if (indexer.isSupported(file)) {
-                                // Update status to show current file being processed
                                 status = "Indexing ${i + 1}/${filesToIndex.size}: ${file.displayName}..."
                                 val result = indexer.indexFile(file)
                                 if (result.isSuccess) {
@@ -222,7 +242,6 @@ fun MainScreen() {
                     }
                 }
             }
-            // Update total chunk counter after indexing completes
             refreshIndexCount()
             isIndexing = false
         }
@@ -239,22 +258,19 @@ fun MainScreen() {
         scope.launch {
             status = "Removing ${file.displayName}..."
             withContext(Dispatchers.IO) {
-                // 1. Release persistable SAF URI permission
                 try {
                     context.contentResolver.releasePersistableUriPermission(
                         Uri.parse(file.uri),
                         Intent.FLAG_GRANT_READ_URI_PERMISSION
                     )
                 } catch (_: Exception) {
-                    // Non-SAF URIs (like test file://) or revoked grants don't have persistable grants
+                    // Non-SAF URIs or revoked grants don't have persistable grants
                 }
 
-                // 2. Remove file metadata record from SQLite FileStore
                 val fileStore = FileStore(context)
                 fileStore.delete(file.uri)
                 val updatedFiles = fileStore.getAll()
 
-                // 3. Delete all vector chunks associated with this file from EmbeddingStore
                 engineMutex.withLock {
                     try {
                         getOrCreateStore().deleteByFileUri(file.uri)
@@ -265,14 +281,12 @@ fun MainScreen() {
 
                 withContext(Dispatchers.Main) {
                     importedFiles = updatedFiles
-                    // Remove any search results currently referencing the deleted file
                     searchResults = searchResults.filter { it.fileUri != file.uri }
                 }
             }
 
-            // 4. Refresh vector store count and update status
             refreshIndexCount()
-            status = "Removed ${file.displayName} and deleted its embeddings"
+            status = "Removed ${file.displayName}"
             Toast.makeText(
                 context,
                 "Removed ${file.displayName} from library",
@@ -283,8 +297,6 @@ fun MainScreen() {
 
     /**
      * Executes a semantic search query against the local vector database.
-     * Runs embedding inference and nearest-neighbor retrieval on [Dispatchers.Default]
-     * to ensure UI smoothness.
      */
     fun performSearch(queryText: String) {
         val trimmed = queryText.trim()
@@ -300,8 +312,8 @@ fun MainScreen() {
                         val searcher = Searcher(store, embedder)
                         searcher.search(
                             query = trimmed,
-                            topK = currentSettings.topK,
-                            threshold = currentSettings.similarityThreshold
+                            topK = settings.topK,
+                            threshold = settings.similarityThreshold
                         )
                     }
                 }
@@ -318,13 +330,7 @@ fun MainScreen() {
     }
 
     /**
-     * Opens the matched document.
-     *
-     * In accordance with PRD §2 & ARCHITECTURE.md §8:
-     * - PDF results open directly in the in-app [PdfViewerScreen] at the matching page.
-     * - Image results open directly in the in-app [ImageViewerScreen] (Coil).
-     * - Audio & video results open directly in the in-app [MediaPlayerScreen] (ExoPlayer).
-     * - Text & markdown results open directly in the in-app [TextViewerScreen], scrolled to the matching passage.
+     * Opens a matched [SearchResult] at its exact offset/page/timestamp in the builtin viewer.
      */
     fun openSearchResult(result: SearchResult) {
         if (result.fileUri.isBlank()) {
@@ -336,7 +342,6 @@ fun MainScreen() {
                 Indexer.isPdfNameOrMime(result.fileName, null)
 
         if (isPdf) {
-            // Open in-app PDF viewer at the matching page (1-based location)
             val targetPage = result.location.toInt().coerceAtLeast(1)
             activePdfViewer = PdfViewerParams(
                 uri = result.fileUri,
@@ -350,7 +355,6 @@ fun MainScreen() {
                 Indexer.isImageNameOrMime(result.fileName, null)
 
         if (isImage) {
-            // Open in-app image viewer (Coil)
             activeImageViewer = ImageViewerParams(
                 uri = result.fileUri,
                 fileName = result.fileName
@@ -364,7 +368,6 @@ fun MainScreen() {
                 Indexer.isVideoNameOrMime(result.fileName, null)
 
         if (isPlayable) {
-            // Open in-app player (audio or video), seeking to the chunk start time (ms)
             activeMediaPlayer = MediaPlayerParams(
                 uri = result.fileUri,
                 fileName = result.fileName,
@@ -377,7 +380,6 @@ fun MainScreen() {
                 Indexer.isTextNameOrMime(result.fileName, null)
 
         if (isText) {
-            // Open in-app text viewer, scrolled and highlighted at matching passage
             activeTextViewer = TextViewerParams(
                 uri = result.fileUri,
                 fileName = result.fileName,
@@ -387,7 +389,6 @@ fun MainScreen() {
             return
         }
 
-        // Fallback for any unknown file types
         try {
             val uri = Uri.parse(result.fileUri)
             val intent = Intent(Intent.ACTION_VIEW).apply {
@@ -405,8 +406,7 @@ fun MainScreen() {
     }
 
     /**
-     * Opens an imported file from the Library tab in its corresponding builtin viewer
-     * (PDF at page 1, Image, Audio/Video at 00:00, or Text at line 1).
+     * Opens an imported file from the Gallery grid in its corresponding builtin viewer.
      */
     fun openLibraryFile(file: ImportedFile) {
         if (file.uri.isBlank()) {
@@ -452,7 +452,6 @@ fun MainScreen() {
             return
         }
 
-        // External fallback for any unsupported document formats
         try {
             val uri = Uri.parse(file.uri)
             val intent = Intent(Intent.ACTION_VIEW).apply {
@@ -469,21 +468,13 @@ fun MainScreen() {
         }
     }
 
-    /**
-     * System file picker launcher using Storage Access Framework (SAF).
-     *
-     * Privacy & Security Note:
-     * - We use ActivityResultContracts.OpenMultipleDocuments() which launches DocumentsUI.
-     * - No broad storage permissions (READ_EXTERNAL_STORAGE / MANAGE_EXTERNAL_STORAGE) are needed.
-     * - The user explicitly chooses which files to share; Android grants read grants for those URIs only.
-     */
+    // System file picker launcher using Storage Access Framework (SAF)
     val pickerLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.OpenMultipleDocuments()
     ) { uris ->
         if (uris.isNotEmpty()) {
             scope.launch {
                 status = "Importing ${uris.size} file(s)..."
-                // Resolve URIs, take persistable permissions, and save to FileStore
                 val newFiles = withContext(Dispatchers.IO) {
                     val store = FileStore(context)
                     val files = uris.map { uri ->
@@ -493,256 +484,168 @@ fun MainScreen() {
                     importedFiles = store.getAll()
                     files
                 }
-                // Automatically index imported supported files
                 indexFiles(newFiles)
             }
         }
     }
 
-    if (isSettingsOpen) {
-        SettingsScreen(
-            settings = currentSettings,
-            onSettingsChange = { updated ->
-                currentSettings = updated
-                settingsStore.save(updated)
-            },
-            onResetDefaults = {
-                val defaults = settingsStore.reset()
-                currentSettings = defaults
-            },
-            onClose = { isSettingsOpen = false }
-        )
-    } else if (activeTextViewer != null) {
-        TextViewerScreen(
-            params = activeTextViewer!!,
-            onClose = { activeTextViewer = null }
-        )
-    } else if (activePdfViewer != null) {
-        PdfViewerScreen(
-            params = activePdfViewer!!,
-            onClose = { activePdfViewer = null }
-        )
-    } else if (activeMediaPlayer != null) {
-        MediaPlayerScreen(
-            params = activeMediaPlayer!!,
-            onClose = { activeMediaPlayer = null }
-        )
-    } else if (activeImageViewer != null) {
-        ImageViewerScreen(
-            params = activeImageViewer!!,
-            onClose = { activeImageViewer = null }
-        )
-    } else {
-        // Confirmation dialog before removing a file and deleting its embeddings
-        filePendingDeletion?.let { file ->
-            AlertDialog(
-                onDismissRequest = { filePendingDeletion = null },
-                title = { Text("Remove file?") },
-                text = {
-                    Text(
-                        "Remove \"${file.displayName}\" from LocalFind library and delete all its indexed search embeddings?\n\n" +
-                                "The original file on your device will NOT be deleted."
-                    )
-                },
-                confirmButton = {
-                    TextButton(
-                        onClick = {
-                            val toDelete = file
-                            filePendingDeletion = null
-                            removeFile(toDelete)
-                        }
-                    ) {
-                        Text("Remove", color = MaterialTheme.colorScheme.error)
-                    }
-                },
-                dismissButton = {
-                    TextButton(onClick = { filePendingDeletion = null }) {
-                        Text("Cancel")
-                    }
-                }
-            )
-        }
-
-        Scaffold(
-            modifier = Modifier.fillMaxSize(),
-        topBar = {
-            Column {
-                TopAppBar(
-                    title = { Text(text = stringResource(id = R.string.app_name)) },
-                    actions = {
-                        IconButton(onClick = { isSettingsOpen = true }) {
-                            Text("⚙", style = MaterialTheme.typography.titleLarge)
-                        }
-                    }
+    // Confirmation dialog before removing a file and deleting its embeddings
+    filePendingDeletion?.let { file ->
+        AlertDialog(
+            onDismissRequest = { filePendingDeletion = null },
+            title = { Text("Remove file?") },
+            text = {
+                Text(
+                    "Remove \"${file.displayName}\" from LocalFind library and delete all its indexed search embeddings?\n\n" +
+                            "The original file on your device will NOT be deleted."
                 )
-                PrimaryTabRow(selectedTabIndex = selectedTab) {
-                    Tab(
-                        selected = selectedTab == 0,
-                        onClick = { selectedTab = 0 },
-                        text = { Text("Search") }
-                    )
-                    Tab(
-                        selected = selectedTab == 1,
-                        onClick = { selectedTab = 1 },
-                        text = { Text("Library (${importedFiles.size})") }
+            },
+            confirmButton = {
+                TextButton(
+                    onClick = {
+                        val toDelete = file
+                        filePendingDeletion = null
+                        removeFile(toDelete)
+                    }
+                ) {
+                    Text("Remove", color = MaterialTheme.colorScheme.error)
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { filePendingDeletion = null }) {
+                    Text("Cancel")
+                }
+            }
+        )
+    }
+
+    // Determine current active screen for seamless animated transition
+    val currentScreen = when {
+        activeImageViewer != null -> ActiveScreen.VIEWER_IMAGE
+        activeMediaPlayer != null -> ActiveScreen.VIEWER_MEDIA
+        activePdfViewer != null -> ActiveScreen.VIEWER_PDF
+        activeTextViewer != null -> ActiveScreen.VIEWER_TEXT
+        isSettingsOpen -> ActiveScreen.SETTINGS
+        isSearchOpen -> ActiveScreen.SEARCH
+        else -> ActiveScreen.GALLERY
+    }
+
+    // Seamless scale + fade transition when opening/closing images, videos, documents, or search
+    AnimatedContent(
+        targetState = currentScreen,
+        modifier = Modifier.fillMaxSize(),
+        transitionSpec = {
+            val isOpeningSubScreen = targetState != ActiveScreen.GALLERY
+            if (isOpeningSubScreen) {
+                (scaleIn(
+                    initialScale = 0.88f,
+                    animationSpec = tween(260, easing = FastOutSlowInEasing)
+                ) + fadeIn(animationSpec = tween(220))) togetherWith
+                        (scaleOut(
+                            targetScale = 0.96f,
+                            animationSpec = tween(220, easing = FastOutSlowInEasing)
+                        ) + fadeOut(animationSpec = tween(180)))
+            } else {
+                (scaleIn(
+                    initialScale = 0.96f,
+                    animationSpec = tween(240, easing = FastOutSlowInEasing)
+                ) + fadeIn(animationSpec = tween(200))) togetherWith
+                        (scaleOut(
+                            targetScale = 0.88f,
+                            animationSpec = tween(220, easing = FastOutSlowInEasing)
+                        ) + fadeOut(animationSpec = tween(180)))
+            }
+        },
+        label = "ScreenTransition"
+    ) { screen ->
+        when (screen) {
+            ActiveScreen.VIEWER_IMAGE -> {
+                activeImageViewer?.let { params ->
+                    ImageViewerScreen(
+                        params = params,
+                        onClose = { activeImageViewer = null }
                     )
                 }
             }
-        }
-    ) { innerPadding ->
-        if (selectedTab == 0) {
-            // Search Tab: input field and ranked results list UI
-            SearchScreen(
-                query = searchQuery,
-                onQueryChange = { searchQuery = it },
-                onSearch = { performSearch(searchQuery) },
-                onClear = {
-                    searchQuery = ""
-                    hasSearched = false
-                    searchResults = emptyList()
-                    searchError = null
-                },
-                isSearching = isSearching,
-                hasSearched = hasSearched,
-                searchResults = searchResults,
-                onResultClick = { result -> openSearchResult(result) },
-                errorMessage = searchError,
-                indexedChunksCount = indexedChunksCount,
-                modifier = Modifier.padding(innerPadding)
-            )
-        } else {
-            // Library Tab: import files, re-index, chunk counts, and file list
-            Column(
-                modifier = Modifier
-                    .fillMaxSize()
-                    .padding(innerPadding)
-                    .padding(horizontal = 16.dp, vertical = 8.dp)
-            ) {
-                // Action Buttons (Import files, Re-index all)
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.spacedBy(8.dp),
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    Button(
-                        onClick = { pickerLauncher.launch(arrayOf("*/*")) },
-                        enabled = !isIndexing
-                    ) {
-                        Text("Import files")
-                    }
 
-                    if (importedFiles.isNotEmpty()) {
-                        OutlinedButton(
-                            onClick = { indexFiles(importedFiles) },
-                            enabled = !isIndexing
-                        ) {
-                            Text("Re-index all")
-                        }
-                    }
+            ActiveScreen.VIEWER_MEDIA -> {
+                activeMediaPlayer?.let { params ->
+                    MediaPlayerScreen(
+                        params = params,
+                        onClose = { activeMediaPlayer = null }
+                    )
                 }
+            }
 
-                // Status feedback line
-                Text(
-                    text = "Status: $status",
-                    style = MaterialTheme.typography.bodyMedium,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    modifier = Modifier.padding(top = 4.dp)
-                )
-
-                // Vector store statistics
-                Text(
-                    text = "Vector store: $indexedChunksCount chunks indexed",
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.outline
-                )
-
-                // Privacy disclosure badge
-                Text(
-                    text = "Only the files you pick are accessed. No broad storage permissions.",
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.outline,
-                    modifier = Modifier.padding(top = 2.dp, bottom = 8.dp)
-                )
-
-                HorizontalDivider()
-
-                Spacer(modifier = Modifier.height(8.dp))
-
-                // Section header
-                Text(
-                    text = "Imported files (${importedFiles.size})",
-                    style = MaterialTheme.typography.titleMedium,
-                    modifier = Modifier.padding(vertical = 8.dp)
-                )
-
-                // Empty state placeholder
-                if (importedFiles.isEmpty()) {
-                    Box(
-                        modifier = Modifier
-                            .weight(1f)
-                            .fillMaxWidth(),
-                        contentAlignment = Alignment.Center
-                    ) {
-                        Text(
-                            text = "No files imported yet.\nTap 'Import files' to choose files from device storage.",
-                            style = MaterialTheme.typography.bodyMedium,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant
-                        )
-                    }
-                } else {
-                    // Scrollable list of imported files
-                    LazyColumn(
-                        modifier = Modifier.weight(1f),
-                        verticalArrangement = Arrangement.spacedBy(8.dp)
-                    ) {
-                        items(importedFiles, key = { it.uri }) { file ->
-                            Card(
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .clickable { openLibraryFile(file) },
-                                colors = CardDefaults.cardColors(
-                                    containerColor = MaterialTheme.colorScheme.surfaceVariant
-                                )
-                            ) {
-                                Row(
-                                    modifier = Modifier
-                                        .fillMaxWidth()
-                                        .padding(start = 12.dp, top = 8.dp, bottom = 8.dp, end = 4.dp),
-                                    verticalAlignment = Alignment.CenterVertically,
-                                    horizontalArrangement = Arrangement.SpaceBetween
-                                ) {
-                                    Column(modifier = Modifier.weight(1f)) {
-                                        Text(
-                                            text = file.displayName,
-                                            style = MaterialTheme.typography.bodyLarge,
-                                            maxLines = 1,
-                                            overflow = TextOverflow.Ellipsis
-                                        )
-                                        Spacer(modifier = Modifier.height(2.dp))
-                                        Text(
-                                            text = "${formatFileSize(file.size)}${if (file.mimeType != null) " • ${file.mimeType}" else ""} • Tap to view",
-                                            style = MaterialTheme.typography.bodySmall,
-                                            color = MaterialTheme.colorScheme.onSurfaceVariant
-                                        )
-                                    }
-                                    IconButton(
-                                        onClick = { filePendingDeletion = file },
-                                        enabled = !isIndexing
-                                    ) {
-                                        Text(
-                                            text = "🗑",
-                                            style = MaterialTheme.typography.titleMedium
-                                        )
-                                    }
-                                }
-                            }
-                        }
-                    }
+            ActiveScreen.VIEWER_PDF -> {
+                activePdfViewer?.let { params ->
+                    PdfViewerScreen(
+                        params = params,
+                        onClose = { activePdfViewer = null }
+                    )
                 }
+            }
+
+            ActiveScreen.VIEWER_TEXT -> {
+                activeTextViewer?.let { params ->
+                    TextViewerScreen(
+                        params = params,
+                        onClose = { activeTextViewer = null }
+                    )
+                }
+            }
+
+            ActiveScreen.SETTINGS -> {
+                SettingsScreen(
+                    settings = settings,
+                    onSettingsChange = onSettingsChange,
+                    onResetDefaults = onResetDefaults,
+                    onReindexAll = {
+                        indexFiles(importedFiles)
+                        isSettingsOpen = false
+                    },
+                    isIndexing = isIndexing,
+                    fileCount = importedFiles.size,
+                    onClose = { isSettingsOpen = false }
+                )
+            }
+
+            ActiveScreen.SEARCH -> {
+                SearchScreen(
+                    query = searchQuery,
+                    onQueryChange = { searchQuery = it },
+                    onSearch = { performSearch(searchQuery) },
+                    onClear = {
+                        searchQuery = ""
+                        hasSearched = false
+                        searchResults = emptyList()
+                        searchError = null
+                    },
+                    isSearching = isSearching,
+                    hasSearched = hasSearched,
+                    searchResults = searchResults,
+                    onResultClick = { result -> openSearchResult(result) },
+                    errorMessage = searchError,
+                    indexedChunksCount = indexedChunksCount,
+                    onClose = { isSearchOpen = false }
+                )
+            }
+
+            ActiveScreen.GALLERY -> {
+                GalleryScreen(
+                    importedFiles = importedFiles,
+                    indexedChunksCount = indexedChunksCount,
+                    isIndexing = isIndexing,
+                    statusMessage = status,
+                    onOpenSearch = { isSearchOpen = true },
+                    onImportFiles = { pickerLauncher.launch(arrayOf("*/*")) },
+                    onOpenSettings = { isSettingsOpen = true },
+                    onFileClick = { file -> openLibraryFile(file) },
+                    onRequestDeleteFile = { file -> filePendingDeletion = file }
+                )
             }
         }
     }
-}
 }
 
 @Preview(showBackground = true)
