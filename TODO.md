@@ -29,7 +29,7 @@
 - [x] Search and download free internet files for local testing
 - [x] Remove file from library and delete its embeddings
 - [x] Good builtin viewer for each file type (open at matching time/page/passage) and for whole library file too
-- [ ] Settings page for threshold and all other variables
+- [x] Settings page for threshold and all other variables
 
 ## Milestone 3: Enhance UI/UX
 - [ ] Suggest good UI design and enhance overall
@@ -59,5 +59,6 @@
 - fMP4 remuxing for seekable video (see ARCHITECTURE.md, Indexing)
 
 ### Platforms
+- Move core and logic into separate folder/classes for easy porting into other platforms
 - iOS app
 - Desktop app

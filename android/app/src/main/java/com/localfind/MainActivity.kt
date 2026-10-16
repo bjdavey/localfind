@@ -52,10 +52,12 @@ import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
+import com.localfind.data.AppSettings
 import com.localfind.data.EmbeddingStore
 import com.localfind.data.FileImporter
 import com.localfind.data.FileStore
 import com.localfind.data.ImportedFile
+import com.localfind.data.SettingsStore
 import com.localfind.data.formatFileSize
 import com.localfind.embed.Embedder
 import com.localfind.index.Indexer
@@ -67,9 +69,10 @@ import com.localfind.ui.MediaPlayerParams
 import com.localfind.ui.MediaPlayerScreen
 import com.localfind.ui.PdfViewerParams
 import com.localfind.ui.PdfViewerScreen
+import com.localfind.ui.SearchScreen
+import com.localfind.ui.SettingsScreen
 import com.localfind.ui.TextViewerParams
 import com.localfind.ui.TextViewerScreen
-import com.localfind.ui.SearchScreen
 import com.localfind.ui.theme.LocalFindTheme
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
@@ -129,6 +132,11 @@ fun MainScreen() {
     var activeMediaPlayer by remember { mutableStateOf<MediaPlayerParams?>(null) }
     var activeTextViewer by remember { mutableStateOf<TextViewerParams?>(null) }
     var filePendingDeletion by remember { mutableStateOf<ImportedFile?>(null) }
+    var isSettingsOpen by remember { mutableStateOf(false) }
+
+    // Settings state persisted offline via SharedPreferences
+    val settingsStore = remember { SettingsStore(context) }
+    var currentSettings by remember { mutableStateOf(settingsStore.load()) }
 
     // Keep Embedder (485MB EmbeddingGemma 2) and EmbeddingStore warm in memory across the session
     // so indexing and search execute without repeated 1.5–3s model initialization overhead.
@@ -193,7 +201,7 @@ fun MainScreen() {
                     try {
                         val embedder = getOrCreateEmbedder()
                         val store = getOrCreateStore()
-                        val indexer = Indexer(context, embedder, store)
+                        val indexer = Indexer(context, embedder, store, currentSettings)
                         var indexedFiles = 0
                         var totalChunks = 0
 
@@ -290,7 +298,11 @@ fun MainScreen() {
                         val embedder = getOrCreateEmbedder()
                         val store = getOrCreateStore()
                         val searcher = Searcher(store, embedder)
-                        searcher.search(trimmed)
+                        searcher.search(
+                            query = trimmed,
+                            topK = currentSettings.topK,
+                            threshold = currentSettings.similarityThreshold
+                        )
                     }
                 }
                 searchResults = results
@@ -487,7 +499,20 @@ fun MainScreen() {
         }
     }
 
-    if (activeTextViewer != null) {
+    if (isSettingsOpen) {
+        SettingsScreen(
+            settings = currentSettings,
+            onSettingsChange = { updated ->
+                currentSettings = updated
+                settingsStore.save(updated)
+            },
+            onResetDefaults = {
+                val defaults = settingsStore.reset()
+                currentSettings = defaults
+            },
+            onClose = { isSettingsOpen = false }
+        )
+    } else if (activeTextViewer != null) {
         TextViewerScreen(
             params = activeTextViewer!!,
             onClose = { activeTextViewer = null }
@@ -543,7 +568,12 @@ fun MainScreen() {
         topBar = {
             Column {
                 TopAppBar(
-                    title = { Text(text = stringResource(id = R.string.app_name)) }
+                    title = { Text(text = stringResource(id = R.string.app_name)) },
+                    actions = {
+                        IconButton(onClick = { isSettingsOpen = true }) {
+                            Text("⚙", style = MaterialTheme.typography.titleLarge)
+                        }
+                    }
                 )
                 PrimaryTabRow(selectedTabIndex = selectedTab) {
                     Tab(

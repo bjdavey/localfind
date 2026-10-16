@@ -241,5 +241,55 @@ class SearcherTest {
         assertEquals(0.0f, Searcher.calculateCosineSimilarity(floatArrayOf(), floatArrayOf(1f)), 0.0001f)
         assertEquals(0.0f, Searcher.calculateCosineSimilarity(floatArrayOf(1f, 2f), floatArrayOf(1f)), 0.0001f)
     }
+
+    @Test
+    fun searchAppliesSimilarityThresholdFilter() {
+        val fakeStore = FakeVectorStore()
+        val embeddingStore = EmbeddingStore(fakeStore)
+
+        // rec1: score 1.0 (exact match)
+        val rec1 = RetrievalRecord(
+            "file1_c0",
+            listOf(TextPart("Exact match")),
+            floatArrayOf(1.0f, 0.0f, 0.0f),
+            mapOf("name" to "exact.txt", "type" to "text")
+        )
+        // rec2: score ~0.707 (partial match)
+        val rec2 = RetrievalRecord(
+            "file2_c0",
+            listOf(TextPart("Partial match")),
+            floatArrayOf(0.7071f, 0.7071f, 0.0f),
+            mapOf("name" to "partial.txt", "type" to "text")
+        )
+        // rec3: score 0.0 (orthogonal)
+        val rec3 = RetrievalRecord(
+            "file3_c0",
+            listOf(TextPart("Unrelated")),
+            floatArrayOf(0.0f, 1.0f, 0.0f),
+            mapOf("name" to "unrelated.txt", "type" to "text")
+        )
+        fakeStore.upsert(listOf(rec1, rec2, rec3))
+
+        val searcher = Searcher(embeddingStore) { _ -> floatArrayOf(1.0f, 0.0f, 0.0f) }
+
+        // With threshold 0.0: all 3 returned
+        val defaultResults = searcher.search("query", topK = 10, threshold = 0.0f)
+        assertEquals(3, defaultResults.size)
+
+        // With user-requested default threshold 0.6f: exact (1.0) and partial (0.707) returned, orthogonal (0.0) filtered out
+        val threshold06Results = searcher.search("query", topK = 10, threshold = 0.6f)
+        assertEquals(2, threshold06Results.size)
+        assertEquals("file1_c0", threshold06Results[0].chunkId)
+        assertEquals("file2_c0", threshold06Results[1].chunkId)
+
+        // With high threshold 0.8f: only exact match returned
+        val strictResults = searcher.search("query", topK = 10, threshold = 0.8f)
+        assertEquals(1, strictResults.size)
+        assertEquals("file1_c0", strictResults[0].chunkId)
+
+        // With impossible threshold > 1.0: no results returned
+        val impossibleResults = searcher.search("query", topK = 10, threshold = 1.01f)
+        assertTrue(impossibleResults.isEmpty())
+    }
 }
 

@@ -10,6 +10,7 @@ import com.google.mediapipe.tasks.core.ImagePart
 import com.google.mediapipe.tasks.core.Part
 import com.google.mediapipe.tasks.core.TextPart
 import com.google.mediapipe.tasks.retrieval.model.RetrievalRecord
+import com.localfind.data.AppSettings
 import com.localfind.data.EmbeddingStore
 import com.localfind.data.ImportedFile
 import com.localfind.embed.Embedder
@@ -65,7 +66,8 @@ data class IndexResult(
 class Indexer(
     private val context: Context,
     private val embedder: Embedder,
-    private val embeddingStore: EmbeddingStore
+    private val embeddingStore: EmbeddingStore,
+    private val settings: AppSettings = AppSettings()
 ) {
 
     /**
@@ -148,7 +150,11 @@ class Indexer(
             return IndexResult(file.uri, 0, false, "Read failed: ${e.message}")
         }
 
-        val chunks = TextChunker.chunk(content)
+        val chunks = TextChunker.chunk(
+            content = content,
+            targetChunkSize = settings.textChunkSize,
+            overlapSize = settings.textChunkOverlap
+        )
         if (chunks.isEmpty()) {
             // If the document is empty or whitespace-only, remove any old chunks and return
             embeddingStore.deleteByMetadata(mapOf("fileId" to file.uri))
@@ -234,7 +240,12 @@ class Indexer(
                         stripper.startPage = pageNum
                         stripper.endPage = pageNum
                         val pageText = stripper.getText(document)
-                        val pageChunks = PdfChunker.chunkPage(pageText, pageNum)
+                        val pageChunks = PdfChunker.chunkPage(
+                            pageText = pageText,
+                            pageNumber = pageNum,
+                            targetChunkSize = settings.textChunkSize,
+                            overlapSize = settings.textChunkOverlap
+                        )
                         chunks.addAll(pageChunks)
                     }
                 }
@@ -299,7 +310,7 @@ class Indexer(
 
         val uri = file.uri.toUri()
         val bitmap = try {
-            decodeNormalizedBitmap(context, uri)
+            decodeNormalizedBitmap(context, uri, maxDimension = settings.maxImageDimension)
                 ?: return IndexResult(file.uri, 0, false, "Could not decode image from URI")
         } catch (e: Exception) {
             return IndexResult(file.uri, 0, false, "Image decode failed: ${e.message}")
@@ -361,7 +372,10 @@ class Indexer(
             return IndexResult(file.uri, 0, false, "Audio decode failed: ${e.message}")
         }
 
-        val windows = AudioChunker.windows(pcm.size)
+        val windows = AudioChunker.windows(
+            totalSamples = pcm.size,
+            windowMs = settings.audioWindowSeconds * 1000L
+        )
         val records = mutableListOf<RetrievalRecord>()
         try {
             for ((index, window) in windows.withIndex()) {
@@ -425,9 +439,11 @@ class Indexer(
             val durationMs = retriever.extractMetadata(MediaMetadataRetriever.METADATA_KEY_DURATION)
                 ?.toLongOrNull() ?: return IndexResult(file.uri, 0, false, "Could not read video duration")
 
-            for ((index, window) in VideoChunker.windows(durationMs).withIndex()) {
-                val frameTimes = VideoChunker.frameTimes(window)
-                val frames = frameTimes.map { videoFrameJpeg(retriever, it) }
+            val videoWindowMs = settings.videoWindowSeconds * 1000L
+            val videoStepMs = (videoWindowMs - 1000L).coerceAtLeast(1000L)
+            for ((index, window) in VideoChunker.windows(durationMs, windowMs = videoWindowMs, stepMs = videoStepMs).withIndex()) {
+                val frameTimes = VideoChunker.frameTimes(window, count = settings.videoFramesPerWindow)
+                val frames = frameTimes.map { videoFrameJpeg(retriever, it, maxDimension = settings.maxImageDimension) }
                 if (frames.any { it == null }) continue // unreadable frame: skip this window
 
                 val windowMs = window.endMs - window.startMs
@@ -476,13 +492,17 @@ class Indexer(
     }
 
     /**
-     * Grabs the frame nearest to [timeMs], bounded to [MAX_IMAGE_DIMENSION], as JPEG (quality 80).
+     * Grabs the frame nearest to [timeMs], bounded to [maxDimension], as JPEG (quality 80).
      * Returns null if the frame cannot be decoded.
      */
-    private fun videoFrameJpeg(retriever: MediaMetadataRetriever, timeMs: Long): ByteArray? {
+    private fun videoFrameJpeg(
+        retriever: MediaMetadataRetriever,
+        timeMs: Long,
+        maxDimension: Int = settings.maxImageDimension
+    ): ByteArray? {
         val full = retriever.getFrameAtTime(timeMs * 1000, MediaMetadataRetriever.OPTION_CLOSEST)
             ?: return null
-        val (w, h) = calculateTargetDimensions(full.width, full.height)
+        val (w, h) = calculateTargetDimensions(full.width, full.height, maxDimension)
         val scaled = if (w != full.width || h != full.height) {
             Bitmap.createScaledBitmap(full, w, h, true).also { full.recycle() }
         } else full

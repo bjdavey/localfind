@@ -66,12 +66,14 @@ class Searcher(
      *
      * @param query User's natural language search query. Blank queries return an empty list.
      * @param topK Maximum number of results to retrieve (default: [DEFAULT_TOP_K]).
+     * @param threshold Minimum cosine similarity score required for a result to be included (default: 0.0f).
      * @param metadataFilter Optional metadata filter criteria (e.g. `mapOf("type" to "text")`).
      * @return Ranked list of [SearchResult], sorted by descending similarity score.
      */
     fun search(
         query: String,
         topK: Int = DEFAULT_TOP_K,
+        threshold: Float = 0.0f,
         metadataFilter: Map<String, String> = emptyMap()
     ): List<SearchResult> {
         val trimmed = query.trim()
@@ -117,9 +119,11 @@ class Searcher(
             )
         }
 
-        // 4. Return results ordered by descending similarity score
+        // 4. Filter by minimum similarity threshold and order by descending score
         // (Stable sort preserves the vector store's native ranking if scores are identical or 0)
-        return results.sortedByDescending { it.score }
+        return results
+            .filter { it.score >= threshold }
+            .sortedByDescending { it.score }
     }
 
     companion object {

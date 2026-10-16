@@ -180,7 +180,7 @@ fun SearchScreen(
                             style = MaterialTheme.typography.titleMedium
                         )
                         Text(
-                            text = "Try different keywords or index more files in the Library tab.",
+                            text = "Try different keywords, lower the Similarity Threshold in Settings, or index more files in the Library tab.",
                             style = MaterialTheme.typography.bodyMedium,
                             color = MaterialTheme.colorScheme.onSurfaceVariant
                         )

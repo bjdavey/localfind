@@ -86,7 +86,8 @@ Data is stored locally using MediaPipe's `SqliteVectorStore` (`RetrievalRecord`)
 
 1. Embed the query text using `Embedder`.
 2. Query `SqliteVectorStore.search(queryEmbedding, topK)` to find nearest neighbors via cosine similarity.
-3. Return the top-K chunks sorted by similarity score.
+3. Filter results that meet or exceed the similarity threshold (default `0.60`).
+4. Return the top-K chunks sorted by descending similarity score.
 
 ## 8. Opening Results
 
@@ -97,12 +98,27 @@ Data is stored locally using MediaPipe's `SqliteVectorStore` (`RetrievalRecord`)
 | Image | In-app image viewer (Coil) |
 | Audio / Video | In-app Media3 ExoPlayer (`PlayerView`), `seekTo(location)` |
 
-## 9. Offline Guarantee
+## 9. Settings & Tuning Variables
+
+All variables are persisted locally using native Android `SharedPreferences` ([SettingsStore](file:///e:/src/bj/localfind/android/app/src/main/java/com/localfind/data/AppSettings.kt)):
+
+| Area | Variable | Default | Description |
+| :--- | :--- | :--- | :--- |
+| Search | Similarity Threshold | `0.60` | Minimum cosine similarity score required for matches |
+| Search | Top-K | `10` | Maximum nearest-neighbor results retrieved |
+| Indexing | Text Chunk Size | `500` chars | Passage character length for text, Markdown, and PDF |
+| Indexing | Text Chunk Overlap | `100` chars | Sliding overlap characters between consecutive passages |
+| Indexing | Audio Window Duration | `10` s | Duration of each fixed audio chunk |
+| Indexing | Video Window Duration | `5` s | Duration of each video sliding window |
+| Indexing | Video Frames / Window | `2` frames | Sampled JPEG frames per video window |
+| Indexing | Max Image Dimension | `512` px | Maximum dimension for image and frame decoding |
+
+## 10. Offline Guarantee
 
 - No `INTERNET` permission. Any merged permission from libraries is removed with `tools:node="remove"`.
 - No analytics, crash reporting, or cloud SDKs.
 
-## 10. Project Layout
+## 11. Project Layout
 
 Single Gradle module, organized by package:
 
