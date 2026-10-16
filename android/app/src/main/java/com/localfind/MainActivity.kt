@@ -59,6 +59,8 @@ import com.localfind.search.SearchResult
 import com.localfind.search.Searcher
 import com.localfind.ui.ImageViewerParams
 import com.localfind.ui.ImageViewerScreen
+import com.localfind.ui.MediaPlayerParams
+import com.localfind.ui.MediaPlayerScreen
 import com.localfind.ui.PdfViewerParams
 import com.localfind.ui.PdfViewerScreen
 import com.localfind.ui.SearchScreen
@@ -118,6 +120,7 @@ fun MainScreen() {
     var searchError by remember { mutableStateOf<String?>(null) }
     var activePdfViewer by remember { mutableStateOf<PdfViewerParams?>(null) }
     var activeImageViewer by remember { mutableStateOf<ImageViewerParams?>(null) }
+    var activeMediaPlayer by remember { mutableStateOf<MediaPlayerParams?>(null) }
 
     // Keep Embedder (485MB EmbeddingGemma 2) and EmbeddingStore warm in memory across the session
     // so indexing and search execute without repeated 1.5–3s model initialization overhead.
@@ -281,6 +284,19 @@ fun MainScreen() {
             return
         }
 
+        val isAudio = result.fileType.equals("audio", ignoreCase = true) ||
+                Indexer.isAudioNameOrMime(result.fileName, null)
+
+        if (isAudio) {
+            // Open in-app player, seeking to the chunk start time (ms)
+            activeMediaPlayer = MediaPlayerParams(
+                uri = result.fileUri,
+                fileName = result.fileName,
+                startMs = result.location.coerceAtLeast(0L)
+            )
+            return
+        }
+
         try {
             val uri = Uri.parse(result.fileUri)
             val mimeType = when {
@@ -336,6 +352,11 @@ fun MainScreen() {
         PdfViewerScreen(
             params = activePdfViewer!!,
             onClose = { activePdfViewer = null }
+        )
+    } else if (activeMediaPlayer != null) {
+        MediaPlayerScreen(
+            params = activeMediaPlayer!!,
+            onClose = { activeMediaPlayer = null }
         )
     } else if (activeImageViewer != null) {
         ImageViewerScreen(

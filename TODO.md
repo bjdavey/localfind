@@ -16,13 +16,14 @@
 - [x] Results list UI
 - [x] Index PDFs (text-based only, no OCR) and open at the matching page
 - [x] Index images and open the matching image
-- [ ] Index audio and play from the matching time
+- [x] Index audio and play from the matching time
 - [ ] Index video and play from the matching time
 - [ ] Library screen: list indexed files and remove a file
 
 ## Backlog
 
 - Background indexing with progress indicator per file
+- Try support CPU, GPU, NPU
 - Good builtin viewer for each file type
 - Search inside file
 - PDF OCR

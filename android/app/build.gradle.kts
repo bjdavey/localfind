@@ -56,6 +56,8 @@ dependencies {
     implementation(libs.litertlm.android)
     implementation(libs.pdfbox.android)
     implementation(libs.coil.compose)
+    implementation(libs.media3.exoplayer)
+    implementation(libs.media3.ui)
 
     testImplementation(libs.junit)
     androidTestImplementation(platform(libs.androidx.compose.bom))

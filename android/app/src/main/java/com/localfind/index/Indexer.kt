@@ -11,6 +11,7 @@ import com.google.mediapipe.tasks.retrieval.model.RetrievalRecord
 import com.localfind.data.EmbeddingStore
 import com.localfind.data.ImportedFile
 import com.localfind.embed.Embedder
+import com.localfind.ui.SearchResultFormatter
 import com.tom_roush.pdfbox.android.PDFBoxResourceLoader
 import com.tom_roush.pdfbox.pdmodel.PDDocument
 import com.tom_roush.pdfbox.text.PDFTextStripper
@@ -105,10 +106,18 @@ class Indexer(
         isImageNameOrMime(file.displayName, file.mimeType)
 
     /**
+     * Determines whether an imported file is a supported audio file.
+     *
+     * Supported formats (PRD §2): .mp3, .m4a, .wav (or any audio/ MIME type).
+     */
+    fun isAudioFile(file: ImportedFile): Boolean =
+        isAudioNameOrMime(file.displayName, file.mimeType)
+
+    /**
      * Determines whether an imported file is supported by the indexer.
      */
     fun isSupported(file: ImportedFile): Boolean =
-        isTextFile(file) || isPdfFile(file) || isImageFile(file)
+        isTextFile(file) || isPdfFile(file) || isImageFile(file) || isAudioFile(file)
 
     /**
      * Reads, chunks, embeds, and stores an imported text or Markdown file.
@@ -328,18 +337,84 @@ class Indexer(
     }
 
     /**
-     * Automatically dispatches indexing based on the file format (Text/Markdown, PDF, or Image).
+     * Decodes, windows, embeds, and stores an imported audio file (.mp3, .m4a, .wav).
+     *
+     * Execution flow (ARCHITECTURE.md §5):
+     * 1. Decodes the file to 16 kHz mono PCM via [AudioDecoder].
+     * 2. Splits it into fixed 10 s windows via [AudioChunker.windows].
+     * 3. Embeds each window directly with the multimodal model ([Embedder.embedAudio]);
+     *    there is no speech-to-text step.
+     * 4. Replaces any old chunks of this file with one record per window: type="audio",
+     *    location = window start time in milliseconds (used to seek the player).
+     *
+     * @param file Metadata of the imported audio file to index.
+     * @return [IndexResult] indicating success/failure and chunk count.
+     */
+    fun indexAudioFile(file: ImportedFile): IndexResult {
+        if (!isAudioFile(file)) {
+            return IndexResult(file.uri, 0, false, "Not a supported audio file")
+        }
+
+        val pcm = try {
+            AudioDecoder.decodeToMono16k(context, file.uri.toUri())
+        } catch (e: Exception) {
+            return IndexResult(file.uri, 0, false, "Audio decode failed: ${e.message}")
+        }
+
+        val windows = AudioChunker.windows(pcm.size)
+        val records = mutableListOf<RetrievalRecord>()
+        try {
+            for ((index, window) in windows.withIndex()) {
+                val embedding = embedder.embedAudio(pcm.copyOfRange(window.startSample, window.endSample))
+                val metadata = mapOf(
+                    "fileId" to file.uri,
+                    "uri" to file.uri,
+                    "name" to file.displayName,
+                    "type" to "audio",
+                    "location" to window.startMs.toString()
+                )
+                // Text label only: the audio itself stays in the linked file (no copy)
+                val label = "${file.displayName} @ ${SearchResultFormatter.formatTimeMs(window.startMs)}"
+                records.add(
+                    RetrievalRecord("${file.uri}_$index", listOf(TextPart(label)), embedding, metadata)
+                )
+            }
+        } catch (e: Exception) {
+            return IndexResult(file.uri, 0, false, "Audio embedding failed: ${e.message}")
+        }
+
+        // Replace old chunks only after embedding succeeded
+        embeddingStore.deleteByMetadata(mapOf("fileId" to file.uri))
+        if (records.isNotEmpty()) embeddingStore.storeBatch(records)
+        return IndexResult(file.uri, records.size, true)
+    }
+
+    /**
+     * Automatically dispatches indexing based on the file format (Text/Markdown, PDF, Image or Audio).
      */
     fun indexFile(file: ImportedFile): IndexResult {
         return when {
             isPdfFile(file) -> indexPdfFile(file)
             isImageFile(file) -> indexImageFile(file)
+            isAudioFile(file) -> indexAudioFile(file)
             isTextFile(file) -> indexTextFile(file)
             else -> IndexResult(file.uri, 0, false, "Unsupported file format")
         }
     }
 
     companion object {
+        /**
+         * Pure helper that checks whether a file name or MIME type corresponds to a supported
+         * audio format (.mp3, .m4a, .wav or any audio/ MIME type).
+         */
+        fun isAudioNameOrMime(displayName: String, mimeType: String?): Boolean {
+            val name = displayName.lowercase()
+            return name.endsWith(".mp3") ||
+                    name.endsWith(".m4a") ||
+                    name.endsWith(".wav") ||
+                    mimeType?.lowercase()?.startsWith("audio/") == true
+        }
+
         /**
          * Pure helper that checks whether a file name or MIME type corresponds to a supported
          * image format (.jpg, .jpeg, .png).

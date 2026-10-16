@@ -3,6 +3,7 @@ package com.localfind.embed
 import android.content.Context
 import android.graphics.Bitmap
 import com.google.mediapipe.framework.image.BitmapImageBuilder
+import com.google.mediapipe.tasks.components.containers.AudioData
 import com.google.mediapipe.tasks.core.BaseOptions
 import com.google.mediapipe.tasks.retrieval.universalembedder.UniversalEmbedder
 import com.google.mediapipe.tasks.retrieval.universalembedder.UniversalEmbedderOptions
@@ -90,6 +91,24 @@ class Embedder(context: Context) : AutoCloseable {
         BitmapImageBuilder(bitmap).build().use { mpImage ->
             embedder.embedImage(mpImage).embeddings()[0].floatEmbedding()
         }
+
+    /**
+     * Converts a window of audio into a 768-dimensional normalized float embedding vector
+     * in the same shared multimodal vector space as text and images.
+     *
+     * @param samples 16 kHz mono signed 16-bit PCM samples (the rate EmbeddingGemma's
+     *   mel-spectrogram frontend expects).
+     * @return FloatArray of 768 elements representing the semantic vector.
+     */
+    fun embedAudio(samples: ShortArray): FloatArray {
+        val format = AudioData.AudioDataFormat.builder()
+            .setNumOfChannels(1)
+            .setSampleRate(16_000f)
+            .build()
+        val audio = AudioData.create(format, samples.size)
+        audio.load(samples)
+        return embedder.embedAudio(audio).embeddings()[0].floatEmbedding()
+    }
 
     /**
      * Releases native memory and interpreter instances allocated by MediaPipe Tasks.
