@@ -284,11 +284,13 @@ fun MainScreen() {
             return
         }
 
-        val isAudio = result.fileType.equals("audio", ignoreCase = true) ||
-                Indexer.isAudioNameOrMime(result.fileName, null)
+        val isPlayable = result.fileType.equals("audio", ignoreCase = true) ||
+                result.fileType.equals("video", ignoreCase = true) ||
+                Indexer.isAudioNameOrMime(result.fileName, null) ||
+                Indexer.isVideoNameOrMime(result.fileName, null)
 
-        if (isAudio) {
-            // Open in-app player, seeking to the chunk start time (ms)
+        if (isPlayable) {
+            // Open in-app player (audio or video), seeking to the chunk start time (ms)
             activeMediaPlayer = MediaPlayerParams(
                 uri = result.fileUri,
                 fileName = result.fileName,

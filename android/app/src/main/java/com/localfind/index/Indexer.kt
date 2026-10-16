@@ -3,9 +3,11 @@ package com.localfind.index
 import android.content.Context
 import android.graphics.Bitmap
 import android.graphics.ImageDecoder
+import android.media.MediaMetadataRetriever
 import android.net.Uri
 import androidx.core.net.toUri
 import com.google.mediapipe.tasks.core.ImagePart
+import com.google.mediapipe.tasks.core.Part
 import com.google.mediapipe.tasks.core.TextPart
 import com.google.mediapipe.tasks.retrieval.model.RetrievalRecord
 import com.localfind.data.EmbeddingStore
@@ -16,6 +18,7 @@ import com.tom_roush.pdfbox.android.PDFBoxResourceLoader
 import com.tom_roush.pdfbox.pdmodel.PDDocument
 import com.tom_roush.pdfbox.text.PDFTextStripper
 import java.io.BufferedReader
+import java.io.ByteArrayOutputStream
 import java.io.InputStreamReader
 
 /**
@@ -55,7 +58,7 @@ data class IndexResult(
  *     - fileId: The file's URI string (used for deleting all chunks of a file).
  *     - uri: The file's URI string (used to open/render the document).
  *     - name: Display name shown in search result cards.
- *     - type: Category ("text", "pdf", "image"; future: "audio", "video").
+ *     - type: Category ("text", "pdf", "image", "audio", "video").
  *     - location: Offset location (character offset for text, 1-based page number for PDF,
  *       0 for whole-image records).
  */
@@ -114,10 +117,17 @@ class Indexer(
         isAudioNameOrMime(file.displayName, file.mimeType)
 
     /**
+     * Determines whether an imported file is a supported video file (PRD §2: .mp4).
+     */
+    fun isVideoFile(file: ImportedFile): Boolean =
+        isVideoNameOrMime(file.displayName, file.mimeType)
+
+    /**
      * Determines whether an imported file is supported by the indexer.
      */
     fun isSupported(file: ImportedFile): Boolean =
-        isTextFile(file) || isPdfFile(file) || isImageFile(file) || isAudioFile(file)
+        isTextFile(file) || isPdfFile(file) || isImageFile(file) || isAudioFile(file) ||
+                isVideoFile(file)
 
     /**
      * Reads, chunks, embeds, and stores an imported text or Markdown file.
@@ -390,19 +400,132 @@ class Indexer(
     }
 
     /**
-     * Automatically dispatches indexing based on the file format (Text/Markdown, PDF, Image or Audio).
+     * Samples frames, windows and embeds an imported video file (.mp4).
+     *
+     * Execution flow (ARCHITECTURE.md §5, GOOGLE_AI_EDGE_GALLERY.md §6.2):
+     * 1. Reads the duration and slides a window over it via [VideoChunker.windows].
+     * 2. Decodes the audio track once to 16 kHz mono PCM (a video without audio is indexed
+     *    from frames only).
+     * 3. For each window, grabs [VIDEO_FRAMES_PER_WINDOW] JPEG frames and splits the window's audio
+     *    into one slice per frame, then embeds the interleaved parts as ONE vector via
+     *    [Embedder.embedVideoWindow]. If the token estimate exceeds [MAX_INPUT_TOKENS], the audio
+     *    is dropped for that window.
+     * 4. Replaces old chunks with one record per window: type="video",
+     *    location = window start time in milliseconds (used to seek the player).
+     *
+     * @param file Metadata of the imported video file to index.
+     * @return [IndexResult] indicating success/failure and chunk count.
+     */
+    fun indexVideoFile(file: ImportedFile): IndexResult {
+        if (!isVideoFile(file)) {
+            return IndexResult(file.uri, 0, false, "Not a supported video file")
+        }
+
+        val uri = file.uri.toUri()
+        val pcm = try {
+            AudioDecoder.decodeToMono16k(context, uri)
+        } catch (_: Exception) {
+            ShortArray(0) // no audio track: use frames only
+        }
+
+        val records = mutableListOf<RetrievalRecord>()
+        val retriever = MediaMetadataRetriever()
+        try {
+            retriever.setDataSource(context, uri)
+            val durationMs = retriever.extractMetadata(MediaMetadataRetriever.METADATA_KEY_DURATION)
+                ?.toLongOrNull() ?: return IndexResult(file.uri, 0, false, "Could not read video duration")
+
+            for ((index, window) in VideoChunker.windows(durationMs).withIndex()) {
+                val frameTimes = VideoChunker.frameTimes(window)
+                val frames = frameTimes.map { videoFrameJpeg(retriever, it) }
+                if (frames.any { it == null }) continue // unreadable frame: skip this window
+
+                val windowMs = window.endMs - window.startMs
+                val withAudio = pcm.isNotEmpty() &&
+                        VideoChunker.estimateTokens(windowMs, frames.size, true) <= MAX_INPUT_TOKENS
+
+                // Interleave: [time] audio-slice [time] frame ... one pair per sampled frame
+                val parts = mutableListOf<Part>()
+                val sliceMs = windowMs / frames.size
+                for ((i, jpeg) in frames.withIndex()) {
+                    val label = SearchResultFormatter.formatTimeMs(frameTimes[i])
+                    if (withAudio) {
+                        val from = window.startMs + i * sliceMs
+                        val range = VideoChunker.sampleRange(from, from + sliceMs, pcm.size)
+                        if (!range.isEmpty()) {
+                            parts.add(TextPart(label))
+                            parts.add(embedder.audioPart(pcm.copyOfRange(range.first, range.last + 1)))
+                        }
+                    }
+                    parts.add(TextPart(label))
+                    parts.add(ImagePart(jpeg!!))
+                }
+
+                val embedding = embedder.embedVideoWindow(parts)
+                val metadata = mapOf(
+                    "fileId" to file.uri,
+                    "uri" to file.uri,
+                    "name" to file.displayName,
+                    "type" to "video",
+                    "location" to window.startMs.toString()
+                )
+                // Text label only: the video itself stays in the linked file (no copy)
+                val text = "${file.displayName} @ ${SearchResultFormatter.formatTimeMs(window.startMs)}"
+                records.add(RetrievalRecord("${file.uri}_$index", listOf(TextPart(text)), embedding, metadata))
+            }
+        } catch (e: Exception) {
+            return IndexResult(file.uri, 0, false, "Video indexing failed: ${e.message}")
+        } finally {
+            retriever.release()
+        }
+
+        // Replace old chunks only after embedding succeeded
+        embeddingStore.deleteByMetadata(mapOf("fileId" to file.uri))
+        if (records.isNotEmpty()) embeddingStore.storeBatch(records)
+        return IndexResult(file.uri, records.size, true)
+    }
+
+    /**
+     * Grabs the frame nearest to [timeMs], bounded to [MAX_IMAGE_DIMENSION], as JPEG (quality 80).
+     * Returns null if the frame cannot be decoded.
+     */
+    private fun videoFrameJpeg(retriever: MediaMetadataRetriever, timeMs: Long): ByteArray? {
+        val full = retriever.getFrameAtTime(timeMs * 1000, MediaMetadataRetriever.OPTION_CLOSEST)
+            ?: return null
+        val (w, h) = calculateTargetDimensions(full.width, full.height)
+        val scaled = if (w != full.width || h != full.height) {
+            Bitmap.createScaledBitmap(full, w, h, true).also { full.recycle() }
+        } else full
+        return ByteArrayOutputStream().use { out ->
+            scaled.compress(Bitmap.CompressFormat.JPEG, 80, out)
+            scaled.recycle()
+            out.toByteArray()
+        }
+    }
+
+    /**
+     * Automatically dispatches indexing based on the file format
+     * (Text/Markdown, PDF, Image, Audio or Video).
      */
     fun indexFile(file: ImportedFile): IndexResult {
         return when {
             isPdfFile(file) -> indexPdfFile(file)
             isImageFile(file) -> indexImageFile(file)
             isAudioFile(file) -> indexAudioFile(file)
+            isVideoFile(file) -> indexVideoFile(file)
             isTextFile(file) -> indexTextFile(file)
             else -> IndexResult(file.uri, 0, false, "Unsupported file format")
         }
     }
 
     companion object {
+        /**
+         * Pure helper that checks whether a file name or MIME type corresponds to a supported
+         * video format (.mp4 or video/mp4).
+         */
+        fun isVideoNameOrMime(displayName: String, mimeType: String?): Boolean =
+            displayName.lowercase().endsWith(".mp4") || mimeType?.lowercase() == "video/mp4"
+
         /**
          * Pure helper that checks whether a file name or MIME type corresponds to a supported
          * audio format (.mp3, .m4a, .wav or any audio/ MIME type).

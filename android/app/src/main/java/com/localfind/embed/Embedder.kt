@@ -4,7 +4,9 @@ import android.content.Context
 import android.graphics.Bitmap
 import com.google.mediapipe.framework.image.BitmapImageBuilder
 import com.google.mediapipe.tasks.components.containers.AudioData
+import com.google.mediapipe.tasks.core.AudioPart
 import com.google.mediapipe.tasks.core.BaseOptions
+import com.google.mediapipe.tasks.core.Part
 import com.google.mediapipe.tasks.retrieval.universalembedder.UniversalEmbedder
 import com.google.mediapipe.tasks.retrieval.universalembedder.UniversalEmbedderOptions
 import java.io.File
@@ -100,14 +102,32 @@ class Embedder(context: Context) : AutoCloseable {
      *   mel-spectrogram frontend expects).
      * @return FloatArray of 768 elements representing the semantic vector.
      */
-    fun embedAudio(samples: ShortArray): FloatArray {
+    fun embedAudio(samples: ShortArray): FloatArray =
+        embedder.embedAudio(toAudioData(samples)).embeddings()[0].floatEmbedding()
+
+    /**
+     * Wraps 16 kHz mono PCM samples as a content part for [embedVideoWindow].
+     */
+    fun audioPart(samples: ShortArray): AudioPart = AudioPart(toAudioData(samples))
+
+    /**
+     * Embeds one video window as a single vector from interleaved parts, e.g.
+     * `[time] audio-slice [time] frame-jpeg [time] audio-slice [time] frame-jpeg`
+     * (GOOGLE_AI_EDGE_GALLERY.md §6.2). The model has no dedicated video input,
+     * so a video window is represented as frames plus audio in one sequence.
+     *
+     * @param parts [TextPart] time markers, [AudioPart] slices and [ImagePart] JPEG frames.
+     * @return FloatArray of 768 elements representing the semantic vector.
+     */
+    fun embedVideoWindow(parts: List<Part>): FloatArray =
+        embedder.embedContent(parts).embeddings()[0].floatEmbedding()
+
+    private fun toAudioData(samples: ShortArray): AudioData {
         val format = AudioData.AudioDataFormat.builder()
             .setNumOfChannels(1)
             .setSampleRate(16_000f)
             .build()
-        val audio = AudioData.create(format, samples.size)
-        audio.load(samples)
-        return embedder.embedAudio(audio).embeddings()[0].floatEmbedding()
+        return AudioData.create(format, samples.size).also { it.load(samples) }
     }
 
     /**
