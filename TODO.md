@@ -13,7 +13,7 @@
 - [x] Import files from device storage
 - [x] Index text and Markdown files
 - [x] Search: text query returns ranked results
-- [ ] Results list UI
+- [x] Results list UI
 - [ ] Index PDFs (text-based only, no OCR) and open at the matching page
 - [ ] Index images and open the matching image
 - [ ] Index audio and play from the matching time
