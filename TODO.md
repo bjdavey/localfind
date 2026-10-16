@@ -15,15 +15,20 @@
 - [x] Search: text query returns ranked results
 - [x] Results list UI
 - [x] Index PDFs (text-based only, no OCR) and open at the matching page
-- [ ] Index images and open the matching image
+- [x] Index images and open the matching image
 - [ ] Index audio and play from the matching time
 - [ ] Index video and play from the matching time
 - [ ] Library screen: list indexed files and remove a file
 
 ## Backlog
 
+- Background indexing with progress indicator per file
+- Good builtin viewer for each file type
+- Search inside file
+- PDF OCR
+- Folders
+- Enhance UI
 - Filter results by file type
-- Background indexing
 - Folder import
 - iOS app
 - Desktop app

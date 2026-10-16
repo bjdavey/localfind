@@ -1,7 +1,11 @@
 package com.localfind.index
 
 import android.content.Context
+import android.graphics.Bitmap
+import android.graphics.ImageDecoder
+import android.net.Uri
 import androidx.core.net.toUri
+import com.google.mediapipe.tasks.core.ImagePart
 import com.google.mediapipe.tasks.core.TextPart
 import com.google.mediapipe.tasks.retrieval.model.RetrievalRecord
 import com.localfind.data.EmbeddingStore
@@ -12,6 +16,14 @@ import com.tom_roush.pdfbox.pdmodel.PDDocument
 import com.tom_roush.pdfbox.text.PDFTextStripper
 import java.io.BufferedReader
 import java.io.InputStreamReader
+
+/**
+ * Maximum width or height (in pixels) used when decoding an image for embedding.
+ *
+ * Bounding dimensions to 512px keeps the intermediate pixel and TGA byte buffers small (~1 MB)
+ * and speeds up ImageDecoder subsampling before the vision encoder resizes to its patch grid.
+ */
+const val MAX_IMAGE_DIMENSION = 512
 
 /**
  * Result report from indexing a file.
@@ -42,9 +54,9 @@ data class IndexResult(
  *     - fileId: The file's URI string (used for deleting all chunks of a file).
  *     - uri: The file's URI string (used to open/render the document).
  *     - name: Display name shown in search result cards.
- *     - type: Category ("text" for .txt and .md files; future: "pdf", "image", "audio", "video").
- *     - location: Exact character offset within the document where the passage starts,
- *       allowing the viewer screen to scroll immediately to the matched passage.
+ *     - type: Category ("text", "pdf", "image"; future: "audio", "video").
+ *     - location: Offset location (character offset for text, 1-based page number for PDF,
+ *       0 for whole-image records).
  */
 class Indexer(
     private val context: Context,
@@ -83,9 +95,20 @@ class Indexer(
     }
 
     /**
+     * Determines whether an imported file is a supported image file.
+     *
+     * Supported formats (PRD §2):
+     * - Extensions: .jpg, .jpeg, .png
+     * - MIME types: image/jpeg, image/jpg, image/png
+     */
+    fun isImageFile(file: ImportedFile): Boolean =
+        isImageNameOrMime(file.displayName, file.mimeType)
+
+    /**
      * Determines whether an imported file is supported by the indexer.
      */
-    fun isSupported(file: ImportedFile): Boolean = isTextFile(file) || isPdfFile(file)
+    fun isSupported(file: ImportedFile): Boolean =
+        isTextFile(file) || isPdfFile(file) || isImageFile(file)
 
     /**
      * Reads, chunks, embeds, and stores an imported text or Markdown file.
@@ -246,13 +269,144 @@ class Indexer(
     }
 
     /**
-     * Automatically dispatches indexing based on the file format (Text/Markdown or PDF).
+     * Decodes, normalizes, embeds, and stores an imported image file (.jpg, .png).
+     *
+     * Execution flow (ARCHITECTURE.md §5 & GOOGLE_AI_EDGE_GALLERY.md §6.3):
+     * 1. Validates that the file is a supported image format (.jpg, .jpeg, .png).
+     * 2. Decodes the image from the SAF URI into a software-backed ARGB_8888 [Bitmap],
+     *    applying EXIF orientation corrections and bounding dimensions to [MAX_IMAGE_DIMENSION]
+     *    to keep memory usage low.
+     * 3. Computes a 768-dimensional normalized vector for the whole image via [Embedder.embedImage].
+     * 4. Deletes any pre-existing chunks for this file from [EmbeddingStore].
+     * 5. Stores a single [RetrievalRecord] with type="image" and location="0" in [EmbeddingStore].
+     *
+     * @param file Metadata of the imported image to index.
+     * @return [IndexResult] indicating success/failure and chunk count (1 for a valid image).
+     */
+    fun indexImageFile(file: ImportedFile): IndexResult {
+        if (!isImageFile(file)) {
+            return IndexResult(file.uri, 0, false, "Not a supported image file")
+        }
+
+        val uri = file.uri.toUri()
+        val bitmap = try {
+            decodeNormalizedBitmap(context, uri)
+                ?: return IndexResult(file.uri, 0, false, "Could not decode image from URI")
+        } catch (e: Exception) {
+            return IndexResult(file.uri, 0, false, "Image decode failed: ${e.message}")
+        }
+
+        val embedding = try {
+            embedder.embedImage(bitmap)
+        } catch (e: Exception) {
+            return IndexResult(file.uri, 0, false, "Image embedding failed: ${e.message}")
+        } finally {
+            bitmap.recycle()
+        }
+
+        // Delete existing chunks for this file before storing the updated embedding
+        embeddingStore.deleteByMetadata(mapOf("fileId" to file.uri))
+
+        val chunkId = "${file.uri}_0"
+        val metadata = mapOf(
+            "fileId" to file.uri,
+            "uri" to file.uri,
+            "name" to file.displayName,
+            "type" to "image",
+            "location" to "0"
+        )
+
+        val record = RetrievalRecord(
+            chunkId,
+            listOf(ImagePart(uri)),
+            embedding,
+            metadata
+        )
+
+        embeddingStore.storeBatch(listOf(record))
+        return IndexResult(file.uri, 1, true)
+    }
+
+    /**
+     * Automatically dispatches indexing based on the file format (Text/Markdown, PDF, or Image).
      */
     fun indexFile(file: ImportedFile): IndexResult {
         return when {
             isPdfFile(file) -> indexPdfFile(file)
+            isImageFile(file) -> indexImageFile(file)
             isTextFile(file) -> indexTextFile(file)
             else -> IndexResult(file.uri, 0, false, "Unsupported file format")
+        }
+    }
+
+    companion object {
+        /**
+         * Pure helper that checks whether a file name or MIME type corresponds to a supported
+         * image format (.jpg, .jpeg, .png).
+         */
+        fun isImageNameOrMime(displayName: String, mimeType: String?): Boolean {
+            val name = displayName.lowercase()
+            val mime = mimeType?.lowercase() ?: ""
+            return name.endsWith(".jpg") ||
+                    name.endsWith(".jpeg") ||
+                    name.endsWith(".png") ||
+                    mime == "image/jpeg" ||
+                    mime == "image/jpg" ||
+                    mime == "image/png"
+        }
+
+        /**
+         * Calculates bounded target dimensions (width, height) that fit within [maxDimension]
+         * while preserving the original aspect ratio.
+         *
+         * @param width Original image width in pixels.
+         * @param height Original image height in pixels.
+         * @param maxDimension Maximum allowed width or height (default [MAX_IMAGE_DIMENSION]).
+         * @return Pair of (targetWidth, targetHeight), each guaranteed to be >= 1.
+         */
+        fun calculateTargetDimensions(
+            width: Int,
+            height: Int,
+            maxDimension: Int = MAX_IMAGE_DIMENSION
+        ): Pair<Int, Int> {
+            val safeW = width.coerceAtLeast(1)
+            val safeH = height.coerceAtLeast(1)
+            val safeMax = maxDimension.coerceAtLeast(1)
+            val maxSide = maxOf(safeW, safeH)
+            if (maxSide <= safeMax) {
+                return safeW to safeH
+            }
+            val scale = safeMax.toFloat() / maxSide.toFloat()
+            val targetW = (safeW * scale).toInt().coerceAtLeast(1)
+            val targetH = (safeH * scale).toInt().coerceAtLeast(1)
+            return targetW to targetH
+        }
+
+        /**
+         * Decodes an image from [uri] into a software-backed `ARGB_8888` [Bitmap] with EXIF
+         * orientation applied and dimensions bounded by [maxDimension].
+         *
+         * Uses Android's [ImageDecoder] (API 28+), which performs subsampling, scaling, and
+         * EXIF rotation/flipping in a single native C++ pass.
+         */
+        fun decodeNormalizedBitmap(
+            context: Context,
+            uri: Uri,
+            maxDimension: Int = MAX_IMAGE_DIMENSION
+        ): Bitmap {
+            val source = ImageDecoder.createSource(context.contentResolver, uri)
+            return ImageDecoder.decodeBitmap(source) { decoder, info, _ ->
+                val (targetW, targetH) = calculateTargetDimensions(
+                    info.size.width,
+                    info.size.height,
+                    maxDimension
+                )
+                if (targetW != info.size.width || targetH != info.size.height) {
+                    decoder.setTargetSize(targetW, targetH)
+                }
+                // Software allocator is required because UniversalEmbedder calls Bitmap.getPixels()
+                decoder.allocator = ImageDecoder.ALLOCATOR_SOFTWARE
+            }
         }
     }
 }

@@ -25,14 +25,14 @@ The text query uses the same model, so a text query can match an image, an audio
 | Area | Choice |
 | :--- | :--- |
 | Language / UI | Kotlin, Jetpack Compose, single Activity |
-| Min / target SDK | 26 / latest |
+| Min / target SDK | 28 / latest |
 | Embedding model | EmbeddingGemma 2, **740M multimodal** (text + image + audio) |
 | Inference | MediaPipe Tasks on Android (`UniversalEmbedder`, LiteRT under the hood) |
 | Storage | `SqliteVectorStore` (MediaPipe, SQLite-backed) |
 | Vector search | `SqliteVectorStore` cosine top-K search |
 | PDF text | PdfBox-Android |
 | PDF viewing | Android `PdfRenderer` |
-| Image / thumbnails | Coil (`AsyncImage`), `ImageDecoder` / `BitmapFactory`, `ExifInterface` (orientation) |
+| Image / thumbnails | Coil (`AsyncImage`), `ImageDecoder` |
 | Audio / video | Media3 (ExoPlayer, Transformer, UI `PlayerView`), `MediaMetadataRetriever`, `MediaExtractor` / `MediaCodec` / `MediaMuxer` (fMP4 remuxing) |
 | Concurrency | Kotlin coroutines |
 

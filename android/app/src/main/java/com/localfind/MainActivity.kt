@@ -34,6 +34,7 @@ import androidx.compose.material3.Tab
 import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
@@ -56,12 +57,16 @@ import com.localfind.embed.Embedder
 import com.localfind.index.Indexer
 import com.localfind.search.SearchResult
 import com.localfind.search.Searcher
+import com.localfind.ui.ImageViewerParams
+import com.localfind.ui.ImageViewerScreen
 import com.localfind.ui.PdfViewerParams
 import com.localfind.ui.PdfViewerScreen
 import com.localfind.ui.SearchScreen
 import com.localfind.ui.theme.LocalFindTheme
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
 
 /**
@@ -87,7 +92,7 @@ class MainActivity : ComponentActivity() {
  * Primary UI screen for LocalFind:
  * - Allows picking files from device storage via Storage Access Framework (SAF).
  * - Persists picked URIs and metadata in [FileStore].
- * - Automatically indexes text and Markdown files into [EmbeddingStore] via [Indexer].
+ * - Automatically indexes supported files (text, Markdown, PDF, images) into [EmbeddingStore] via [Indexer].
  * - Displays imported files list and indexing progress/counts.
  */
 @OptIn(ExperimentalMaterial3Api::class)
@@ -112,6 +117,32 @@ fun MainScreen() {
     var searchResults by remember { mutableStateOf<List<SearchResult>>(emptyList()) }
     var searchError by remember { mutableStateOf<String?>(null) }
     var activePdfViewer by remember { mutableStateOf<PdfViewerParams?>(null) }
+    var activeImageViewer by remember { mutableStateOf<ImageViewerParams?>(null) }
+
+    // Keep Embedder (485MB EmbeddingGemma 2) and EmbeddingStore warm in memory across the session
+    // so indexing and search execute without repeated 1.5–3s model initialization overhead.
+    val engineMutex = remember { Mutex() }
+    var cachedEmbedder by remember { mutableStateOf<Embedder?>(null) }
+    var cachedStore by remember { mutableStateOf<EmbeddingStore?>(null) }
+
+    fun getOrCreateStore(): EmbeddingStore =
+        cachedStore ?: EmbeddingStore.create(context).also { cachedStore = it }
+
+    fun getOrCreateEmbedder(): Embedder =
+        cachedEmbedder ?: Embedder(context).also { cachedEmbedder = it }
+
+    DisposableEffect(Unit) {
+        onDispose {
+            try {
+                cachedEmbedder?.close()
+                cachedEmbedder = null
+                cachedStore?.close()
+                cachedStore = null
+            } catch (_: Exception) {
+                // Ignore teardown exceptions
+            }
+        }
+    }
 
     /**
      * Queries [EmbeddingStore] on IO dispatcher to count how many total chunks
@@ -119,12 +150,12 @@ fun MainScreen() {
      */
     suspend fun refreshIndexCount() {
         withContext(Dispatchers.IO) {
-            try {
-                EmbeddingStore.create(context).use { store ->
-                    indexedChunksCount = store.getAllRecordIds().size
+            engineMutex.withLock {
+                try {
+                    indexedChunksCount = getOrCreateStore().getAllRecordIds().size
+                } catch (_: Exception) {
+                    // Ignore if database is temporarily busy or uninitialized
                 }
-            } catch (_: Exception) {
-                // Ignore if database is temporarily busy or uninitialized
             }
         }
     }
@@ -147,30 +178,29 @@ fun MainScreen() {
             isIndexing = true
             status = "Initializing indexer..."
             withContext(Dispatchers.Default) {
-                try {
-                    // Open Embedder (loads EmbeddingGemma 2) and EmbeddingStore (SQLite vector store)
-                    Embedder(context).use { embedder ->
-                        EmbeddingStore.create(context).use { store ->
-                            val indexer = Indexer(context, embedder, store)
-                            var indexedFiles = 0
-                            var totalChunks = 0
+                engineMutex.withLock {
+                    try {
+                        val embedder = getOrCreateEmbedder()
+                        val store = getOrCreateStore()
+                        val indexer = Indexer(context, embedder, store)
+                        var indexedFiles = 0
+                        var totalChunks = 0
 
-                            for ((i, file) in filesToIndex.withIndex()) {
-                                if (indexer.isSupported(file)) {
-                                    // Update status to show current file being processed
-                                    status = "Indexing ${i + 1}/${filesToIndex.size}: ${file.displayName}..."
-                                    val result = indexer.indexFile(file)
-                                    if (result.isSuccess) {
-                                        indexedFiles++
-                                        totalChunks += result.chunksCount
-                                    }
+                        for ((i, file) in filesToIndex.withIndex()) {
+                            if (indexer.isSupported(file)) {
+                                // Update status to show current file being processed
+                                status = "Indexing ${i + 1}/${filesToIndex.size}: ${file.displayName}..."
+                                val result = indexer.indexFile(file)
+                                if (result.isSuccess) {
+                                    indexedFiles++
+                                    totalChunks += result.chunksCount
                                 }
                             }
-                            status = "Indexed $indexedFiles file(s) ($totalChunks chunks)"
                         }
+                        status = "Indexed $indexedFiles file(s) ($totalChunks chunks)"
+                    } catch (e: Exception) {
+                        status = "Indexing failed: ${e.message}"
                     }
-                } catch (e: Exception) {
-                    status = "Indexing failed: ${e.message}"
                 }
             }
             // Update total chunk counter after indexing completes
@@ -192,11 +222,11 @@ fun MainScreen() {
             searchError = null
             try {
                 val results = withContext(Dispatchers.Default) {
-                    Embedder(context).use { embedder ->
-                        EmbeddingStore.create(context).use { store ->
-                            val searcher = Searcher(store, embedder)
-                            searcher.search(trimmed)
-                        }
+                    engineMutex.withLock {
+                        val embedder = getOrCreateEmbedder()
+                        val store = getOrCreateStore()
+                        val searcher = Searcher(store, embedder)
+                        searcher.search(trimmed)
                     }
                 }
                 searchResults = results
@@ -216,6 +246,7 @@ fun MainScreen() {
      *
      * In accordance with PRD §2 & ARCHITECTURE.md §8:
      * - PDF results open directly in the in-app [PdfViewerScreen] at the matching page.
+     * - Image results open directly in the in-app [ImageViewerScreen] (Coil).
      * - Text/markdown results open in external system viewer via [Intent.ACTION_VIEW].
      */
     fun openSearchResult(result: SearchResult) {
@@ -234,6 +265,18 @@ fun MainScreen() {
                 uri = result.fileUri,
                 fileName = result.fileName,
                 initialPage = targetPage
+            )
+            return
+        }
+
+        val isImage = result.fileType.equals("image", ignoreCase = true) ||
+                Indexer.isImageNameOrMime(result.fileName, null)
+
+        if (isImage) {
+            // Open in-app image viewer (Coil)
+            activeImageViewer = ImageViewerParams(
+                uri = result.fileUri,
+                fileName = result.fileName
             )
             return
         }
@@ -283,7 +326,7 @@ fun MainScreen() {
                     importedFiles = store.getAll()
                     files
                 }
-                // Automatically index imported text and markdown files
+                // Automatically index imported supported files
                 indexFiles(newFiles)
             }
         }
@@ -293,6 +336,11 @@ fun MainScreen() {
         PdfViewerScreen(
             params = activePdfViewer!!,
             onClose = { activePdfViewer = null }
+        )
+    } else if (activeImageViewer != null) {
+        ImageViewerScreen(
+            params = activeImageViewer!!,
+            onClose = { activeImageViewer = null }
         )
     } else {
         Scaffold(

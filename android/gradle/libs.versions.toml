@@ -11,6 +11,7 @@ composeBom = "2025.12.00"
 mediapipe = "1.1.1"
 litertlm = "0.18.0"
 pdfbox = "2.0.27.0"
+coilCompose = "2.7.0"
 
 [libraries]
 androidx-core-ktx = { group = "androidx.core", name = "core-ktx", version.ref = "coreKtx" }
@@ -30,6 +31,7 @@ androidx-compose-material3 = { group = "androidx.compose.material3", name = "mat
 mediapipe-tasks-retrieval = { group = "com.google.mediapipe", name = "tasks-retrieval", version.ref = "mediapipe" }
 litertlm-android = { group = "com.google.ai.edge.litertlm", name = "litertlm-android", version.ref = "litertlm" }
 pdfbox-android = { group = "com.tom-roush", name = "pdfbox-android", version.ref = "pdfbox" }
+coil-compose = { group = "io.coil-kt", name = "coil-compose", version.ref = "coilCompose" }
 
 [plugins]
 android-application = { id = "com.android.application", version.ref = "agp" }

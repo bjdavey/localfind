@@ -11,7 +11,7 @@ android {
 
     defaultConfig {
         applicationId = "com.localfind"
-        minSdk = 26
+        minSdk = 28
         targetSdk = 37
         versionCode = 1
         versionName = "1.0"
@@ -55,6 +55,7 @@ dependencies {
     implementation(libs.mediapipe.tasks.retrieval)
     implementation(libs.litertlm.android)
     implementation(libs.pdfbox.android)
+    implementation(libs.coil.compose)
 
     testImplementation(libs.junit)
     androidTestImplementation(platform(libs.androidx.compose.bom))

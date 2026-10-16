@@ -1,6 +1,8 @@
 package com.localfind.embed
 
 import android.content.Context
+import android.graphics.Bitmap
+import com.google.mediapipe.framework.image.BitmapImageBuilder
 import com.google.mediapipe.tasks.core.BaseOptions
 import com.google.mediapipe.tasks.retrieval.universalembedder.UniversalEmbedder
 import com.google.mediapipe.tasks.retrieval.universalembedder.UniversalEmbedderOptions
@@ -20,12 +22,21 @@ import java.io.File
 const val MODEL_FILE_NAME = "embeddinggemma-2-740m.litertlm"
 
 /**
+ * Vision token budget per image (GOOGLE_AI_EDGE_GALLERY.md §6.2).
+ *
+ * Using 70 tokens per image reduces transformer prefill length during image embedding
+ * for significantly faster indexing while preserving semantic retrieval accuracy.
+ */
+const val DEFAULT_VISION_TOKENS_PER_IMAGE = 70
+
+/**
  * Wrapper around MediaPipe's [UniversalEmbedder].
  *
  * Responsible for:
  * 1. Loading the local weights file from the app's private files directory.
  * 2. Configuring L2 normalization so that cosine similarity can be computed via dot product.
- * 3. Producing 768-dimensional float embeddings for input text strings and passages.
+ * 3. Setting the 70-token vision budget for fast image encoding.
+ * 4. Producing 768-dimensional float embeddings for input text strings, passages, and images.
  *
  * Implements [AutoCloseable] to ensure underlying native C++ LiteRT resources are promptly freed.
  */
@@ -40,17 +51,16 @@ class Embedder(context: Context) : AutoCloseable {
                     "For development, push the model file using adb push."
         }
 
-        // Configure MediaPipe Tasks base options pointing to the on-disk model path
         val baseOptions = BaseOptions.builder()
             .setModelAssetPath(model.absolutePath)
             .build()
 
-        // Set L2 normalization to true:
-        // This ensures vectors have unit length (norm = 1.0), which makes cosine distance
-        // equivalent to simple Euclidean or dot product comparisons in the vector store.
+        // Set L2 normalization to true so vectors have unit length (norm = 1.0),
+        // and set visionTokensPerImage to 70 for fast vision encoding.
         val options = UniversalEmbedderOptions.builder()
             .setBaseOptions(baseOptions)
             .setL2Normalize(true)
+            .setVisionTokensPerImage(DEFAULT_VISION_TOKENS_PER_IMAGE)
             .build()
 
         embedder = UniversalEmbedder.createFromOptions(context, options)
@@ -64,6 +74,22 @@ class Embedder(context: Context) : AutoCloseable {
      */
     fun embedText(text: String): FloatArray =
         embedder.embedText(text).embeddings()[0].floatEmbedding()
+
+    /**
+     * Converts an image [Bitmap] into a 768-dimensional normalized float embedding vector
+     * in the same shared multimodal vector space as text.
+     *
+     * Under the hood, wraps the [Bitmap] in a MediaPipe [com.google.mediapipe.framework.image.MPImage]
+     * via [BitmapImageBuilder] and invokes [UniversalEmbedder.embedImage], which encodes the bitmap
+     * pixels into a 32-bit BGRA TGA byte buffer and runs the EmbeddingGemma 2 vision encoder.
+     *
+     * @param bitmap The decoded, upright ARGB_8888 image bitmap to embed.
+     * @return FloatArray of 768 elements representing the semantic vector.
+     */
+    fun embedImage(bitmap: Bitmap): FloatArray =
+        BitmapImageBuilder(bitmap).build().use { mpImage ->
+            embedder.embedImage(mpImage).embeddings()[0].floatEmbedding()
+        }
 
     /**
      * Releases native memory and interpreter instances allocated by MediaPipe Tasks.
