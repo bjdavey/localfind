@@ -108,6 +108,15 @@ class EmbeddingStore(
     }
 
     /**
+     * Deletes all records and embeddings associated with the given file URI.
+     *
+     * Convenience method used when removing a file from the library or deleting its embeddings.
+     */
+    fun deleteByFileUri(fileUri: String) {
+        deleteByMetadata(mapOf("fileId" to fileUri))
+    }
+
+    /**
      * Clears all records and embeddings from the vector store.
      */
     fun deleteAll() {

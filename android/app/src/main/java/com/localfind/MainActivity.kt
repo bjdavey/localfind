@@ -21,17 +21,20 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.HorizontalDivider
+import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.PrimaryTabRow
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Tab
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
@@ -46,6 +49,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import com.localfind.data.EmbeddingStore
@@ -121,6 +125,7 @@ fun MainScreen() {
     var activePdfViewer by remember { mutableStateOf<PdfViewerParams?>(null) }
     var activeImageViewer by remember { mutableStateOf<ImageViewerParams?>(null) }
     var activeMediaPlayer by remember { mutableStateOf<MediaPlayerParams?>(null) }
+    var filePendingDeletion by remember { mutableStateOf<ImportedFile?>(null) }
 
     // Keep Embedder (485MB EmbeddingGemma 2) and EmbeddingStore warm in memory across the session
     // so indexing and search execute without repeated 1.5–3s model initialization overhead.
@@ -209,6 +214,59 @@ fun MainScreen() {
             // Update total chunk counter after indexing completes
             refreshIndexCount()
             isIndexing = false
+        }
+    }
+
+    /**
+     * Removes an imported file from the local library:
+     * 1. Releases persistable SAF URI read grant (if held).
+     * 2. Deletes the file metadata record from [FileStore].
+     * 3. Deletes all associated embedding vectors from [EmbeddingStore].
+     * 4. Updates library UI state and refreshes the total indexed chunks count.
+     */
+    fun removeFile(file: ImportedFile) {
+        scope.launch {
+            status = "Removing ${file.displayName}..."
+            withContext(Dispatchers.IO) {
+                // 1. Release persistable SAF URI permission
+                try {
+                    context.contentResolver.releasePersistableUriPermission(
+                        Uri.parse(file.uri),
+                        Intent.FLAG_GRANT_READ_URI_PERMISSION
+                    )
+                } catch (_: Exception) {
+                    // Non-SAF URIs (like test file://) or revoked grants don't have persistable grants
+                }
+
+                // 2. Remove file metadata record from SQLite FileStore
+                val fileStore = FileStore(context)
+                fileStore.delete(file.uri)
+                val updatedFiles = fileStore.getAll()
+
+                // 3. Delete all vector chunks associated with this file from EmbeddingStore
+                engineMutex.withLock {
+                    try {
+                        getOrCreateStore().deleteByFileUri(file.uri)
+                    } catch (_: Exception) {
+                        // Ignore if store is temporarily inaccessible
+                    }
+                }
+
+                withContext(Dispatchers.Main) {
+                    importedFiles = updatedFiles
+                    // Remove any search results currently referencing the deleted file
+                    searchResults = searchResults.filter { it.fileUri != file.uri }
+                }
+            }
+
+            // 4. Refresh vector store count and update status
+            refreshIndexCount()
+            status = "Removed ${file.displayName} and deleted its embeddings"
+            Toast.makeText(
+                context,
+                "Removed ${file.displayName} from library",
+                Toast.LENGTH_SHORT
+            ).show()
         }
     }
 
@@ -366,6 +424,36 @@ fun MainScreen() {
             onClose = { activeImageViewer = null }
         )
     } else {
+        // Confirmation dialog before removing a file and deleting its embeddings
+        filePendingDeletion?.let { file ->
+            AlertDialog(
+                onDismissRequest = { filePendingDeletion = null },
+                title = { Text("Remove file?") },
+                text = {
+                    Text(
+                        "Remove \"${file.displayName}\" from LocalFind library and delete all its indexed search embeddings?\n\n" +
+                                "The original file on your device will NOT be deleted."
+                    )
+                },
+                confirmButton = {
+                    TextButton(
+                        onClick = {
+                            val toDelete = file
+                            filePendingDeletion = null
+                            removeFile(toDelete)
+                        }
+                    ) {
+                        Text("Remove", color = MaterialTheme.colorScheme.error)
+                    }
+                },
+                dismissButton = {
+                    TextButton(onClick = { filePendingDeletion = null }) {
+                        Text("Cancel")
+                    }
+                }
+            )
+        }
+
         Scaffold(
             modifier = Modifier.fillMaxSize(),
         topBar = {
@@ -514,18 +602,36 @@ fun MainScreen() {
                                     containerColor = MaterialTheme.colorScheme.surfaceVariant
                                 )
                             ) {
-                                Column(modifier = Modifier.padding(12.dp)) {
-                                    Text(
-                                        text = file.displayName,
-                                        style = MaterialTheme.typography.bodyLarge,
-                                        maxLines = 1
-                                    )
-                                    Spacer(modifier = Modifier.height(2.dp))
-                                    Text(
-                                        text = "${formatFileSize(file.size)}${if (file.mimeType != null) " • ${file.mimeType}" else ""}",
-                                        style = MaterialTheme.typography.bodySmall,
-                                        color = MaterialTheme.colorScheme.onSurfaceVariant
-                                    )
+                                Row(
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .padding(start = 12.dp, top = 8.dp, bottom = 8.dp, end = 4.dp),
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    horizontalArrangement = Arrangement.SpaceBetween
+                                ) {
+                                    Column(modifier = Modifier.weight(1f)) {
+                                        Text(
+                                            text = file.displayName,
+                                            style = MaterialTheme.typography.bodyLarge,
+                                            maxLines = 1,
+                                            overflow = TextOverflow.Ellipsis
+                                        )
+                                        Spacer(modifier = Modifier.height(2.dp))
+                                        Text(
+                                            text = "${formatFileSize(file.size)}${if (file.mimeType != null) " • ${file.mimeType}" else ""}",
+                                            style = MaterialTheme.typography.bodySmall,
+                                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                                        )
+                                    }
+                                    IconButton(
+                                        onClick = { filePendingDeletion = file },
+                                        enabled = !isIndexing
+                                    ) {
+                                        Text(
+                                            text = "🗑",
+                                            style = MaterialTheme.typography.titleMedium
+                                        )
+                                    }
                                 }
                             }
                         }

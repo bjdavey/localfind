@@ -27,7 +27,7 @@
 ## Milestone 2: Basic
 
 - [x] Search and download free internet files for local testing
-- [ ] Remove file from library and delete its embeddings
+- [x] Remove file from library and delete its embeddings
 - [ ] Good builtin viewer for each file type (open at matching time/page/passage) and for whole library file too
 
 ## Milestone 3: Enhance UI/UX

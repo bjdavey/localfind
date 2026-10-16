@@ -117,4 +117,27 @@ class EmbeddingStoreTest {
         assertNull(store.get("f1_c1"))
         assertNull(store.get("f1_c2"))
     }
+
+    @Test
+    fun deleteByFileUri() {
+        // Validates deleting all embeddings belonging to a specific file URI
+        val store = EmbeddingStore(FakeVectorStore())
+        val uri1 = "content://com.android.providers.media.documents/document/123"
+        val uri2 = "content://com.android.providers.media.documents/document/456"
+
+        store.store("chunk1", floatArrayOf(0.1f), text = "Snippet 1", metadata = mapOf("fileId" to uri1))
+        store.store("chunk2", floatArrayOf(0.2f), text = "Snippet 2", metadata = mapOf("fileId" to uri1))
+        store.store("chunk3", floatArrayOf(0.3f), text = "Snippet 3", metadata = mapOf("fileId" to uri2))
+
+        assertEquals(3, store.getAllRecordIds().size)
+
+        // Delete all chunks for uri1
+        store.deleteByFileUri(uri1)
+
+        assertEquals(1, store.getAllRecordIds().size)
+        assertNull(store.get("chunk1"))
+        assertNull(store.get("chunk2"))
+        assertNotNull(store.get("chunk3"))
+        assertEquals(uri2, store.get("chunk3")?.metadata?.get("fileId"))
+    }
 }
