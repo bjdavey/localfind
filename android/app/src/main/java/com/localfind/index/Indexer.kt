@@ -136,7 +136,10 @@ class Indexer(
      * @param file Metadata of the imported file to index.
      * @return [IndexResult] indicating success/failure and chunk count.
      */
-    fun indexTextFile(file: ImportedFile): IndexResult {
+    fun indexTextFile(
+        file: ImportedFile,
+        onProgress: ((current: Int, total: Int) -> Unit)? = null
+    ): IndexResult {
         if (!isTextFile(file)) {
             return IndexResult(file.uri, 0, false, "Not a supported text file")
         }
@@ -158,6 +161,7 @@ class Indexer(
         if (chunks.isEmpty()) {
             // If the document is empty or whitespace-only, remove any old chunks and return
             embeddingStore.deleteByMetadata(mapOf("fileId" to file.uri))
+            onProgress?.invoke(1, 1)
             return IndexResult(file.uri, 0, true)
         }
 
@@ -166,6 +170,7 @@ class Indexer(
 
         val records = mutableListOf<RetrievalRecord>()
         for ((index, chunk) in chunks.withIndex()) {
+            onProgress?.invoke(index + 1, chunks.size)
             // Unique ID per chunk: "<fileUri>_<chunkIndex>"
             val chunkId = "${file.uri}_$index"
 
@@ -210,9 +215,13 @@ class Indexer(
      *    and location set to the 1-based page number.
      *
      * @param file Metadata of the imported PDF to index.
+     * @param onProgress Optional callback invoked with (current, total) chunks/pages.
      * @return [IndexResult] indicating success/failure and chunk count.
      */
-    fun indexPdfFile(file: ImportedFile): IndexResult {
+    fun indexPdfFile(
+        file: ImportedFile,
+        onProgress: ((current: Int, total: Int) -> Unit)? = null
+    ): IndexResult {
         if (!isPdfFile(file)) {
             return IndexResult(file.uri, 0, false, "Not a supported PDF file")
         }
@@ -237,6 +246,7 @@ class Indexer(
                     val stripper = PDFTextStripper()
                     val totalPages = document.numberOfPages
                     for (pageNum in 1..totalPages) {
+                        onProgress?.invoke(pageNum, totalPages.coerceAtLeast(1))
                         stripper.startPage = pageNum
                         stripper.endPage = pageNum
                         val pageText = stripper.getText(document)
@@ -259,6 +269,7 @@ class Indexer(
 
         if (chunks.isEmpty()) {
             // E.g. empty or scanned image-only PDF with no extractable text
+            onProgress?.invoke(1, 1)
             return IndexResult(file.uri, 0, true)
         }
 
@@ -303,7 +314,10 @@ class Indexer(
      * @param file Metadata of the imported image to index.
      * @return [IndexResult] indicating success/failure and chunk count (1 for a valid image).
      */
-    fun indexImageFile(file: ImportedFile): IndexResult {
+    fun indexImageFile(
+        file: ImportedFile,
+        onProgress: ((current: Int, total: Int) -> Unit)? = null
+    ): IndexResult {
         if (!isImageFile(file)) {
             return IndexResult(file.uri, 0, false, "Not a supported image file")
         }
@@ -316,6 +330,7 @@ class Indexer(
             return IndexResult(file.uri, 0, false, "Image decode failed: ${e.message}")
         }
 
+        onProgress?.invoke(1, 1)
         val embedding = try {
             embedder.embedImage(bitmap)
         } catch (e: Exception) {
@@ -359,9 +374,13 @@ class Indexer(
      *    location = window start time in milliseconds (used to seek the player).
      *
      * @param file Metadata of the imported audio file to index.
+     * @param onProgress Optional callback invoked with (current, total) window progress.
      * @return [IndexResult] indicating success/failure and chunk count.
      */
-    fun indexAudioFile(file: ImportedFile): IndexResult {
+    fun indexAudioFile(
+        file: ImportedFile,
+        onProgress: ((current: Int, total: Int) -> Unit)? = null
+    ): IndexResult {
         if (!isAudioFile(file)) {
             return IndexResult(file.uri, 0, false, "Not a supported audio file")
         }
@@ -376,9 +395,15 @@ class Indexer(
             totalSamples = pcm.size,
             windowMs = settings.audioWindowSeconds * 1000L
         )
+        if (windows.isEmpty()) {
+            onProgress?.invoke(1, 1)
+            return IndexResult(file.uri, 0, true)
+        }
+
         val records = mutableListOf<RetrievalRecord>()
         try {
             for ((index, window) in windows.withIndex()) {
+                onProgress?.invoke(index + 1, windows.size)
                 val embedding = embedder.embedAudio(pcm.copyOfRange(window.startSample, window.endSample))
                 val metadata = mapOf(
                     "fileId" to file.uri,
@@ -418,9 +443,13 @@ class Indexer(
      *    location = window start time in milliseconds (used to seek the player).
      *
      * @param file Metadata of the imported video file to index.
+     * @param onProgress Optional callback invoked with (current, total) window progress.
      * @return [IndexResult] indicating success/failure and chunk count.
      */
-    fun indexVideoFile(file: ImportedFile): IndexResult {
+    fun indexVideoFile(
+        file: ImportedFile,
+        onProgress: ((current: Int, total: Int) -> Unit)? = null
+    ): IndexResult {
         if (!isVideoFile(file)) {
             return IndexResult(file.uri, 0, false, "Not a supported video file")
         }
@@ -441,7 +470,14 @@ class Indexer(
 
             val videoWindowMs = settings.videoWindowSeconds * 1000L
             val videoStepMs = (videoWindowMs - 1000L).coerceAtLeast(1000L)
-            for ((index, window) in VideoChunker.windows(durationMs, windowMs = videoWindowMs, stepMs = videoStepMs).withIndex()) {
+            val windows = VideoChunker.windows(durationMs, windowMs = videoWindowMs, stepMs = videoStepMs)
+            if (windows.isEmpty()) {
+                onProgress?.invoke(1, 1)
+                return IndexResult(file.uri, 0, true)
+            }
+
+            for ((index, window) in windows.withIndex()) {
+                onProgress?.invoke(index + 1, windows.size)
                 val frameTimes = VideoChunker.frameTimes(window, count = settings.videoFramesPerWindow)
                 val frames = frameTimes.map { videoFrameJpeg(retriever, it, maxDimension = settings.maxImageDimension) }
                 if (frames.any { it == null }) continue // unreadable frame: skip this window
@@ -467,7 +503,23 @@ class Indexer(
                     parts.add(ImagePart(jpeg!!))
                 }
 
-                val embedding = embedder.embedVideoWindow(parts)
+                val embedding = try {
+                    embedder.embedVideoWindow(parts)
+                } catch (e: Exception) {
+                    if (withAudio) {
+                        // If multimodal audio-visual embedding fails (e.g. audio tensor allocation on emulator),
+                        // gracefully degrade to visual keyframe parts only per ARCHITECTURE.md & GOOGLE_AI_EDGE_GALLERY.md
+                        val visionParts = mutableListOf<Part>()
+                        for ((i, jpeg) in frames.withIndex()) {
+                            val label = SearchResultFormatter.formatTimeMs(frameTimes[i])
+                            visionParts.add(TextPart(label))
+                            visionParts.add(ImagePart(jpeg!!))
+                        }
+                        embedder.embedVideoWindow(visionParts)
+                    } else {
+                        throw e
+                    }
+                }
                 val metadata = mapOf(
                     "fileId" to file.uri,
                     "uri" to file.uri,
@@ -516,14 +568,20 @@ class Indexer(
     /**
      * Automatically dispatches indexing based on the file format
      * (Text/Markdown, PDF, Image, Audio or Video).
+     *
+     * @param file Metadata of the imported file to index.
+     * @param onProgress Optional callback invoked with (current, total) progress.
      */
-    fun indexFile(file: ImportedFile): IndexResult {
+    fun indexFile(
+        file: ImportedFile,
+        onProgress: ((current: Int, total: Int) -> Unit)? = null
+    ): IndexResult {
         return when {
-            isPdfFile(file) -> indexPdfFile(file)
-            isImageFile(file) -> indexImageFile(file)
-            isAudioFile(file) -> indexAudioFile(file)
-            isVideoFile(file) -> indexVideoFile(file)
-            isTextFile(file) -> indexTextFile(file)
+            isPdfFile(file) -> indexPdfFile(file, onProgress)
+            isImageFile(file) -> indexImageFile(file, onProgress)
+            isAudioFile(file) -> indexAudioFile(file, onProgress)
+            isVideoFile(file) -> indexVideoFile(file, onProgress)
+            isTextFile(file) -> indexTextFile(file, onProgress)
             else -> IndexResult(file.uri, 0, false, "Unsupported file format")
         }
     }

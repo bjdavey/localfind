@@ -34,11 +34,19 @@
 ## Milestone 3: Enhance UI/UX
 - [x] Suggest good UI design and enhance overall
 - [x] Add light/dark mode switch in settings
-- [ ] Background indexing with progress indicator per file (WorkManager) which can resume if app killed and reopened
+- [x] Background indexing with progress indicator per file (WorkManager) which can resume if app killed and reopened
 - [x] Filter search results by file type (All, Video, Audio, Image, Document)
 - [ ] Search inside a specific file
 - [ ] Import from URL without saving the file (streaming keyframe indexing)
-- [ ] Try support CPU, GPU, NPU
+- [ ] Try support CPU, GPU, NPU with option in settings depending on device
+- [ ] Support to open the origin file in phone gallery or its own app
+
+## Bugs
+- [ ] Fix flicker when opening a file or a search result and not to scroll back to start when closing it
+- [ ] Opening image/video should be smoth transition like a gallery app, propably by not opening it in a new view?
+- [ ] Better PDF viewer
+- [ ] Top bar should hide on scrolling
+
 
 ## Backlog
 

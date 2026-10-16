@@ -37,6 +37,7 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
+import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.FilterChipDefaults
 import androidx.compose.material3.Icon
@@ -72,8 +73,10 @@ import coil.compose.AsyncImage
 import coil.request.ImageRequest
 import com.localfind.R
 import com.localfind.data.ImportedFile
+import com.localfind.data.IndexingStatus
 import com.localfind.data.formatFileSize
 import com.localfind.index.Indexer
+import com.localfind.index.IndexingProgress
 import com.localfind.ui.theme.BadgeAudio
 import com.localfind.ui.theme.BadgeImage
 import com.localfind.ui.theme.BadgePdf
@@ -86,18 +89,11 @@ import kotlinx.coroutines.withContext
  * Google Photos-inspired Gallery Home Screen supporting Images, Videos, PDFs, Text Documents, and Audio.
  *
  * Key UX Features:
- * 1. **Top Header**: Displays app title, indexed library statistics, re-index button, and
- *    top-right Settings (`⚙`) icon (kept away from the bottom thumb zone).
- * 2. **Category Filter Chips**: Instant filtering across `All`, `Photos`, `Videos`, `Docs`, and `Audio`.
- * 3. **2-Column Visual Grid**:
- *    - Images: Edge-to-edge Coil thumbnails.
- *    - Videos: Extracted keyframe bitmap + central play button + duration badge (`▶ mm:ss`).
- *    - PDFs: Rendered Page 1 bitmap + page count badge (`📄 N p.`).
- *    - Text/Markdown: Miniature document page preview displaying the actual first lines of text.
- *    - Audio: Embedded album art or stylized soundwave visualizer + duration badge (`♫ mm:ss`).
- * 4. **Option C Unified Bottom Floating Dock**:
- *    - Single floating pill at the bottom center combining `[ 🔍 Search files by meaning... | ➕ ]`
- *      where tapping Search opens the dedicated full-screen search view and `➕` launches the SAF picker.
+ * 1. **Top Header**: Displays app title, indexed library statistics, and top-right Settings icon.
+ * 2. **Per-File Progress**: Displays live progress indicator per file and queue status for background WorkManager indexing.
+ * 3. **Category Filter Chips**: Instant filtering across `All`, `Photos`, `Videos`, `Docs`, and `Audio`.
+ * 4. **2-Column Visual Grid**: Rich thumbnails for every modality.
+ * 5. **Option C Unified Bottom Floating Dock**: Single floating pill combining search and import.
  */
 @Composable
 fun GalleryScreen(
@@ -105,11 +101,13 @@ fun GalleryScreen(
     indexedChunksCount: Int,
     isIndexing: Boolean,
     statusMessage: String,
+    indexingProgress: IndexingProgress = IndexingProgress(),
     onOpenSearch: () -> Unit,
     onImportFiles: () -> Unit,
     onOpenSettings: () -> Unit,
     onFileClick: (ImportedFile) -> Unit,
     onRequestDeleteFile: (ImportedFile) -> Unit,
+    onRetryIndexFile: ((ImportedFile) -> Unit)? = null,
     modifier: Modifier = Modifier
 ) {
     var selectedCategory by remember { mutableStateOf(GalleryCategory.ALL) }
@@ -123,7 +121,7 @@ fun GalleryScreen(
     inspectedFile?.let { file ->
         FileDetailsDialog(
             file = file,
-            isIndexing = isIndexing,
+            isIndexing = isIndexing || indexingProgress.isIndexing,
             onDismiss = { inspectedFile = null },
             onOpen = {
                 val target = file
@@ -134,6 +132,13 @@ fun GalleryScreen(
                 val target = file
                 inspectedFile = null
                 onRequestDeleteFile(target)
+            },
+            onRetry = onRetryIndexFile?.let { retryFn ->
+                {
+                    val target = file
+                    inspectedFile = null
+                    retryFn(target)
+                }
             }
         )
     }
@@ -188,7 +193,7 @@ fun GalleryScreen(
             // 2. LIVE INDEXING PROGRESS BANNER
             // =====================================================================
             AnimatedVisibility(
-                visible = isIndexing || statusMessage.startsWith("Indexing") || statusMessage.startsWith("Importing"),
+                visible = isIndexing || indexingProgress.isIndexing || statusMessage.startsWith("Indexing") || statusMessage.startsWith("Importing"),
                 enter = fadeIn(),
                 exit = fadeOut()
             ) {
@@ -200,8 +205,13 @@ fun GalleryScreen(
                     color = MaterialTheme.colorScheme.secondaryContainer
                 ) {
                     Column(modifier = Modifier.padding(horizontal = 14.dp, vertical = 10.dp)) {
+                        val bannerText = if (indexingProgress.isIndexing && indexingProgress.message.isNotBlank()) {
+                            indexingProgress.message
+                        } else {
+                            statusMessage
+                        }
                         Text(
-                            text = statusMessage,
+                            text = bannerText,
                             style = MaterialTheme.typography.labelMedium,
                             fontWeight = FontWeight.SemiBold,
                             color = MaterialTheme.colorScheme.onSecondaryContainer,
@@ -209,12 +219,22 @@ fun GalleryScreen(
                             overflow = TextOverflow.Ellipsis
                         )
                         Spacer(modifier = Modifier.height(6.dp))
-                        LinearProgressIndicator(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .height(4.dp)
-                                .clip(RoundedCornerShape(2.dp))
-                        )
+                        if (indexingProgress.isIndexing && indexingProgress.progressFraction > 0f) {
+                            LinearProgressIndicator(
+                                progress = { indexingProgress.progressFraction },
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .height(4.dp)
+                                    .clip(RoundedCornerShape(2.dp))
+                            )
+                        } else {
+                            LinearProgressIndicator(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .height(4.dp)
+                                    .clip(RoundedCornerShape(2.dp))
+                            )
+                        }
                     }
                 }
             }
@@ -313,8 +333,16 @@ fun GalleryScreen(
                         items = filteredFiles,
                         key = { it.uri }
                     ) { file ->
+                        val isActivelyIndexing = file.indexingStatus == IndexingStatus.INDEXING ||
+                                (indexingProgress.isIndexing && indexingProgress.currentUri == file.uri)
+                        val activeFraction = if (indexingProgress.currentUri == file.uri) {
+                            indexingProgress.progressFraction
+                        } else 0f
+
                         MediaGalleryTile(
                             file = file,
+                            isActivelyIndexing = isActivelyIndexing,
+                            activeProgressFraction = activeFraction,
                             onClick = { onFileClick(file) },
                             onLongClick = { inspectedFile = file }
                         )
@@ -453,11 +481,14 @@ fun FloatingSearchAndImportDock(
  * - **PDFs**: Rendered Page 1 bitmap on white paper + page count pill.
  * - **Text / Markdown**: Miniature document sheet showing the actual first lines of text.
  * - **Audio**: Embedded cover art or stylized waveform bars + duration pill.
+ * - **Progress Overlay**: Live determinate/indeterminate progress indicator during background indexing.
  */
 @OptIn(ExperimentalFoundationApi::class)
 @Composable
 fun MediaGalleryTile(
     file: ImportedFile,
+    isActivelyIndexing: Boolean = false,
+    activeProgressFraction: Float = 0f,
     onClick: () -> Unit,
     onLongClick: () -> Unit,
     modifier: Modifier = Modifier
@@ -624,7 +655,53 @@ fun MediaGalleryTile(
             }
 
             // -----------------------------------------------------------------
-            // 2. TOP-LEFT & TOP-RIGHT BADGES (Type Badge + Duration/Pages + Menu)
+            // 2. ACTIVE INDEXING OVERLAY (determinate spinner + percent)
+            // -----------------------------------------------------------------
+            if (isActivelyIndexing) {
+                Box(
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .background(Color.Black.copy(alpha = 0.52f)),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Column(
+                        horizontalAlignment = Alignment.CenterHorizontally,
+                        verticalArrangement = Arrangement.spacedBy(6.dp)
+                    ) {
+                        if (activeProgressFraction > 0f) {
+                            Box(contentAlignment = Alignment.Center) {
+                                CircularProgressIndicator(
+                                    progress = { activeProgressFraction },
+                                    modifier = Modifier.size(44.dp),
+                                    color = MaterialTheme.colorScheme.primary,
+                                    strokeWidth = 3.5.dp
+                                )
+                                Text(
+                                    text = "${(activeProgressFraction * 100).toInt()}%",
+                                    style = MaterialTheme.typography.labelSmall,
+                                    fontWeight = FontWeight.Bold,
+                                    color = Color.White
+                                )
+                            }
+                        } else {
+                            CircularProgressIndicator(
+                                modifier = Modifier.size(36.dp),
+                                color = MaterialTheme.colorScheme.primary,
+                                strokeWidth = 3.dp
+                            )
+                        }
+                        Text(
+                            text = "Indexing...",
+                            style = MaterialTheme.typography.labelSmall,
+                            fontWeight = FontWeight.SemiBold,
+                            color = Color.White
+                        )
+                    }
+                }
+            }
+
+            // -----------------------------------------------------------------
+            // 3. TOP-LEFT & TOP-RIGHT BADGES (Type Badge + Status Pill + Menu)
             // -----------------------------------------------------------------
             val badgeColor = when (category) {
                 GalleryCategory.PHOTOS -> BadgeImage
@@ -649,18 +726,52 @@ fun MediaGalleryTile(
                 horizontalArrangement = Arrangement.SpaceBetween,
                 verticalAlignment = Alignment.Top
             ) {
-                // Modality / Duration / Page Count Pill
-                Surface(
-                    shape = RoundedCornerShape(8.dp),
-                    color = badgeColor.copy(alpha = 0.90f)
+                Row(
+                    horizontalArrangement = Arrangement.spacedBy(4.dp),
+                    verticalAlignment = Alignment.CenterVertically
                 ) {
-                    Text(
-                        text = badgeLabel,
-                        style = MaterialTheme.typography.labelSmall,
-                        fontWeight = FontWeight.Bold,
-                        color = Color.White,
-                        modifier = Modifier.padding(horizontal = 7.dp, vertical = 3.dp)
-                    )
+                    // Modality / Duration / Page Count Pill
+                    Surface(
+                        shape = RoundedCornerShape(8.dp),
+                        color = badgeColor.copy(alpha = 0.90f)
+                    ) {
+                        Text(
+                            text = badgeLabel,
+                            style = MaterialTheme.typography.labelSmall,
+                            fontWeight = FontWeight.Bold,
+                            color = Color.White,
+                            modifier = Modifier.padding(horizontal = 7.dp, vertical = 3.dp)
+                        )
+                    }
+
+                    // Background Queue or Failure Status Chip
+                    if (file.indexingStatus == IndexingStatus.PENDING && !isActivelyIndexing) {
+                        Surface(
+                            shape = RoundedCornerShape(8.dp),
+                            color = Color.Black.copy(alpha = 0.70f)
+                        ) {
+                            Text(
+                                text = "⏳ Queue",
+                                style = MaterialTheme.typography.labelSmall,
+                                fontWeight = FontWeight.SemiBold,
+                                color = Color.White,
+                                modifier = Modifier.padding(horizontal = 6.dp, vertical = 3.dp)
+                            )
+                        }
+                    } else if (file.indexingStatus == IndexingStatus.FAILED && !isActivelyIndexing) {
+                        Surface(
+                            shape = RoundedCornerShape(8.dp),
+                            color = MaterialTheme.colorScheme.error.copy(alpha = 0.90f)
+                        ) {
+                            Text(
+                                text = "⚠️ Failed",
+                                style = MaterialTheme.typography.labelSmall,
+                                fontWeight = FontWeight.Bold,
+                                color = Color.White,
+                                modifier = Modifier.padding(horizontal = 6.dp, vertical = 3.dp)
+                            )
+                        }
+                    }
                 }
 
                 // Quick actions menu button (opens file info / delete dialog)
@@ -684,7 +795,7 @@ fun MediaGalleryTile(
             }
 
             // -----------------------------------------------------------------
-            // 3. BOTTOM GRADIENT SCRIM WITH FILE NAME & SIZE (Google Photos Style)
+            // 4. BOTTOM GRADIENT SCRIM WITH FILE NAME, SIZE & STATUS
             // -----------------------------------------------------------------
             Box(
                 modifier = Modifier
@@ -710,8 +821,22 @@ fun MediaGalleryTile(
                         maxLines = 1,
                         overflow = TextOverflow.Ellipsis
                     )
+                    val subtitle = when {
+                        isActivelyIndexing && activeProgressFraction > 0f ->
+                            "Indexing ${(activeProgressFraction * 100).toInt()}% • ${formatFileSize(file.size)}"
+                        isActivelyIndexing ->
+                            "Indexing... • ${formatFileSize(file.size)}"
+                        file.indexingStatus == IndexingStatus.PENDING ->
+                            "In queue • ${formatFileSize(file.size)}"
+                        file.indexingStatus == IndexingStatus.FAILED ->
+                            "Indexing failed • ${formatFileSize(file.size)}"
+                        file.chunksCount > 0 ->
+                            "${formatFileSize(file.size)} • ${file.chunksCount} chunks"
+                        else ->
+                            formatFileSize(file.size)
+                    }
                     Text(
-                        text = formatFileSize(file.size),
+                        text = subtitle,
                         style = MaterialTheme.typography.labelSmall,
                         color = Color.White.copy(alpha = 0.78f),
                         maxLines = 1
@@ -877,7 +1002,8 @@ private fun FileDetailsDialog(
     isIndexing: Boolean,
     onDismiss: () -> Unit,
     onOpen: () -> Unit,
-    onDelete: () -> Unit
+    onDelete: () -> Unit,
+    onRetry: (() -> Unit)? = null
 ) {
     AlertDialog(
         onDismissRequest = onDismiss,
@@ -905,11 +1031,37 @@ private fun FileDetailsDialog(
                     text = "Category: ${ThumbnailHelper.categorizeFile(file.displayName, file.mimeType).label}",
                     style = MaterialTheme.typography.bodyMedium
                 )
+                val statusText = when (file.indexingStatus) {
+                    IndexingStatus.INDEXED -> "Indexed (${file.chunksCount} chunks)"
+                    IndexingStatus.INDEXING -> "Indexing in background..."
+                    IndexingStatus.PENDING -> "Waiting in background queue"
+                    IndexingStatus.FAILED -> "Indexing failed"
+                }
+                Text(
+                    text = "Index Status: $statusText",
+                    style = MaterialTheme.typography.bodyMedium,
+                    fontWeight = FontWeight.SemiBold,
+                    color = when (file.indexingStatus) {
+                        IndexingStatus.FAILED -> MaterialTheme.colorScheme.error
+                        IndexingStatus.INDEXED -> MaterialTheme.colorScheme.primary
+                        else -> MaterialTheme.colorScheme.onSurfaceVariant
+                    }
+                )
             }
         },
         confirmButton = {
-            Button(onClick = onOpen) {
-                Text("Open File")
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                if (file.indexingStatus == IndexingStatus.FAILED && onRetry != null) {
+                    Button(
+                        onClick = onRetry,
+                        enabled = !isIndexing
+                    ) {
+                        Text("Retry Index")
+                    }
+                }
+                Button(onClick = onOpen) {
+                    Text("Open File")
+                }
             }
         },
         dismissButton = {

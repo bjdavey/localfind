@@ -23,13 +23,24 @@ import java.util.Locale
  * @property mimeType MIME type reported by the system content provider (e.g., `text/plain`, `text/markdown`).
  * @property size Size of the file in bytes.
  * @property addedAt Epoch timestamp (ms) when the file was first imported into LocalFind.
+ * @property indexingStatus Current background indexing lifecycle status ([IndexingStatus]).
+ * @property chunksCount Number of semantic chunks extracted and stored for this file.
  */
+enum class IndexingStatus {
+    PENDING,
+    INDEXING,
+    INDEXED,
+    FAILED
+}
+
 data class ImportedFile(
     val uri: String,
     val displayName: String,
     val mimeType: String?,
     val size: Long,
-    val addedAt: Long = System.currentTimeMillis()
+    val addedAt: Long = System.currentTimeMillis(),
+    val indexingStatus: IndexingStatus = IndexingStatus.INDEXED,
+    val chunksCount: Int = 0
 )
 
 /**
@@ -135,7 +146,7 @@ class FileStore(context: Context) : SQLiteOpenHelper(context, DATABASE_NAME, nul
 
     companion object {
         const val DATABASE_NAME = "localfind_files.db"
-        const val DATABASE_VERSION = 1
+        const val DATABASE_VERSION = 2
         const val TABLE_FILES = "imported_files"
     }
 
@@ -147,14 +158,23 @@ class FileStore(context: Context) : SQLiteOpenHelper(context, DATABASE_NAME, nul
                 display_name TEXT NOT NULL,
                 mime_type TEXT,
                 size INTEGER NOT NULL,
-                added_at INTEGER NOT NULL
+                added_at INTEGER NOT NULL,
+                indexing_status TEXT NOT NULL DEFAULT 'INDEXED',
+                chunks_count INTEGER NOT NULL DEFAULT 0
             )
             """.trimIndent()
         )
     }
 
     override fun onUpgrade(db: SQLiteDatabase, oldVersion: Int, newVersion: Int) {
-        // No-op for schema version 1
+        if (oldVersion < 2) {
+            try {
+                db.execSQL("ALTER TABLE $TABLE_FILES ADD COLUMN indexing_status TEXT NOT NULL DEFAULT 'INDEXED'")
+                db.execSQL("ALTER TABLE $TABLE_FILES ADD COLUMN chunks_count INTEGER NOT NULL DEFAULT 0")
+            } catch (_: Exception) {
+                // Ignore if already added
+            }
+        }
     }
 
     /**
@@ -167,6 +187,8 @@ class FileStore(context: Context) : SQLiteOpenHelper(context, DATABASE_NAME, nul
             put("mime_type", file.mimeType)
             put("size", file.size)
             put("added_at", file.addedAt)
+            put("indexing_status", file.indexingStatus.name)
+            put("chunks_count", file.chunksCount)
         }
         writableDatabase.insertWithOnConflict(
             TABLE_FILES,
@@ -190,6 +212,8 @@ class FileStore(context: Context) : SQLiteOpenHelper(context, DATABASE_NAME, nul
                     put("mime_type", file.mimeType)
                     put("size", file.size)
                     put("added_at", file.addedAt)
+                    put("indexing_status", file.indexingStatus.name)
+                    put("chunks_count", file.chunksCount)
                 }
                 db.insertWithOnConflict(
                     TABLE_FILES,
@@ -205,25 +229,95 @@ class FileStore(context: Context) : SQLiteOpenHelper(context, DATABASE_NAME, nul
     }
 
     /**
-     * Retrieves all imported files ordered by most recently added first.
+     * Updates the indexing lifecycle status and optional indexed chunk count for a file.
      */
-    fun getAll(): List<ImportedFile> {
+    fun updateStatus(uri: String, status: IndexingStatus, chunksCount: Int? = null) {
+        val values = ContentValues().apply {
+            put("indexing_status", status.name)
+            if (chunksCount != null) {
+                put("chunks_count", chunksCount)
+            }
+        }
+        writableDatabase.update(TABLE_FILES, values, "uri = ?", arrayOf(uri))
+    }
+
+    /**
+     * Marks all imported files as [IndexingStatus.PENDING].
+     * Used when the user initiates "Re-index all" from Settings.
+     */
+    fun markAllPending() {
+        val values = ContentValues().apply {
+            put("indexing_status", IndexingStatus.PENDING.name)
+        }
+        writableDatabase.update(TABLE_FILES, values, null, null)
+    }
+
+    /**
+     * Retrieves all files that are pending or were interrupted during indexing.
+     * Ordered by [ImportedFile.addedAt] ascending so earlier imports are indexed first.
+     */
+    fun getPendingFiles(): List<ImportedFile> {
         val list = mutableListOf<ImportedFile>()
         val cursor = readableDatabase.query(
             TABLE_FILES,
-            arrayOf("uri", "display_name", "mime_type", "size", "added_at"),
-            null, null, null, null,
-            "added_at DESC"
+            arrayOf("uri", "display_name", "mime_type", "size", "added_at", "indexing_status", "chunks_count"),
+            "indexing_status IN (?, ?)",
+            arrayOf(IndexingStatus.PENDING.name, IndexingStatus.INDEXING.name),
+            null, null,
+            "added_at ASC"
         )
         cursor.use {
             while (it.moveToNext()) {
+                val statusStr = if (it.isNull(5)) null else it.getString(5)
+                val status = try {
+                    if (statusStr != null) IndexingStatus.valueOf(statusStr) else IndexingStatus.PENDING
+                } catch (_: Exception) {
+                    IndexingStatus.PENDING
+                }
                 list.add(
                     ImportedFile(
                         uri = it.getString(0),
                         displayName = it.getString(1),
                         mimeType = if (it.isNull(2)) null else it.getString(2),
                         size = it.getLong(3),
-                        addedAt = it.getLong(4)
+                        addedAt = it.getLong(4),
+                        indexingStatus = status,
+                        chunksCount = if (it.isNull(6)) 0 else it.getInt(6)
+                    )
+                )
+            }
+        }
+        return list
+    }
+
+    /**
+     * Retrieves all imported files ordered by most recently added first.
+     */
+    fun getAll(): List<ImportedFile> {
+        val list = mutableListOf<ImportedFile>()
+        val cursor = readableDatabase.query(
+            TABLE_FILES,
+            arrayOf("uri", "display_name", "mime_type", "size", "added_at", "indexing_status", "chunks_count"),
+            null, null, null, null,
+            "added_at DESC"
+        )
+        cursor.use {
+            while (it.moveToNext()) {
+                val statusStr = if (it.isNull(5)) null else it.getString(5)
+                val status = try {
+                    if (statusStr != null) IndexingStatus.valueOf(statusStr) else IndexingStatus.INDEXED
+                } catch (_: Exception) {
+                    IndexingStatus.INDEXED
+                }
+                list.add(
+                    ImportedFile(
+                        uri = it.getString(0),
+                        displayName = it.getString(1),
+                        mimeType = if (it.isNull(2)) null else it.getString(2),
+                        size = it.getLong(3),
+                        addedAt = it.getLong(4),
+                        indexingStatus = status,
+                        chunksCount = if (it.isNull(6)) 0 else it.getInt(6)
                     )
                 )
             }
@@ -237,19 +331,27 @@ class FileStore(context: Context) : SQLiteOpenHelper(context, DATABASE_NAME, nul
     fun get(uri: String): ImportedFile? {
         val cursor = readableDatabase.query(
             TABLE_FILES,
-            arrayOf("uri", "display_name", "mime_type", "size", "added_at"),
+            arrayOf("uri", "display_name", "mime_type", "size", "added_at", "indexing_status", "chunks_count"),
             "uri = ?",
             arrayOf(uri),
             null, null, null
         )
         cursor.use {
             if (it.moveToNext()) {
+                val statusStr = if (it.isNull(5)) null else it.getString(5)
+                val status = try {
+                    if (statusStr != null) IndexingStatus.valueOf(statusStr) else IndexingStatus.INDEXED
+                } catch (_: Exception) {
+                    IndexingStatus.INDEXED
+                }
                 return ImportedFile(
                     uri = it.getString(0),
                     displayName = it.getString(1),
                     mimeType = if (it.isNull(2)) null else it.getString(2),
                     size = it.getLong(3),
-                    addedAt = it.getLong(4)
+                    addedAt = it.getLong(4),
+                    indexingStatus = status,
+                    chunksCount = if (it.isNull(6)) 0 else it.getInt(6)
                 )
             }
         }

@@ -34,7 +34,7 @@ The text query uses the same model, so a text query can match an image, an audio
 | PDF viewing | Android `PdfRenderer` |
 | Image / thumbnails | Coil (`AsyncImage`), `ImageDecoder` |
 | Audio / video | Media3 (ExoPlayer, Transformer, UI `PlayerView`), `MediaMetadataRetriever`, `MediaExtractor` / `MediaCodec` / `MediaMuxer` (fMP4 remuxing) |
-| Concurrency | Kotlin coroutines |
+| Concurrency | Kotlin coroutines, AndroidX WorkManager |
 
 ## 3. Model Delivery
 
@@ -63,8 +63,8 @@ Each file is split into **chunks**. Each chunk has one embedding and one **locat
 
 - Window sizes and frame intervals are starting values. They will be tuned later.
 - Video indexing uses sliding time windows with interleaved frames and 16 kHz audio, plus fMP4 normalization via `MediaMuxer` for seekability.
-- Indexing runs in a coroutine on a background dispatcher, so the UI stays responsive.
-- Progress is shown per file. Background indexing (WorkManager) is in the backlog.
+- Indexing runs in a background WorkManager worker (`IndexingWorker`), surviving app process death and automatically resuming unindexed files when reopened.
+- Progress is tracked per file with live percentage and spinner indicators on gallery tiles and in the top indexing banner.
 
 ## 6. Data Model (SqliteVectorStore)
 

@@ -27,6 +27,7 @@ import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
@@ -36,16 +37,19 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.tooling.preview.Preview
+import androidx.work.WorkInfo
+import androidx.work.WorkManager
 import com.localfind.data.AppSettings
-import com.localfind.data.EmbeddingStore
+import com.localfind.data.EngineManager
 import com.localfind.data.FileImporter
 import com.localfind.data.FileStore
 import com.localfind.data.ImportedFile
+import com.localfind.data.IndexingStatus
 import com.localfind.data.SettingsStore
-import com.localfind.embed.Embedder
 import com.localfind.index.Indexer
+import com.localfind.index.IndexingProgressState
+import com.localfind.index.IndexingWorker
 import com.localfind.search.SearchResult
-import com.localfind.search.Searcher
 import com.localfind.ui.GalleryScreen
 import com.localfind.ui.ImageViewerParams
 import com.localfind.ui.ImageViewerScreen
@@ -60,8 +64,6 @@ import com.localfind.ui.TextViewerScreen
 import com.localfind.ui.theme.LocalFindTheme
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
-import kotlinx.coroutines.sync.Mutex
-import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
 
 /**
@@ -137,11 +139,20 @@ fun MainScreen(
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
 
+    // Observable background indexing state from WorkManager
+    val indexingProgress by IndexingProgressState.progress.collectAsState()
+    val workManager = remember { WorkManager.getInstance(context) }
+    val workInfos by workManager.getWorkInfosForUniqueWorkFlow(IndexingWorker.WORK_NAME)
+        .collectAsState(initial = emptyList())
+    val activeWorkInfo = workInfos.firstOrNull()
+    val isWorkActive = activeWorkInfo?.state == WorkInfo.State.RUNNING ||
+            activeWorkInfo?.state == WorkInfo.State.ENQUEUED
+    val isIndexing = indexingProgress.isIndexing || isWorkActive
+
     // UI state
     var status by remember { mutableStateOf("Ready") }
     var importedFiles by remember { mutableStateOf<List<ImportedFile>>(emptyList()) }
     var indexedChunksCount by remember { mutableIntStateOf(0) }
-    var isIndexing by remember { mutableStateOf(false) }
 
     // Navigation & Search state
     var isSearchOpen by remember { mutableStateOf(false) }
@@ -159,49 +170,28 @@ fun MainScreen(
     var filePendingDeletion by remember { mutableStateOf<ImportedFile?>(null) }
     var isSettingsOpen by remember { mutableStateOf(false) }
 
-    // Keep Embedder (485MB EmbeddingGemma 2) and EmbeddingStore warm in memory across the session
-    // so indexing and search execute without repeated 1.5–3s model initialization overhead.
-    val engineMutex = remember { Mutex() }
-    var cachedEmbedder by remember { mutableStateOf<Embedder?>(null) }
-    var cachedStore by remember { mutableStateOf<EmbeddingStore?>(null) }
-
-    fun getOrCreateStore(): EmbeddingStore =
-        cachedStore ?: EmbeddingStore.create(context).also { cachedStore = it }
-
-    fun getOrCreateEmbedder(): Embedder =
-        cachedEmbedder ?: Embedder(context).also { cachedEmbedder = it }
-
     DisposableEffect(Unit) {
         onDispose {
-            try {
-                cachedEmbedder?.close()
-                cachedEmbedder = null
-                cachedStore?.close()
-                cachedStore = null
-            } catch (_: Exception) {
-                // Ignore teardown exceptions
-            }
+            EngineManager.close()
         }
     }
 
     /**
-     * Queries [EmbeddingStore] on IO dispatcher to count how many total chunks
-     * are stored in the vector database.
+     * Queries [EmbeddingStore] via [EngineManager] to count total chunks in the vector database.
      */
     suspend fun refreshIndexCount() {
         withContext(Dispatchers.IO) {
-            engineMutex.withLock {
+            EngineManager.withStore(context) { store ->
                 try {
-                    indexedChunksCount = getOrCreateStore().getAllRecordIds().size
+                    indexedChunksCount = store.getAllRecordIds().size
                 } catch (_: Exception) {
-                    // Ignore if database is temporarily busy or uninitialized
+                    // Ignore if database is temporarily busy
                 }
             }
         }
     }
 
-    // Load persisted files and vector count when the screen is first composed
-    LaunchedEffect(Unit) {
+    suspend fun reloadFiles() {
         withContext(Dispatchers.IO) {
             val store = FileStore(context)
             importedFiles = store.getAll()
@@ -209,42 +199,22 @@ fun MainScreen(
         refreshIndexCount()
     }
 
-    /**
-     * Executes indexing for a given list of [ImportedFile] objects on a background thread.
-     * Keeps UI responsive while updating per-file progress status.
-     */
-    fun indexFiles(filesToIndex: List<ImportedFile>) {
-        scope.launch {
-            isIndexing = true
-            status = "Initializing indexer..."
-            withContext(Dispatchers.Default) {
-                engineMutex.withLock {
-                    try {
-                        val embedder = getOrCreateEmbedder()
-                        val store = getOrCreateStore()
-                        val indexer = Indexer(context, embedder, store, settings)
-                        var indexedFiles = 0
-                        var totalChunks = 0
-
-                        for ((i, file) in filesToIndex.withIndex()) {
-                            if (indexer.isSupported(file)) {
-                                status = "Indexing ${i + 1}/${filesToIndex.size}: ${file.displayName}..."
-                                val result = indexer.indexFile(file)
-                                if (result.isSuccess) {
-                                    indexedFiles++
-                                    totalChunks += result.chunksCount
-                                }
-                            }
-                        }
-                        status = "Indexed $indexedFiles file(s) ($totalChunks chunks)"
-                    } catch (e: Exception) {
-                        status = "Indexing failed: ${e.message}"
-                    }
-                }
+    // Load persisted files on screen launch and automatically resume pending background indexing
+    LaunchedEffect(Unit) {
+        withContext(Dispatchers.IO) {
+            val store = FileStore(context)
+            importedFiles = store.getAll()
+            // If the app was killed while indexing was in-flight, resume immediately via WorkManager
+            if (store.getPendingFiles().isNotEmpty()) {
+                IndexingWorker.enqueue(context)
             }
-            refreshIndexCount()
-            isIndexing = false
         }
+        refreshIndexCount()
+    }
+
+    // Refresh file statuses and index counts as files transition lifecycle states
+    LaunchedEffect(activeWorkInfo?.state, indexingProgress.currentUri, indexingProgress.isIndexing) {
+        reloadFiles()
     }
 
     /**
@@ -271,9 +241,9 @@ fun MainScreen(
                 fileStore.delete(file.uri)
                 val updatedFiles = fileStore.getAll()
 
-                engineMutex.withLock {
+                EngineManager.withStore(context) { store ->
                     try {
-                        getOrCreateStore().deleteByFileUri(file.uri)
+                        store.deleteByFileUri(file.uri)
                     } catch (_: Exception) {
                         // Ignore if store is temporarily inaccessible
                     }
@@ -306,10 +276,7 @@ fun MainScreen(
             searchError = null
             try {
                 val results = withContext(Dispatchers.Default) {
-                    engineMutex.withLock {
-                        val embedder = getOrCreateEmbedder()
-                        val store = getOrCreateStore()
-                        val searcher = Searcher(store, embedder)
+                    EngineManager.withSearcher(context) { searcher ->
                         searcher.search(
                             query = trimmed,
                             topK = settings.topK,
@@ -475,16 +442,16 @@ fun MainScreen(
         if (uris.isNotEmpty()) {
             scope.launch {
                 status = "Importing ${uris.size} file(s)..."
-                val newFiles = withContext(Dispatchers.IO) {
+                withContext(Dispatchers.IO) {
                     val store = FileStore(context)
                     val files = uris.map { uri ->
                         FileImporter.importUri(context.contentResolver, uri)
+                            .copy(indexingStatus = IndexingStatus.PENDING)
                     }
                     store.insertAll(files)
                     importedFiles = store.getAll()
-                    files
                 }
-                indexFiles(newFiles)
+                IndexingWorker.enqueue(context)
             }
         }
     }
@@ -601,7 +568,12 @@ fun MainScreen(
                     onSettingsChange = onSettingsChange,
                     onResetDefaults = onResetDefaults,
                     onReindexAll = {
-                        indexFiles(importedFiles)
+                        scope.launch(Dispatchers.IO) {
+                            val store = FileStore(context)
+                            store.markAllPending()
+                            importedFiles = store.getAll()
+                            IndexingWorker.enqueue(context)
+                        }
                         isSettingsOpen = false
                     },
                     isIndexing = isIndexing,
@@ -636,12 +608,25 @@ fun MainScreen(
                     importedFiles = importedFiles,
                     indexedChunksCount = indexedChunksCount,
                     isIndexing = isIndexing,
-                    statusMessage = status,
+                    statusMessage = if (indexingProgress.isIndexing && indexingProgress.message.isNotBlank()) {
+                        indexingProgress.message
+                    } else {
+                        status
+                    },
+                    indexingProgress = indexingProgress,
                     onOpenSearch = { isSearchOpen = true },
                     onImportFiles = { pickerLauncher.launch(arrayOf("*/*")) },
                     onOpenSettings = { isSettingsOpen = true },
                     onFileClick = { file -> openLibraryFile(file) },
-                    onRequestDeleteFile = { file -> filePendingDeletion = file }
+                    onRequestDeleteFile = { file -> filePendingDeletion = file },
+                    onRetryIndexFile = { file ->
+                        scope.launch(Dispatchers.IO) {
+                            val store = FileStore(context)
+                            store.updateStatus(file.uri, IndexingStatus.PENDING)
+                            importedFiles = store.getAll()
+                            IndexingWorker.enqueue(context)
+                        }
+                    }
                 )
             }
         }
