@@ -28,7 +28,8 @@
 
 - [x] Search and download free internet files for local testing
 - [x] Remove file from library and delete its embeddings
-- [ ] Good builtin viewer for each file type (open at matching time/page/passage) and for whole library file too
+- [x] Good builtin viewer for each file type (open at matching time/page/passage) and for whole library file too
+- [ ] Settings page for threshold and all other variables
 
 ## Milestone 3: Enhance UI/UX
 - [ ] Suggest good UI design and enhance overall
@@ -40,7 +41,6 @@
 
 ### Core
 - Create folders and recursive folder import (DocumentFile / tree URI)
-- Settings page for threshold and all other variables
 - Export / Backup index and "Clear Database" reset
 
 ### Search Experience

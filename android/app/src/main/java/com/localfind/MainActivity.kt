@@ -67,6 +67,8 @@ import com.localfind.ui.MediaPlayerParams
 import com.localfind.ui.MediaPlayerScreen
 import com.localfind.ui.PdfViewerParams
 import com.localfind.ui.PdfViewerScreen
+import com.localfind.ui.TextViewerParams
+import com.localfind.ui.TextViewerScreen
 import com.localfind.ui.SearchScreen
 import com.localfind.ui.theme.LocalFindTheme
 import kotlinx.coroutines.Dispatchers
@@ -125,6 +127,7 @@ fun MainScreen() {
     var activePdfViewer by remember { mutableStateOf<PdfViewerParams?>(null) }
     var activeImageViewer by remember { mutableStateOf<ImageViewerParams?>(null) }
     var activeMediaPlayer by remember { mutableStateOf<MediaPlayerParams?>(null) }
+    var activeTextViewer by remember { mutableStateOf<TextViewerParams?>(null) }
     var filePendingDeletion by remember { mutableStateOf<ImportedFile?>(null) }
 
     // Keep Embedder (485MB EmbeddingGemma 2) and EmbeddingStore warm in memory across the session
@@ -308,7 +311,8 @@ fun MainScreen() {
      * In accordance with PRD §2 & ARCHITECTURE.md §8:
      * - PDF results open directly in the in-app [PdfViewerScreen] at the matching page.
      * - Image results open directly in the in-app [ImageViewerScreen] (Coil).
-     * - Text/markdown results open in external system viewer via [Intent.ACTION_VIEW].
+     * - Audio & video results open directly in the in-app [MediaPlayerScreen] (ExoPlayer).
+     * - Text & markdown results open directly in the in-app [TextViewerScreen], scrolled to the matching passage.
      */
     fun openSearchResult(result: SearchResult) {
         if (result.fileUri.isBlank()) {
@@ -317,7 +321,7 @@ fun MainScreen() {
         }
 
         val isPdf = result.fileType.equals("pdf", ignoreCase = true) ||
-                result.fileName.endsWith(".pdf", ignoreCase = true)
+                Indexer.isPdfNameOrMime(result.fileName, null)
 
         if (isPdf) {
             // Open in-app PDF viewer at the matching page (1-based location)
@@ -357,15 +361,25 @@ fun MainScreen() {
             return
         }
 
+        val isText = result.fileType.equals("text", ignoreCase = true) ||
+                Indexer.isTextNameOrMime(result.fileName, null)
+
+        if (isText) {
+            // Open in-app text viewer, scrolled and highlighted at matching passage
+            activeTextViewer = TextViewerParams(
+                uri = result.fileUri,
+                fileName = result.fileName,
+                targetOffset = result.location.toInt().coerceAtLeast(0),
+                highlightSnippet = result.snippet
+            )
+            return
+        }
+
+        // Fallback for any unknown file types
         try {
             val uri = Uri.parse(result.fileUri)
-            val mimeType = when {
-                result.fileName.endsWith(".md", ignoreCase = true) -> "text/markdown"
-                result.fileName.endsWith(".txt", ignoreCase = true) -> "text/plain"
-                else -> "text/plain"
-            }
             val intent = Intent(Intent.ACTION_VIEW).apply {
-                setDataAndType(uri, mimeType)
+                setDataAndType(uri, "*/*")
                 addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
             }
             context.startActivity(intent)
@@ -373,6 +387,71 @@ fun MainScreen() {
             Toast.makeText(
                 context,
                 "Could not open ${result.fileName}: ${e.message}",
+                Toast.LENGTH_SHORT
+            ).show()
+        }
+    }
+
+    /**
+     * Opens an imported file from the Library tab in its corresponding builtin viewer
+     * (PDF at page 1, Image, Audio/Video at 00:00, or Text at line 1).
+     */
+    fun openLibraryFile(file: ImportedFile) {
+        if (file.uri.isBlank()) {
+            Toast.makeText(context, "No file URI associated with file", Toast.LENGTH_SHORT).show()
+            return
+        }
+
+        if (Indexer.isPdfNameOrMime(file.displayName, file.mimeType)) {
+            activePdfViewer = PdfViewerParams(
+                uri = file.uri,
+                fileName = file.displayName,
+                initialPage = 1
+            )
+            return
+        }
+
+        if (Indexer.isImageNameOrMime(file.displayName, file.mimeType)) {
+            activeImageViewer = ImageViewerParams(
+                uri = file.uri,
+                fileName = file.displayName
+            )
+            return
+        }
+
+        if (Indexer.isAudioNameOrMime(file.displayName, file.mimeType) ||
+            Indexer.isVideoNameOrMime(file.displayName, file.mimeType)
+        ) {
+            activeMediaPlayer = MediaPlayerParams(
+                uri = file.uri,
+                fileName = file.displayName,
+                startMs = 0L
+            )
+            return
+        }
+
+        if (Indexer.isTextNameOrMime(file.displayName, file.mimeType)) {
+            activeTextViewer = TextViewerParams(
+                uri = file.uri,
+                fileName = file.displayName,
+                targetOffset = 0,
+                highlightSnippet = null
+            )
+            return
+        }
+
+        // External fallback for any unsupported document formats
+        try {
+            val uri = Uri.parse(file.uri)
+            val intent = Intent(Intent.ACTION_VIEW).apply {
+                setDataAndType(uri, file.mimeType ?: "*/*")
+                addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+            }
+            context.startActivity(intent)
+        } catch (e: Exception) {
+            Toast.makeText(
+                context,
+                "Could not open ${file.displayName}: ${e.message}",
                 Toast.LENGTH_SHORT
             ).show()
         }
@@ -408,7 +487,12 @@ fun MainScreen() {
         }
     }
 
-    if (activePdfViewer != null) {
+    if (activeTextViewer != null) {
+        TextViewerScreen(
+            params = activeTextViewer!!,
+            onClose = { activeTextViewer = null }
+        )
+    } else if (activePdfViewer != null) {
         PdfViewerScreen(
             params = activePdfViewer!!,
             onClose = { activePdfViewer = null }
@@ -582,22 +666,10 @@ fun MainScreen() {
                         verticalArrangement = Arrangement.spacedBy(8.dp)
                     ) {
                         items(importedFiles, key = { it.uri }) { file ->
-                            val isPdf = file.displayName.endsWith(".pdf", ignoreCase = true) ||
-                                    file.mimeType?.equals("application/pdf", ignoreCase = true) == true
                             Card(
                                 modifier = Modifier
                                     .fillMaxWidth()
-                                    .then(
-                                        if (isPdf) {
-                                            Modifier.clickable {
-                                                activePdfViewer = PdfViewerParams(
-                                                    uri = file.uri,
-                                                    fileName = file.displayName,
-                                                    initialPage = 1
-                                                )
-                                            }
-                                        } else Modifier
-                                    ),
+                                    .clickable { openLibraryFile(file) },
                                 colors = CardDefaults.cardColors(
                                     containerColor = MaterialTheme.colorScheme.surfaceVariant
                                 )
@@ -618,7 +690,7 @@ fun MainScreen() {
                                         )
                                         Spacer(modifier = Modifier.height(2.dp))
                                         Text(
-                                            text = "${formatFileSize(file.size)}${if (file.mimeType != null) " • ${file.mimeType}" else ""}",
+                                            text = "${formatFileSize(file.size)}${if (file.mimeType != null) " • ${file.mimeType}" else ""} • Tap to view",
                                             style = MaterialTheme.typography.bodySmall,
                                             color = MaterialTheme.colorScheme.onSurfaceVariant
                                         )

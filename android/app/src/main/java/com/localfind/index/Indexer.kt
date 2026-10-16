@@ -75,15 +75,8 @@ class Indexer(
      * - Extensions: .txt, .md
      * - MIME types: text/plain, text/markdown, or any text/ MIME type.
      */
-    fun isTextFile(file: ImportedFile): Boolean {
-        val name = file.displayName.lowercase()
-        val mime = file.mimeType?.lowercase() ?: ""
-        return name.endsWith(".txt") ||
-                name.endsWith(".md") ||
-                mime.startsWith("text/") ||
-                mime == "text/plain" ||
-                mime == "text/markdown"
-    }
+    fun isTextFile(file: ImportedFile): Boolean =
+        isTextNameOrMime(file.displayName, file.mimeType)
 
     /**
      * Determines whether an imported file is a PDF document.
@@ -92,11 +85,8 @@ class Indexer(
      * - Extensions: .pdf
      * - MIME types: application/pdf
      */
-    fun isPdfFile(file: ImportedFile): Boolean {
-        val name = file.displayName.lowercase()
-        val mime = file.mimeType?.lowercase() ?: ""
-        return name.endsWith(".pdf") || mime == "application/pdf"
-    }
+    fun isPdfFile(file: ImportedFile): Boolean =
+        isPdfNameOrMime(file.displayName, file.mimeType)
 
     /**
      * Determines whether an imported file is a supported image file.
@@ -519,6 +509,30 @@ class Indexer(
     }
 
     companion object {
+        /**
+         * Pure helper that checks whether a file name or MIME type corresponds to a supported
+         * text or markdown format (.txt, .md or text/ MIME type).
+         */
+        fun isTextNameOrMime(displayName: String, mimeType: String?): Boolean {
+            val name = displayName.lowercase()
+            val mime = mimeType?.lowercase() ?: ""
+            return name.endsWith(".txt") ||
+                    name.endsWith(".md") ||
+                    mime.startsWith("text/") ||
+                    mime == "text/plain" ||
+                    mime == "text/markdown"
+        }
+
+        /**
+         * Pure helper that checks whether a file name or MIME type corresponds to a supported
+         * PDF document (.pdf or application/pdf).
+         */
+        fun isPdfNameOrMime(displayName: String, mimeType: String?): Boolean {
+            val name = displayName.lowercase()
+            val mime = mimeType?.lowercase() ?: ""
+            return name.endsWith(".pdf") || mime == "application/pdf"
+        }
+
         /**
          * Pure helper that checks whether a file name or MIME type corresponds to a supported
          * video format (.mp4 or video/mp4).

@@ -3,6 +3,8 @@ package com.localfind.ui
 import android.net.Uri
 import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.background
+import androidx.compose.foundation.gestures.detectTapGestures
+import androidx.compose.foundation.gestures.detectTransformGestures
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -18,11 +20,15 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
@@ -44,11 +50,13 @@ data class ImageViewerParams(
 )
 
 /**
- * In-app Image Viewer Screen using Coil's [AsyncImage].
+ * In-app Image Viewer Screen using Coil's [AsyncImage] with interactive zoom & pan.
  *
  * Implements ARCHITECTURE.md §2 & §8 and PRD.md §2:
  * - 100% offline image rendering directly from the persisted SAF document URI.
- * - Automatically handles EXIF orientation and memory-safe bitmap downsampling via Coil.
+ * - Interactive pinch-to-zoom (up to 5x) and pan gestures.
+ * - Double-tap gesture to quickly toggle between 1x and 2.5x zoom.
+ * - Handles EXIF orientation and memory-safe bitmap downsampling via Coil.
  * - Displays loading progress and error fallback UI.
  */
 @OptIn(ExperimentalMaterial3Api::class)
@@ -63,7 +71,11 @@ fun ImageViewerScreen(
         mutableStateOf<AsyncImagePainter.State>(AsyncImagePainter.State.Empty)
     }
 
-    // Intercept hardware and gesture back navigation to return to search results
+    // Zoom and pan gesture state
+    var scale by remember(params.uri) { mutableFloatStateOf(1f) }
+    var offset by remember(params.uri) { mutableStateOf(Offset.Zero) }
+
+    // Intercept hardware and gesture back navigation to return
     BackHandler {
         onClose()
     }
@@ -81,8 +93,13 @@ fun ImageViewerScreen(
                             maxLines = 1,
                             overflow = TextOverflow.Ellipsis
                         )
+                        val subtitle = if (scale > 1.05f) {
+                            "Zoom: ${(scale * 100).toInt()}% • Double-tap to reset"
+                        } else {
+                            "Full image • Pinch or double-tap to zoom"
+                        }
                         Text(
-                            text = "Full image",
+                            text = subtitle,
                             style = MaterialTheme.typography.bodySmall,
                             color = MaterialTheme.colorScheme.onSurfaceVariant
                         )
@@ -94,6 +111,19 @@ fun ImageViewerScreen(
                             text = "←",
                             style = MaterialTheme.typography.titleLarge
                         )
+                    }
+                },
+                actions = {
+                    if (scale > 1.05f) {
+                        IconButton(onClick = {
+                            scale = 1f
+                            offset = Offset.Zero
+                        }) {
+                            Text(
+                                text = "↺",
+                                style = MaterialTheme.typography.titleMedium
+                            )
+                        }
                     }
                 }
             )
@@ -116,6 +146,35 @@ fun ImageViewerScreen(
                 onState = { state -> painterState = state },
                 modifier = Modifier
                     .fillMaxSize()
+                    .pointerInput(params.uri) {
+                        detectTapGestures(
+                            onDoubleTap = {
+                                if (scale > 1.1f) {
+                                    scale = 1f
+                                    offset = Offset.Zero
+                                } else {
+                                    scale = 2.5f
+                                }
+                            }
+                        )
+                    }
+                    .pointerInput(params.uri) {
+                        detectTransformGestures { _, pan, zoom, _ ->
+                            val newScale = (scale * zoom).coerceIn(1f, 5f)
+                            scale = newScale
+                            if (newScale > 1f) {
+                                offset += pan
+                            } else {
+                                offset = Offset.Zero
+                            }
+                        }
+                    }
+                    .graphicsLayer(
+                        scaleX = scale,
+                        scaleY = scale,
+                        translationX = offset.x,
+                        translationY = offset.y
+                    )
                     .padding(12.dp)
             )
 
@@ -158,4 +217,3 @@ fun ImageViewerScreen(
         }
     }
 }
-

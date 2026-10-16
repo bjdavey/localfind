@@ -76,8 +76,13 @@ fun MediaPlayerScreen(
                             maxLines = 1,
                             overflow = TextOverflow.Ellipsis
                         )
+                        val subtitle = if (params.startMs > 0L) {
+                            "From ${SearchResultFormatter.formatTimeMs(params.startMs)}"
+                        } else {
+                            "Full playback • 00:00"
+                        }
                         Text(
-                            text = "From ${SearchResultFormatter.formatTimeMs(params.startMs)}",
+                            text = subtitle,
                             style = MaterialTheme.typography.bodySmall,
                             color = MaterialTheme.colorScheme.onSurfaceVariant
                         )
