@@ -11,6 +11,7 @@ import androidx.work.workDataOf
 import com.localfind.data.EngineManager
 import com.localfind.data.FileStore
 import com.localfind.data.IndexingStatus
+import com.localfind.data.ModelStatus
 import com.localfind.data.SettingsStore
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -146,6 +147,24 @@ class IndexingWorker(
         val settings = settingsStore.load()
 
         try {
+            // Ensure model is loaded; if missing or failed, pause indexing and retry later rather than failing files
+            val modelStatus = EngineManager.ensureModelLoaded(context)
+            if (modelStatus is ModelStatus.Error) {
+                Log.w(TAG_INDEXING, "Indexing paused: ${modelStatus.message}. WorkManager will retry when model is loaded.")
+                IndexingProgressState.update(
+                    isIndexing = false,
+                    currentUri = null,
+                    currentFileName = null,
+                    fileIndex = 0,
+                    totalFiles = 0,
+                    currentChunk = 0,
+                    totalChunks = 0,
+                    progressFraction = 0f,
+                    message = "Indexing paused: Model not loaded"
+                )
+                return@withContext Result.retry()
+            }
+
             // Process batches until no pending or interrupted files remain in FileStore
             while (true) {
                 if (isStopped) {

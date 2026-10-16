@@ -2,6 +2,7 @@ package com.localfind.embed
 
 import android.content.Context
 import android.graphics.Bitmap
+import android.util.Log
 import com.google.mediapipe.framework.image.BitmapImageBuilder
 import com.google.mediapipe.tasks.components.containers.AudioData
 import com.google.mediapipe.tasks.core.AudioPart
@@ -47,11 +48,13 @@ class Embedder(context: Context) : AutoCloseable {
     private val embedder: UniversalEmbedder
 
     init {
-        // Locate the model file in the application's internal files directory
-        val model = File(context.filesDir, MODEL_FILE_NAME)
-        require(model.exists()) {
+        // Locate the model file in the application's internal files directory,
+        // copying from fallback emulator/dev paths if missing.
+        val model = ensureModelFile(context)
+        require(model.exists() && model.length() > 0L) {
             "Embedding model not found at ${model.absolutePath}. " +
-                    "For development, push the model file using adb push."
+                    "For development on emulator or device, push the model file using:\n" +
+                    "adb push .local/models/$MODEL_FILE_NAME /data/local/tmp/"
         }
 
         val baseOptions = BaseOptions.builder()
@@ -134,4 +137,57 @@ class Embedder(context: Context) : AutoCloseable {
      * Releases native memory and interpreter instances allocated by MediaPipe Tasks.
      */
     override fun close() = embedder.close()
+
+    companion object {
+        private const val TAG = "Embedder"
+
+        /**
+         * Ensures that the on-device model file exists in [context.filesDir].
+         *
+         * If missing from internal storage, checks fallback emulator development locations:
+         * 1. `/data/local/tmp/embeddinggemma-2-740m.litertlm` (destination of adb push)
+         * 2. `/sdcard/Download/embeddinggemma-2-740m.litertlm`
+         * 3. `/sdcard/embeddinggemma-2-740m.litertlm`
+         *
+         * If found in any of those locations, copies it into internal app storage via an intermediate
+         * `.tmp` file and atomic rename, ensuring clean self-healing on emulator startup.
+         *
+         * @return [File] pointing to the target model in [context.filesDir].
+         */
+        fun ensureModelFile(context: Context): File {
+            val target = File(context.filesDir, MODEL_FILE_NAME)
+            if (target.exists() && target.length() > 0L) {
+                return target
+            }
+
+            // Check candidate development locations (emulator / adb push destination)
+            val candidateSources = listOf(
+                File("/data/local/tmp", MODEL_FILE_NAME),
+                File("/sdcard/Download", MODEL_FILE_NAME),
+                File("/sdcard", MODEL_FILE_NAME)
+            )
+
+            val source = candidateSources.firstOrNull { it.exists() && it.canRead() && it.length() > 0L }
+            if (source != null) {
+                try {
+                    Log.i(TAG, "Found model at ${source.absolutePath} (${source.length()} bytes). Copying to internal storage ${target.absolutePath}...")
+                    val tempFile = File(context.filesDir, "$MODEL_FILE_NAME.tmp")
+                    source.inputStream().use { input ->
+                        tempFile.outputStream().use { output ->
+                            input.copyTo(output)
+                        }
+                    }
+                    if (tempFile.renameTo(target)) {
+                        Log.i(TAG, "Successfully copied model to ${target.absolutePath} (${target.length()} bytes)")
+                    } else {
+                        Log.w(TAG, "Failed to rename temp file to ${target.name}")
+                    }
+                } catch (e: Exception) {
+                    Log.e(TAG, "Error copying model from ${source.absolutePath} to ${target.absolutePath}", e)
+                }
+            }
+
+            return target
+        }
+    }
 }

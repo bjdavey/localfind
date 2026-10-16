@@ -24,6 +24,7 @@ import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
+import com.localfind.data.ModelStatus
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -53,6 +54,8 @@ fun SettingsScreen(
     onReindexAll: () -> Unit = {},
     isIndexing: Boolean = false,
     fileCount: Int = 0,
+    modelStatus: ModelStatus = ModelStatus.Loading,
+    onRetryLoadModel: () -> Unit = {},
     onClose: () -> Unit,
     modifier: Modifier = Modifier
 ) {
@@ -321,9 +324,25 @@ fun SettingsScreen(
             // =================================================================
             SettingsCategoryHeader("PRIVACY & OFFLINE ENGINE")
 
-            SettingsInfoRow(
+            SettingActionRow(
                 title = "On-device multimodal model",
-                subtitle = "EmbeddingGemma 2 (740M, 768-dim shared space)"
+                subtitle = when (modelStatus) {
+                    is ModelStatus.Loaded -> "Loaded (${modelStatus.sizeBytes / 1_048_576} MB)"
+                    is ModelStatus.Loading -> "Loading..."
+                    is ModelStatus.Error -> "⚠️ Not Loaded"
+                },
+                description = when (modelStatus) {
+                    is ModelStatus.Loaded -> "EmbeddingGemma 2 (740M, 768-dim shared space) in app internal storage."
+                    is ModelStatus.Loading -> "Warming up on-device LiteRT embedding model..."
+                    is ModelStatus.Error -> modelStatus.message
+                },
+                buttonText = when (modelStatus) {
+                    is ModelStatus.Loaded -> "Reload"
+                    is ModelStatus.Loading -> "Loading"
+                    is ModelStatus.Error -> "Load"
+                },
+                enabled = modelStatus !is ModelStatus.Loading,
+                onClick = onRetryLoadModel
             )
             SettingsInfoRow(
                 title = "Network & telemetry",

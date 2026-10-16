@@ -2,8 +2,10 @@ package com.localfind.ui
 
 import android.net.Uri
 import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.expandVertically
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
+import androidx.compose.animation.shrinkVertically
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
@@ -38,6 +40,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.FilledTonalButton
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.FilterChipDefaults
 import androidx.compose.material3.Icon
@@ -74,6 +77,7 @@ import coil.request.ImageRequest
 import com.localfind.R
 import com.localfind.data.ImportedFile
 import com.localfind.data.IndexingStatus
+import com.localfind.data.ModelStatus
 import com.localfind.data.formatFileSize
 import com.localfind.index.Indexer
 import com.localfind.index.IndexingProgress
@@ -102,6 +106,8 @@ fun GalleryScreen(
     isIndexing: Boolean,
     statusMessage: String,
     indexingProgress: IndexingProgress = IndexingProgress(),
+    modelStatus: ModelStatus = ModelStatus.Loading,
+    onRetryLoadModel: () -> Unit = {},
     onOpenSearch: () -> Unit,
     onImportFiles: () -> Unit,
     onOpenSettings: () -> Unit,
@@ -186,6 +192,103 @@ fun GalleryScreen(
                         style = MaterialTheme.typography.titleLarge,
                         color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
+                }
+            }
+
+            // =====================================================================
+            // 1.5. MODEL STATUS & ERROR BANNER
+            // =====================================================================
+            var showModelHelpDialog by remember { mutableStateOf(false) }
+
+            if (showModelHelpDialog && modelStatus is ModelStatus.Error) {
+                AlertDialog(
+                    onDismissRequest = { showModelHelpDialog = false },
+                    title = { Text("Embedding Model Not Loaded") },
+                    text = {
+                        Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                            Text(modelStatus.message)
+                            if (modelStatus.instructions.isNotBlank()) {
+                                Surface(
+                                    color = MaterialTheme.colorScheme.surfaceVariant,
+                                    shape = RoundedCornerShape(8.dp)
+                                ) {
+                                    Text(
+                                        text = modelStatus.instructions,
+                                        modifier = Modifier.padding(10.dp),
+                                        style = MaterialTheme.typography.bodySmall,
+                                        fontFamily = FontFamily.Monospace
+                                    )
+                                }
+                            }
+                        }
+                    },
+                    confirmButton = {
+                        TextButton(
+                            onClick = {
+                                showModelHelpDialog = false
+                                onRetryLoadModel()
+                            }
+                        ) {
+                            Text("Retry Loading")
+                        }
+                    },
+                    dismissButton = {
+                        TextButton(onClick = { showModelHelpDialog = false }) {
+                            Text("Close")
+                        }
+                    }
+                )
+            }
+
+            AnimatedVisibility(
+                visible = modelStatus is ModelStatus.Error,
+                enter = fadeIn() + expandVertically(),
+                exit = fadeOut() + shrinkVertically()
+            ) {
+                if (modelStatus is ModelStatus.Error) {
+                    Surface(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(horizontal = 16.dp, vertical = 6.dp)
+                            .clickable { showModelHelpDialog = true },
+                        shape = RoundedCornerShape(12.dp),
+                        color = MaterialTheme.colorScheme.errorContainer
+                    ) {
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(horizontal = 14.dp, vertical = 10.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(10.dp)
+                        ) {
+                            Text(
+                                text = "⚠️",
+                                style = MaterialTheme.typography.titleMedium
+                            )
+                            Column(modifier = Modifier.weight(1f)) {
+                                Text(
+                                    text = "Model not loaded",
+                                    style = MaterialTheme.typography.labelLarge,
+                                    fontWeight = FontWeight.Bold,
+                                    color = MaterialTheme.colorScheme.onErrorContainer
+                                )
+                                Text(
+                                    text = modelStatus.message,
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = MaterialTheme.colorScheme.onErrorContainer.copy(alpha = 0.85f),
+                                    maxLines = 1,
+                                    overflow = TextOverflow.Ellipsis
+                                )
+                            }
+                            FilledTonalButton(
+                                onClick = onRetryLoadModel,
+                                contentPadding = PaddingValues(horizontal = 10.dp, vertical = 4.dp),
+                                modifier = Modifier.height(32.dp)
+                            ) {
+                                Text("Retry", style = MaterialTheme.typography.labelSmall)
+                            }
+                        }
+                    }
                 }
             }
 

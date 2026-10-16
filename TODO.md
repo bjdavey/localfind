@@ -41,11 +41,13 @@
 - [ ] Try support CPU, GPU, NPU with option in settings depending on device
 - [ ] Support to open the origin file in phone gallery or its own app
 
-## Bugs
+## Bugs / Issues
+- [ ] Import files stuck when import new file
 - [ ] Fix flicker when opening a file or a search result and not to scroll back to start when closing it
-- [ ] Opening image/video should be smoth transition like a gallery app, propably by not opening it in a new view?
+- [ ] Opening image/video should be smoth transition like a gallery app, perhaps just popup without opening it in a new view?
 - [ ] Better PDF viewer
 - [ ] Top bar should hide on scrolling
+- [ ] Can not search while indexing
 
 
 ## Backlog
@@ -54,6 +56,8 @@
 - Find large online public dataset for testing
 - Create folders and recursive folder import (DocumentFile / tree URI)
 - Export / Backup index and "Clear Database" reset
+- Support import by share from other apps\
+- Simplify UI for non-tech people and keep advanced mode option in settings
 
 ### Search Experience
 - Hybrid search (Vector + SQLite FTS5 keyword search)

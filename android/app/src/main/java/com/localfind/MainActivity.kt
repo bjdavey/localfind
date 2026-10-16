@@ -45,6 +45,7 @@ import com.localfind.data.FileImporter
 import com.localfind.data.FileStore
 import com.localfind.data.ImportedFile
 import com.localfind.data.IndexingStatus
+import com.localfind.data.ModelStatus
 import com.localfind.data.SettingsStore
 import com.localfind.index.Indexer
 import com.localfind.index.IndexingProgressState
@@ -139,6 +140,9 @@ fun MainScreen(
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
 
+    // Observable on-device multimodal model lifecycle status
+    val modelStatus by EngineManager.modelStatus.collectAsState()
+
     // Observable background indexing state from WorkManager
     val indexingProgress by IndexingProgressState.progress.collectAsState()
     val workManager = remember { WorkManager.getInstance(context) }
@@ -177,6 +181,30 @@ fun MainScreen(
     }
 
     /**
+     * Retries loading the model and resumes background indexing if files are pending.
+     */
+    fun retryLoadModel() {
+        scope.launch(Dispatchers.IO) {
+            status = "Loading model..."
+            val result = EngineManager.ensureModelLoaded(context)
+            withContext(Dispatchers.Main) {
+                if (result is ModelStatus.Loaded) {
+                    status = "Model loaded successfully"
+                    Toast.makeText(context, "Model loaded (${result.sizeBytes / 1_048_576} MB)", Toast.LENGTH_SHORT).show()
+                } else if (result is ModelStatus.Error) {
+                    status = "Model load failed"
+                }
+            }
+            if (result is ModelStatus.Loaded) {
+                val store = FileStore(context)
+                if (store.getPendingFiles().isNotEmpty()) {
+                    IndexingWorker.enqueue(context, replace = true)
+                }
+            }
+        }
+    }
+
+    /**
      * Queries [EmbeddingStore] via [EngineManager] to count total chunks in the vector database.
      */
     suspend fun refreshIndexCount() {
@@ -199,14 +227,15 @@ fun MainScreen(
         refreshIndexCount()
     }
 
-    // Load persisted files on screen launch and automatically resume pending background indexing
+    // Load model and persisted files on startup, automatically resuming background indexing if ready
     LaunchedEffect(Unit) {
         withContext(Dispatchers.IO) {
+            EngineManager.ensureModelLoaded(context)
             val store = FileStore(context)
             importedFiles = store.getAll()
             // If the app was killed while indexing was in-flight, resume immediately via WorkManager
             if (store.getPendingFiles().isNotEmpty()) {
-                IndexingWorker.enqueue(context)
+                IndexingWorker.enqueue(context, replace = true)
             }
         }
         refreshIndexCount()
@@ -271,6 +300,11 @@ fun MainScreen(
     fun performSearch(queryText: String) {
         val trimmed = queryText.trim()
         if (trimmed.isBlank() || isSearching) return
+        if (modelStatus is ModelStatus.Error) {
+            searchError = "Search unavailable: Embedding model is not loaded."
+            hasSearched = true
+            return
+        }
         scope.launch {
             isSearching = true
             searchError = null
@@ -572,12 +606,14 @@ fun MainScreen(
                             val store = FileStore(context)
                             store.markAllPending()
                             importedFiles = store.getAll()
-                            IndexingWorker.enqueue(context)
+                            IndexingWorker.enqueue(context, replace = true)
                         }
                         isSettingsOpen = false
                     },
                     isIndexing = isIndexing,
                     fileCount = importedFiles.size,
+                    modelStatus = modelStatus,
+                    onRetryLoadModel = { retryLoadModel() },
                     onClose = { isSettingsOpen = false }
                 )
             }
@@ -597,7 +633,7 @@ fun MainScreen(
                     hasSearched = hasSearched,
                     searchResults = searchResults,
                     onResultClick = { result -> openSearchResult(result) },
-                    errorMessage = searchError,
+                    errorMessage = searchError ?: if (modelStatus is ModelStatus.Error) (modelStatus as ModelStatus.Error).message else null,
                     indexedChunksCount = indexedChunksCount,
                     onClose = { isSearchOpen = false }
                 )
@@ -614,6 +650,8 @@ fun MainScreen(
                         status
                     },
                     indexingProgress = indexingProgress,
+                    modelStatus = modelStatus,
+                    onRetryLoadModel = { retryLoadModel() },
                     onOpenSearch = { isSearchOpen = true },
                     onImportFiles = { pickerLauncher.launch(arrayOf("*/*")) },
                     onOpenSettings = { isSettingsOpen = true },
@@ -624,7 +662,7 @@ fun MainScreen(
                             val store = FileStore(context)
                             store.updateStatus(file.uri, IndexingStatus.PENDING)
                             importedFiles = store.getAll()
-                            IndexingWorker.enqueue(context)
+                            IndexingWorker.enqueue(context, replace = true)
                         }
                     }
                 )
