@@ -32,7 +32,8 @@ The text query uses the same model, so a text query can match an image, an audio
 | Vector search | `SqliteVectorStore` cosine top-K search |
 | PDF text | PdfBox-Android |
 | PDF viewing | Android `PdfRenderer` |
-| Audio / video decode + playback | Media3 (ExoPlayer, `MediaExtractor`/`MediaCodec`, `MediaMetadataRetriever`) |
+| Image / thumbnails | Coil (`AsyncImage`), `ImageDecoder` / `BitmapFactory`, `ExifInterface` (orientation) |
+| Audio / video | Media3 (ExoPlayer, Transformer, UI `PlayerView`), `MediaMetadataRetriever`, `MediaExtractor` / `MediaCodec` / `MediaMuxer` (fMP4 remuxing) |
 | Concurrency | Kotlin coroutines |
 
 ## 3. Model Delivery
@@ -58,9 +59,10 @@ Each file is split into **chunks**. Each chunk has one embedding and one **locat
 | PDF | Text of one page (long pages are split) | Page number |
 | Image | Whole image | - |
 | Audio | Fixed time window (e.g. 10 s) | Start time (ms) |
-| Video | One frame every N seconds **and** audio windows | Start time (ms) |
+| Video | Sliding window (sampled frames + 16 kHz audio) | Start time (ms) |
 
 - Window sizes and frame intervals are starting values. They will be tuned later.
+- Video indexing uses sliding time windows with interleaved frames and 16 kHz audio, plus fMP4 normalization via `MediaMuxer` for seekability.
 - Indexing runs in a coroutine on a background dispatcher, so the UI stays responsive.
 - Progress is shown per file. Background indexing (WorkManager) is in the backlog.
 
@@ -92,8 +94,8 @@ Data is stored locally using MediaPipe's `SqliteVectorStore` (`RetrievalRecord`)
 | :--- | :--- |
 | Text | In-app text viewer, scrolled to the passage |
 | PDF | In-app `PdfRenderer` viewer at the page |
-| Image | In-app image viewer |
-| Audio / Video | In-app Media3 ExoPlayer, `seekTo(location)` |
+| Image | In-app image viewer (Coil) |
+| Audio / Video | In-app Media3 ExoPlayer (`PlayerView`), `seekTo(location)` |
 
 ## 9. Offline Guarantee
 
