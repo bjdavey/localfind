@@ -7,6 +7,9 @@ import com.google.mediapipe.tasks.retrieval.model.RetrievalRecord
 import com.localfind.data.EmbeddingStore
 import com.localfind.data.ImportedFile
 import com.localfind.embed.Embedder
+import com.tom_roush.pdfbox.android.PDFBoxResourceLoader
+import com.tom_roush.pdfbox.pdmodel.PDDocument
+import com.tom_roush.pdfbox.text.PDFTextStripper
 import java.io.BufferedReader
 import java.io.InputStreamReader
 
@@ -65,6 +68,24 @@ class Indexer(
                 mime == "text/plain" ||
                 mime == "text/markdown"
     }
+
+    /**
+     * Determines whether an imported file is a PDF document.
+     *
+     * Supported formats (PRD §2):
+     * - Extensions: .pdf
+     * - MIME types: application/pdf
+     */
+    fun isPdfFile(file: ImportedFile): Boolean {
+        val name = file.displayName.lowercase()
+        val mime = file.mimeType?.lowercase() ?: ""
+        return name.endsWith(".pdf") || mime == "application/pdf"
+    }
+
+    /**
+     * Determines whether an imported file is supported by the indexer.
+     */
+    fun isSupported(file: ImportedFile): Boolean = isTextFile(file) || isPdfFile(file)
 
     /**
      * Reads, chunks, embeds, and stores an imported text or Markdown file.
@@ -135,5 +156,103 @@ class Indexer(
         // Store all chunk records in one atomic SQLite transaction
         embeddingStore.storeBatch(records)
         return IndexResult(file.uri, records.size, true)
+    }
+
+    /**
+     * Reads, extracts text per page, chunks, embeds, and stores an imported PDF file.
+     *
+     * Execution flow (ARCHITECTURE.md §5):
+     * 1. Validates that the file is a PDF.
+     * 2. Initializes [PDFBoxResourceLoader] if not already initialized.
+     * 3. Opens the SAF input stream and loads the document via [PDDocument.load].
+     * 4. Iterates through all pages, extracting text using [PDFTextStripper].
+     * 5. Splits extracted text into passages via [PdfChunker.chunkPage], preserving 1-based page numbers.
+     * 6. Deletes any pre-existing chunks for this file from [EmbeddingStore].
+     * 7. Computes 768-dim embeddings for each chunk and persists them in SQLite with type="pdf"
+     *    and location set to the 1-based page number.
+     *
+     * @param file Metadata of the imported PDF to index.
+     * @return [IndexResult] indicating success/failure and chunk count.
+     */
+    fun indexPdfFile(file: ImportedFile): IndexResult {
+        if (!isPdfFile(file)) {
+            return IndexResult(file.uri, 0, false, "Not a supported PDF file")
+        }
+
+        // Initialize PDFBox resource loader if not already initialized
+        try {
+            if (!PDFBoxResourceLoader.isReady()) {
+                PDFBoxResourceLoader.init(context)
+            }
+        } catch (e: Exception) {
+            return IndexResult(file.uri, 0, false, "PDFBox initialization failed: ${e.message}")
+        }
+
+        val uri = file.uri.toUri()
+        val chunks = mutableListOf<PdfChunk>()
+        try {
+            val inputStream = context.contentResolver.openInputStream(uri)
+                ?: return IndexResult(file.uri, 0, false, "Could not open stream for URI")
+
+            inputStream.use { stream ->
+                PDDocument.load(stream).use { document ->
+                    val stripper = PDFTextStripper()
+                    val totalPages = document.numberOfPages
+                    for (pageNum in 1..totalPages) {
+                        stripper.startPage = pageNum
+                        stripper.endPage = pageNum
+                        val pageText = stripper.getText(document)
+                        val pageChunks = PdfChunker.chunkPage(pageText, pageNum)
+                        chunks.addAll(pageChunks)
+                    }
+                }
+            }
+        } catch (e: Exception) {
+            return IndexResult(file.uri, 0, false, "PDF extraction failed: ${e.message}")
+        }
+
+        // Delete existing chunks for this file before re-indexing
+        embeddingStore.deleteByMetadata(mapOf("fileId" to file.uri))
+
+        if (chunks.isEmpty()) {
+            // E.g. empty or scanned image-only PDF with no extractable text
+            return IndexResult(file.uri, 0, true)
+        }
+
+        val records = mutableListOf<RetrievalRecord>()
+        for ((index, chunk) in chunks.withIndex()) {
+            val chunkId = "${file.uri}_$index"
+            val embedding = embedder.embedText(chunk.text)
+            val metadata = mapOf(
+                "fileId" to file.uri,
+                "uri" to file.uri,
+                "name" to file.displayName,
+                "type" to "pdf",
+                "location" to chunk.pageNumber.toString()
+            )
+
+            records.add(
+                RetrievalRecord(
+                    chunkId,
+                    listOf(TextPart(chunk.text)),
+                    embedding,
+                    metadata
+                )
+            )
+        }
+
+        embeddingStore.storeBatch(records)
+        return IndexResult(file.uri, records.size, true)
+    }
+
+    /**
+     * Automatically dispatches indexing based on the file format (Text/Markdown or PDF).
+     */
+    fun indexFile(file: ImportedFile): IndexResult {
+        return when {
+            isPdfFile(file) -> indexPdfFile(file)
+            isTextFile(file) -> indexTextFile(file)
+            else -> IndexResult(file.uri, 0, false, "Unsupported file format")
+        }
     }
 }

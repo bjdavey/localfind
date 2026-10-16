@@ -14,7 +14,7 @@
 - [x] Index text and Markdown files
 - [x] Search: text query returns ranked results
 - [x] Results list UI
-- [ ] Index PDFs (text-based only, no OCR) and open at the matching page
+- [x] Index PDFs (text-based only, no OCR) and open at the matching page
 - [ ] Index images and open the matching image
 - [ ] Index audio and play from the matching time
 - [ ] Index video and play from the matching time

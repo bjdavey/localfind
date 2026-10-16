@@ -9,6 +9,7 @@ import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -55,6 +56,8 @@ import com.localfind.embed.Embedder
 import com.localfind.index.Indexer
 import com.localfind.search.SearchResult
 import com.localfind.search.Searcher
+import com.localfind.ui.PdfViewerParams
+import com.localfind.ui.PdfViewerScreen
 import com.localfind.ui.SearchScreen
 import com.localfind.ui.theme.LocalFindTheme
 import kotlinx.coroutines.Dispatchers
@@ -108,6 +111,7 @@ fun MainScreen() {
     var hasSearched by remember { mutableStateOf(false) }
     var searchResults by remember { mutableStateOf<List<SearchResult>>(emptyList()) }
     var searchError by remember { mutableStateOf<String?>(null) }
+    var activePdfViewer by remember { mutableStateOf<PdfViewerParams?>(null) }
 
     /**
      * Queries [EmbeddingStore] on IO dispatcher to count how many total chunks
@@ -152,10 +156,10 @@ fun MainScreen() {
                             var totalChunks = 0
 
                             for ((i, file) in filesToIndex.withIndex()) {
-                                if (indexer.isTextFile(file)) {
+                                if (indexer.isSupported(file)) {
                                     // Update status to show current file being processed
                                     status = "Indexing ${i + 1}/${filesToIndex.size}: ${file.displayName}..."
-                                    val result = indexer.indexTextFile(file)
+                                    val result = indexer.indexFile(file)
                                     if (result.isSuccess) {
                                         indexedFiles++
                                         totalChunks += result.chunksCount
@@ -208,20 +212,37 @@ fun MainScreen() {
     }
 
     /**
-     * Opens the matched document using standard Android [Intent.ACTION_VIEW].
-     * Forwards read permission via [Intent.FLAG_GRANT_READ_URI_PERMISSION].
+     * Opens the matched document.
+     *
+     * In accordance with PRD §2 & ARCHITECTURE.md §8:
+     * - PDF results open directly in the in-app [PdfViewerScreen] at the matching page.
+     * - Text/markdown results open in external system viewer via [Intent.ACTION_VIEW].
      */
     fun openSearchResult(result: SearchResult) {
+        if (result.fileUri.isBlank()) {
+            Toast.makeText(context, "No file URI associated with result", Toast.LENGTH_SHORT).show()
+            return
+        }
+
+        val isPdf = result.fileType.equals("pdf", ignoreCase = true) ||
+                result.fileName.endsWith(".pdf", ignoreCase = true)
+
+        if (isPdf) {
+            // Open in-app PDF viewer at the matching page (1-based location)
+            val targetPage = result.location.toInt().coerceAtLeast(1)
+            activePdfViewer = PdfViewerParams(
+                uri = result.fileUri,
+                fileName = result.fileName,
+                initialPage = targetPage
+            )
+            return
+        }
+
         try {
-            if (result.fileUri.isBlank()) {
-                Toast.makeText(context, "No file URI associated with result", Toast.LENGTH_SHORT).show()
-                return
-            }
             val uri = Uri.parse(result.fileUri)
             val mimeType = when {
                 result.fileName.endsWith(".md", ignoreCase = true) -> "text/markdown"
                 result.fileName.endsWith(".txt", ignoreCase = true) -> "text/plain"
-                result.fileName.endsWith(".pdf", ignoreCase = true) -> "application/pdf"
                 else -> "text/plain"
             }
             val intent = Intent(Intent.ACTION_VIEW).apply {
@@ -268,8 +289,14 @@ fun MainScreen() {
         }
     }
 
-    Scaffold(
-        modifier = Modifier.fillMaxSize(),
+    if (activePdfViewer != null) {
+        PdfViewerScreen(
+            params = activePdfViewer!!,
+            onClose = { activePdfViewer = null }
+        )
+    } else {
+        Scaffold(
+            modifier = Modifier.fillMaxSize(),
         topBar = {
             Column {
                 TopAppBar(
@@ -396,8 +423,22 @@ fun MainScreen() {
                         verticalArrangement = Arrangement.spacedBy(8.dp)
                     ) {
                         items(importedFiles, key = { it.uri }) { file ->
+                            val isPdf = file.displayName.endsWith(".pdf", ignoreCase = true) ||
+                                    file.mimeType?.equals("application/pdf", ignoreCase = true) == true
                             Card(
-                                modifier = Modifier.fillMaxWidth(),
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .then(
+                                        if (isPdf) {
+                                            Modifier.clickable {
+                                                activePdfViewer = PdfViewerParams(
+                                                    uri = file.uri,
+                                                    fileName = file.displayName,
+                                                    initialPage = 1
+                                                )
+                                            }
+                                        } else Modifier
+                                    ),
                                 colors = CardDefaults.cardColors(
                                     containerColor = MaterialTheme.colorScheme.surfaceVariant
                                 )
@@ -422,6 +463,7 @@ fun MainScreen() {
             }
         }
     }
+}
 }
 
 @Preview(showBackground = true)
