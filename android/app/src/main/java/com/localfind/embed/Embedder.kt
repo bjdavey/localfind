@@ -10,6 +10,7 @@ import com.google.mediapipe.tasks.core.BaseOptions
 import com.google.mediapipe.tasks.core.Part
 import com.google.mediapipe.tasks.retrieval.universalembedder.UniversalEmbedder
 import com.google.mediapipe.tasks.retrieval.universalembedder.UniversalEmbedderOptions
+import com.localfind.data.Accelerator
 import java.io.File
 
 /**
@@ -41,10 +42,14 @@ const val DEFAULT_VISION_TOKENS_PER_IMAGE = 70
  * 2. Configuring L2 normalization so that cosine similarity can be computed via dot product.
  * 3. Setting the 70-token vision budget for fast image encoding.
  * 4. Producing 768-dimensional float embeddings for input text strings, passages, and images.
+ * 5. Configuring hardware acceleration (CPU, GPU, NPU) depending on device support.
  *
  * Implements [AutoCloseable] to ensure underlying native C++ LiteRT resources are promptly freed.
  */
-class Embedder(context: Context) : AutoCloseable {
+class Embedder(
+    context: Context,
+    val accelerator: Accelerator = Accelerator.CPU
+) : AutoCloseable {
     private val embedder: UniversalEmbedder
 
     init {
@@ -57,19 +62,27 @@ class Embedder(context: Context) : AutoCloseable {
                     "adb push .local/models/$MODEL_FILE_NAME /data/local/tmp/"
         }
 
+        val delegate = accelerator.toMediaPipeDelegate()
+
         val baseOptions = BaseOptions.builder()
             .setModelAssetPath(model.absolutePath)
+            .setDelegate(delegate)
             .build()
 
         // Set L2 normalization to true so vectors have unit length (norm = 1.0),
         // and set visionTokensPerImage to 70 for fast vision encoding.
-        val options = UniversalEmbedderOptions.builder()
+        // BaseOptions configures the global accelerator (CPU, GPU, NPU) for text and vision subgraphs,
+        // while the audio spectrogram frontend executes on CPU where DSP operators are natively implemented.
+        val optionsBuilder = UniversalEmbedderOptions.builder()
             .setBaseOptions(baseOptions)
             .setL2Normalize(true)
             .setVisionTokensPerImage(DEFAULT_VISION_TOKENS_PER_IMAGE)
-            .build()
 
-        embedder = UniversalEmbedder.createFromOptions(context, options)
+        if (accelerator == Accelerator.GPU || accelerator == Accelerator.NPU) {
+            optionsBuilder.setAudioDelegate(com.google.mediapipe.tasks.core.Delegate.CPU)
+        }
+
+        embedder = UniversalEmbedder.createFromOptions(context, optionsBuilder.build())
     }
 
     /**
@@ -188,6 +201,43 @@ class Embedder(context: Context) : AutoCloseable {
             }
 
             return target
+        }
+
+        /**
+         * Probes device hardware acceleration support by verifying which accelerators
+         * can safely execute the on-device embedding model.
+         *
+         * Model architecture notes:
+         * - EmbeddingGemma 2 740M multimodal contains interleaved audio and vision subgraphs.
+         * - LiteRT LM requires CPU (XNNPack) for ops that cannot be accelerated on NPU.
+         * - Current mobile GPU drivers (e.g. Qualcomm Adreno Vulkan) crash during WebGPU shader
+         *   compilation for these multimodal subgraphs, so GPU is safely marked unsupported.
+         * - CPU is the universal, fully-accelerated execution engine via XNNPack.
+         *
+         * @return Set of [Accelerator]s verified to work on this device.
+         */
+        fun probeSupportedAccelerators(context: Context): Set<Accelerator> {
+            val supported = mutableSetOf(Accelerator.CPU)
+
+            // Probe NPU: attempts initialization and catches unsupported op exceptions
+            try {
+                Embedder(context, Accelerator.NPU).use {
+                    supported.add(Accelerator.NPU)
+                    Log.i(TAG, "NPU acceleration is verified supported on this device.")
+                }
+            } catch (e: Throwable) {
+                Log.d(TAG, "NPU acceleration is not supported on this device: ${e.message}")
+            }
+
+            // Note on GPU: LiteRT / MediaPipe's GPU delegate for multimodal EmbeddingGemma
+            // compiles WebGPU/Vulkan compute shaders at runtime. On mobile Vulkan drivers
+            // (e.g. Qualcomm Snapdragon 8 Gen 3 Adreno 750), vkCreateComputePipelines encounters
+            // a native null-pointer dereference inside libllvm-qgl.so (CreateQGLCProgram), which raises
+            // an uncatchable SIGSEGV signal. On Android Emulator, GFXStream hangs during shader compile.
+            // Therefore, GPU acceleration is safely excluded from runtime probing.
+            Log.d(TAG, "GPU acceleration excluded from probing due to known Vulkan compute driver incompatibility.")
+
+            return supported
         }
     }
 }

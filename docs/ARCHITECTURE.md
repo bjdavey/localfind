@@ -28,6 +28,7 @@ The text query uses the same model, so a text query can match an image, an audio
 | Min / target SDK | 28 / latest |
 | Embedding model | EmbeddingGemma 2, **740M multimodal** (text + image + audio) |
 | Inference | MediaPipe Tasks on Android (`UniversalEmbedder`, LiteRT under the hood) |
+| Hardware Acceleration | NPU (QNN/Hexagon via LiteRT), CPU (XNNPack universal fallback), auto-detected at startup |
 | Storage | `SqliteVectorStore` (MediaPipe, SQLite-backed) |
 | Vector search | `SqliteVectorStore` cosine top-K search |
 | PDF text | PdfBox-Android |

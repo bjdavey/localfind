@@ -39,6 +39,7 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.work.WorkInfo
 import androidx.work.WorkManager
+import com.localfind.data.Accelerator
 import com.localfind.data.AppSettings
 import com.localfind.data.EngineManager
 import com.localfind.data.FileImporter
@@ -105,6 +106,15 @@ class MainActivity : ComponentActivity() {
                 }
             }
 
+            val activeAccelerator by EngineManager.activeAccelerator.collectAsState()
+
+            // Sync current settings with auto-detected accelerator on first launch
+            LaunchedEffect(activeAccelerator) {
+                if (currentSettings.accelerator != activeAccelerator) {
+                    currentSettings = currentSettings.copy(accelerator = activeAccelerator)
+                }
+            }
+
             LocalFindTheme(darkTheme = currentSettings.darkMode) {
                 MainScreen(
                     settings = currentSettings,
@@ -142,6 +152,8 @@ fun MainScreen(
 
     // Observable on-device multimodal model lifecycle status
     val modelStatus by EngineManager.modelStatus.collectAsState()
+    val activeAccelerator by EngineManager.activeAccelerator.collectAsState()
+    val supportedAccelerators by EngineManager.supportedAccelerators.collectAsState()
 
     // Observable background indexing state from WorkManager
     val indexingProgress by IndexingProgressState.progress.collectAsState()
@@ -621,8 +633,25 @@ fun MainScreen(
             ActiveScreen.SETTINGS -> {
                 SettingsScreen(
                     settings = settings,
-                    onSettingsChange = onSettingsChange,
-                    onResetDefaults = onResetDefaults,
+                    onSettingsChange = { updated ->
+                        if (updated.accelerator != settings.accelerator) {
+                            scope.launch(Dispatchers.IO) {
+                                EngineManager.setAccelerator(context, updated.accelerator)
+                            }
+                        }
+                        onSettingsChange(updated)
+                    },
+                    onResetDefaults = {
+                        onResetDefaults()
+                        scope.launch(Dispatchers.IO) {
+                            val defaultAcc = when {
+                                Accelerator.NPU in supportedAccelerators -> Accelerator.NPU
+                                Accelerator.GPU in supportedAccelerators -> Accelerator.GPU
+                                else -> Accelerator.CPU
+                            }
+                            EngineManager.setAccelerator(context, defaultAcc)
+                        }
+                    },
                     onReindexAll = {
                         scope.launch(Dispatchers.IO) {
                             val store = FileStore(context)
@@ -635,6 +664,8 @@ fun MainScreen(
                     isIndexing = isIndexing,
                     fileCount = importedFiles.size,
                     modelStatus = modelStatus,
+                    supportedAccelerators = supportedAccelerators,
+                    activeAccelerator = activeAccelerator,
                     onRetryLoadModel = { retryLoadModel() },
                     onClose = { isSettingsOpen = false }
                 )

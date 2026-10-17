@@ -6,6 +6,41 @@ import android.content.SharedPreferences
 /** Default dark mode state (false = light mode, true = dark mode). */
 const val DEFAULT_DARK_MODE = false
 
+/**
+ * Hardware accelerator options for running on-device multimodal embeddings.
+ *
+ * LocalFind runs 100% offline. Depending on device chipset and GPU/NPU drivers,
+ * inference can execute on CPU (universal), GPU (OpenCL/Vulkan), or NPU (Neural Processing Unit).
+ */
+enum class Accelerator(val label: String, val description: String) {
+    CPU(
+        label = "CPU",
+        description = "Universal compatibility across all Android devices and emulators."
+    ),
+    GPU(
+        label = "GPU",
+        description = "Hardware acceleration via OpenCL/Vulkan for faster indexing."
+    ),
+    NPU(
+        label = "NPU",
+        description = "Neural processing unit hardware acceleration for supported SoCs."
+    );
+
+    fun toMediaPipeDelegate(): com.google.mediapipe.tasks.core.Delegate = when (this) {
+        CPU -> com.google.mediapipe.tasks.core.Delegate.CPU
+        GPU -> com.google.mediapipe.tasks.core.Delegate.GPU
+        NPU -> com.google.mediapipe.tasks.core.Delegate.NPU
+    }
+
+    companion object {
+        fun fromString(value: String?): Accelerator =
+            entries.firstOrNull { it.name.equals(value, ignoreCase = true) } ?: CPU
+    }
+}
+
+/** Default hardware accelerator. */
+val DEFAULT_ACCELERATOR = Accelerator.CPU
+
 /** Default minimum cosine similarity score required for search results (user-requested default: 0.6). */
 const val DEFAULT_SIMILARITY_THRESHOLD = 0.6f
 
@@ -36,6 +71,7 @@ const val DEFAULT_MAX_IMAGE_DIMENSION = 512
  * All settings run 100% offline on-device and are persisted via Android [SharedPreferences].
  *
  * @property darkMode Whether dark theme is enabled across the application.
+ * @property accelerator Hardware accelerator used for on-device inference (CPU, GPU, NPU).
  * @property similarityThreshold Minimum cosine similarity cutoff score (0.0 .. 1.0). Matches below
  *                               this threshold are filtered out from search results.
  * @property topK Maximum number of nearest-neighbor results retrieved per search query.
@@ -48,6 +84,7 @@ const val DEFAULT_MAX_IMAGE_DIMENSION = 512
  */
 data class AppSettings(
     val darkMode: Boolean = DEFAULT_DARK_MODE,
+    val accelerator: Accelerator = DEFAULT_ACCELERATOR,
     val similarityThreshold: Float = DEFAULT_SIMILARITY_THRESHOLD,
     val topK: Int = DEFAULT_TOP_K,
     val textChunkSize: Int = DEFAULT_TEXT_CHUNK_SIZE,
@@ -64,6 +101,7 @@ data class AppSettings(
         val safeTextChunkSize = textChunkSize.coerceIn(100, 5000)
         return copy(
             darkMode = darkMode,
+            accelerator = accelerator,
             similarityThreshold = similarityThreshold.coerceIn(0.0f, 1.0f),
             topK = topK.coerceIn(1, 100),
             textChunkSize = safeTextChunkSize,
@@ -94,20 +132,62 @@ class SettingsStore(private val prefs: SharedPreferences) {
     fun hasCustomTheme(): Boolean = prefs.contains(KEY_DARK_MODE)
 
     /**
+     * Checks if an accelerator choice has already been explicitly selected or auto-detected and persisted.
+     */
+    fun hasCustomAccelerator(): Boolean = prefs.contains(KEY_ACCELERATOR)
+
+    /**
+     * Returns the set of hardware accelerators verified to be supported by this device.
+     * Defaults to CPU if not yet probed.
+     */
+    fun getSupportedAccelerators(): Set<Accelerator> {
+        val rawSet = prefs.getStringSet(KEY_SUPPORTED_ACCELERATORS, null)
+        if (rawSet.isNullOrEmpty()) {
+            return setOf(Accelerator.CPU)
+        }
+        val set = rawSet.mapNotNull { name ->
+            try {
+                Accelerator.valueOf(name)
+            } catch (_: Exception) {
+                null
+            }
+        }.toSet()
+        return if (set.isEmpty()) setOf(Accelerator.CPU) else set
+    }
+
+    /**
+     * Persists the set of verified supported hardware accelerators for this device.
+     */
+    fun saveSupportedAccelerators(supported: Set<Accelerator>) {
+        val names = supported.map { it.name }.toSet()
+        prefs.edit().putStringSet(KEY_SUPPORTED_ACCELERATORS, names).apply()
+    }
+
+    /**
      * Loads the current persisted settings, applying defaults for any unset keys and
      * validating bounds via [AppSettings.sanitized].
      *
      * @param defaultDarkMode Fallback dark mode value when not explicitly set by user. Defaults
      *                        to the host device's system dark mode setting.
+     * @param defaultAccelerator Fallback accelerator when not explicitly set by user or probed.
      */
-    fun load(defaultDarkMode: Boolean = false): AppSettings {
+    fun load(
+        defaultDarkMode: Boolean = false,
+        defaultAccelerator: Accelerator = Accelerator.CPU
+    ): AppSettings {
         val isDarkMode = if (prefs.contains(KEY_DARK_MODE)) {
             prefs.getBoolean(KEY_DARK_MODE, defaultDarkMode)
         } else {
             defaultDarkMode
         }
+        val accelerator = if (prefs.contains(KEY_ACCELERATOR)) {
+            Accelerator.fromString(prefs.getString(KEY_ACCELERATOR, null))
+        } else {
+            defaultAccelerator
+        }
         return AppSettings(
             darkMode = isDarkMode,
+            accelerator = accelerator,
             similarityThreshold = prefs.getFloat(KEY_SIMILARITY_THRESHOLD, DEFAULT_SIMILARITY_THRESHOLD),
             topK = prefs.getInt(KEY_TOP_K, DEFAULT_TOP_K),
             textChunkSize = prefs.getInt(KEY_TEXT_CHUNK_SIZE, DEFAULT_TEXT_CHUNK_SIZE),
@@ -126,6 +206,7 @@ class SettingsStore(private val prefs: SharedPreferences) {
         val valid = settings.sanitized()
         prefs.edit()
             .putBoolean(KEY_DARK_MODE, valid.darkMode)
+            .putString(KEY_ACCELERATOR, valid.accelerator.name)
             .putFloat(KEY_SIMILARITY_THRESHOLD, valid.similarityThreshold)
             .putInt(KEY_TOP_K, valid.topK)
             .putInt(KEY_TEXT_CHUNK_SIZE, valid.textChunkSize)
@@ -138,19 +219,29 @@ class SettingsStore(private val prefs: SharedPreferences) {
     }
 
     /**
-     * Clears all persisted settings and resets to system default values.
+     * Clears all persisted user settings and resets to default values.
+     * Preserves device hardware capability cache ([KEY_SUPPORTED_ACCELERATORS]) so device
+     * capability does not need to be re-probed.
      *
      * @param defaultDarkMode Default dark mode to apply, usually following the phone's system theme.
+     * @param defaultAccelerator Default accelerator to apply (best supported accelerator).
      * @return Fresh instance of [AppSettings] initialized with defaults.
      */
-    fun reset(defaultDarkMode: Boolean = false): AppSettings {
+    fun reset(
+        defaultDarkMode: Boolean = false,
+        defaultAccelerator: Accelerator = Accelerator.CPU
+    ): AppSettings {
+        val supported = getSupportedAccelerators()
         prefs.edit().clear().apply()
-        return load(defaultDarkMode)
+        saveSupportedAccelerators(supported)
+        return load(defaultDarkMode, defaultAccelerator)
     }
 
     companion object {
         const val PREFS_NAME = "localfind_settings"
         const val KEY_DARK_MODE = "dark_mode"
+        const val KEY_ACCELERATOR = "accelerator"
+        const val KEY_SUPPORTED_ACCELERATORS = "supported_accelerators"
         const val KEY_SIMILARITY_THRESHOLD = "similarity_threshold"
         const val KEY_TOP_K = "top_k"
         const val KEY_TEXT_CHUNK_SIZE = "text_chunk_size"

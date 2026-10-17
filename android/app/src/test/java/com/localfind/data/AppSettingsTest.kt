@@ -17,6 +17,7 @@ class AppSettingsTest {
         val settings = AppSettings()
 
         assertEquals(false, settings.darkMode)
+        assertEquals(Accelerator.CPU, settings.accelerator)
         // User explicitly requested Similarity Threshold default 0.6
         assertEquals(0.6f, settings.similarityThreshold, 0.0001f)
         assertEquals(10, settings.topK)
@@ -26,6 +27,23 @@ class AppSettingsTest {
         assertEquals(5, settings.videoWindowSeconds)
         assertEquals(2, settings.videoFramesPerWindow)
         assertEquals(512, settings.maxImageDimension)
+    }
+
+    @Test
+    fun accelerator_enumPropertiesAndMapping() {
+        assertEquals("CPU", Accelerator.CPU.label)
+        assertEquals("GPU", Accelerator.GPU.label)
+        assertEquals("NPU", Accelerator.NPU.label)
+
+        assertEquals(com.google.mediapipe.tasks.core.Delegate.CPU, Accelerator.CPU.toMediaPipeDelegate())
+        assertEquals(com.google.mediapipe.tasks.core.Delegate.GPU, Accelerator.GPU.toMediaPipeDelegate())
+        assertEquals(com.google.mediapipe.tasks.core.Delegate.NPU, Accelerator.NPU.toMediaPipeDelegate())
+
+        assertEquals(Accelerator.CPU, Accelerator.fromString("cpu"))
+        assertEquals(Accelerator.GPU, Accelerator.fromString("GPU"))
+        assertEquals(Accelerator.NPU, Accelerator.fromString("nPu"))
+        assertEquals(Accelerator.CPU, Accelerator.fromString("invalid_value"))
+        assertEquals(Accelerator.CPU, Accelerator.fromString(null))
     }
 
     @Test
@@ -128,6 +146,32 @@ class AppSettingsTest {
         val resetSettings = store.reset(defaultDarkMode = true)
         assertEquals(false, store.hasCustomTheme())
         assertEquals(true, resetSettings.darkMode)
+    }
+
+    @Test
+    fun settingsStore_acceleratorPersistenceAndDetection() {
+        val fakePrefs = FakeSharedPreferences()
+        val store = SettingsStore(fakePrefs)
+
+        // 1. Initial state has no custom accelerator and defaults supported to CPU
+        assertEquals(false, store.hasCustomAccelerator())
+        assertEquals(setOf(Accelerator.CPU), store.getSupportedAccelerators())
+        assertEquals(Accelerator.CPU, store.load().accelerator)
+
+        // 2. Save supported accelerators discovered on device
+        val deviceSupported = setOf(Accelerator.CPU, Accelerator.GPU)
+        store.saveSupportedAccelerators(deviceSupported)
+        assertEquals(deviceSupported, store.getSupportedAccelerators())
+
+        // 3. Save custom accelerator preference
+        store.save(store.load().copy(accelerator = Accelerator.GPU))
+        assertEquals(true, store.hasCustomAccelerator())
+        assertEquals(Accelerator.GPU, store.load().accelerator)
+
+        // 4. Resetting user preferences resets accelerator to default while preserving supported hardware set
+        val reset = store.reset(defaultAccelerator = Accelerator.CPU)
+        assertEquals(Accelerator.CPU, reset.accelerator)
+        assertEquals(deviceSupported, store.getSupportedAccelerators())
     }
 
     /**

@@ -61,13 +61,22 @@ object EngineManager {
     private val _modelStatus = MutableStateFlow<ModelStatus>(ModelStatus.Loading)
     val modelStatus: StateFlow<ModelStatus> = _modelStatus.asStateFlow()
 
+    private val _activeAccelerator = MutableStateFlow<Accelerator>(Accelerator.CPU)
+    val activeAccelerator: StateFlow<Accelerator> = _activeAccelerator.asStateFlow()
+
+    private val _supportedAccelerators = MutableStateFlow<Set<Accelerator>>(setOf(Accelerator.CPU))
+    val supportedAccelerators: StateFlow<Set<Accelerator>> = _supportedAccelerators.asStateFlow()
+
     /**
      * Verifies that the model is loaded in internal storage and initializes [Embedder].
      *
-     * If missing, checks emulator development fallback paths (such as `/data/local/tmp`)
-     * and automatically copies it to the app's internal storage directory.
+     * Startup and Acceleration Logic:
+     * 1. On first startup, automatically probes device support (NPU -> GPU -> CPU) and selects
+     *    the best supported hardware accelerator without interrupting or notifying the user.
+     * 2. On subsequent startups, uses the saved user preference.
+     * 3. If an accelerator fails to initialize on the device, silently falls back to CPU.
      *
-     * Emits state to [modelStatus] for live UI observation.
+     * Emits state to [modelStatus], [activeAccelerator], and [supportedAccelerators] for live UI observation.
      */
     suspend fun ensureModelLoaded(context: Context): ModelStatus = withContext(Dispatchers.IO) {
         _modelStatus.value = ModelStatus.Loading
@@ -89,9 +98,50 @@ object EngineManager {
 
         try {
             engineMutex.withLock {
-                if (embedder == null) {
-                    Log.i(TAG, "Initializing Embedder with ${modelFile.absolutePath} (${modelFile.length()} bytes)...")
-                    embedder = Embedder(context.applicationContext)
+                val settingsStore = SettingsStore(context)
+                var supported = settingsStore.getSupportedAccelerators()
+
+                // On first launch (when accelerator has not yet been chosen or probed)
+                if (!settingsStore.hasCustomAccelerator()) {
+                    Log.i(TAG, "First launch detected: probing hardware accelerators (NPU, GPU, CPU)...")
+                    supported = Embedder.probeSupportedAccelerators(context)
+                    settingsStore.saveSupportedAccelerators(supported)
+
+                    // Auto-select best supported choice: NPU > GPU > CPU
+                    val bestChoice = when {
+                        Accelerator.NPU in supported -> Accelerator.NPU
+                        Accelerator.GPU in supported -> Accelerator.GPU
+                        else -> Accelerator.CPU
+                    }
+                    settingsStore.save(settingsStore.load().copy(accelerator = bestChoice))
+                    Log.i(TAG, "Auto-selected default accelerator: $bestChoice (Device supports: $supported)")
+                }
+
+                _supportedAccelerators.value = supported
+
+                val rawAccelerator = settingsStore.load().accelerator
+                // Guard: only attempt loading accelerators verified supported on this device
+                val targetAccelerator = if (rawAccelerator in supported) rawAccelerator else Accelerator.CPU
+                if (targetAccelerator != rawAccelerator) {
+                    settingsStore.save(settingsStore.load().copy(accelerator = targetAccelerator))
+                }
+
+                if (embedder == null || embedder?.accelerator != targetAccelerator) {
+                    try {
+                        Log.i(TAG, "Initializing Embedder on $targetAccelerator with ${modelFile.absolutePath}...")
+                        val newEmb = Embedder(context.applicationContext, targetAccelerator)
+                        embedder?.close()
+                        embedder = newEmb
+                        _activeAccelerator.value = targetAccelerator
+                    } catch (e: Exception) {
+                        Log.w(TAG, "Failed to load on $targetAccelerator. Silently falling back to CPU.", e)
+                        // Silent fallback to CPU
+                        val fallbackEmb = Embedder(context.applicationContext, Accelerator.CPU)
+                        embedder?.close()
+                        embedder = fallbackEmb
+                        _activeAccelerator.value = Accelerator.CPU
+                        settingsStore.save(settingsStore.load().copy(accelerator = Accelerator.CPU))
+                    }
                 }
             }
             val loaded = ModelStatus.Loaded(modelFile.absolutePath, modelFile.length())
@@ -106,6 +156,41 @@ object EngineManager {
             )
             _modelStatus.value = err
             err
+        }
+    }
+
+    /**
+     * Changes the hardware accelerator used for embeddings.
+     * Safely closes previous embedder instance and loads with new accelerator under mutex lock.
+     * If the requested accelerator fails on the device, silently reverts to CPU.
+     */
+    suspend fun setAccelerator(context: Context, newAccelerator: Accelerator) = withContext(Dispatchers.IO) {
+        engineMutex.withLock {
+            if (newAccelerator !in _supportedAccelerators.value) {
+                Log.w(TAG, "Requested accelerator $newAccelerator is not supported on this device. Ignoring switch.")
+                return@withLock
+            }
+            if (embedder?.accelerator == newAccelerator) return@withLock
+            val settingsStore = SettingsStore(context)
+            try {
+                Log.i(TAG, "Switching accelerator to $newAccelerator...")
+                val newEmb = Embedder(context.applicationContext, newAccelerator)
+                embedder?.close()
+                embedder = newEmb
+                _activeAccelerator.value = newAccelerator
+                settingsStore.save(settingsStore.load().copy(accelerator = newAccelerator))
+                Log.i(TAG, "Successfully switched accelerator to $newAccelerator.")
+            } catch (e: Exception) {
+                Log.w(TAG, "Requested accelerator $newAccelerator failed. Silently reverting to CPU.", e)
+                if (embedder == null || embedder?.accelerator != Accelerator.CPU) {
+                    try {
+                        embedder?.close()
+                        embedder = Embedder(context.applicationContext, Accelerator.CPU)
+                    } catch (_: Exception) {}
+                }
+                _activeAccelerator.value = Accelerator.CPU
+                settingsStore.save(settingsStore.load().copy(accelerator = Accelerator.CPU))
+            }
         }
     }
 
@@ -125,16 +210,30 @@ object EngineManager {
     fun getEmbedder(context: Context): Embedder {
         return embedder ?: synchronized(this) {
             embedder ?: try {
-                Embedder(context.applicationContext).also {
+                val targetAcc = SettingsStore(context).load().accelerator
+                Embedder(context.applicationContext, targetAcc).also {
                     embedder = it
+                    _activeAccelerator.value = targetAcc
                     val f = File(context.filesDir, MODEL_FILE_NAME)
                     if (f.exists()) {
                         _modelStatus.value = ModelStatus.Loaded(f.absolutePath, f.length())
                     }
                 }
             } catch (e: Exception) {
-                _modelStatus.value = ModelStatus.Error(e.message ?: "Failed to initialize Embedder")
-                throw e
+                // If requested accelerator fails, silently fall back to CPU
+                try {
+                    Embedder(context.applicationContext, Accelerator.CPU).also {
+                        embedder = it
+                        _activeAccelerator.value = Accelerator.CPU
+                        val f = File(context.filesDir, MODEL_FILE_NAME)
+                        if (f.exists()) {
+                            _modelStatus.value = ModelStatus.Loaded(f.absolutePath, f.length())
+                        }
+                    }
+                } catch (fallbackEx: Exception) {
+                    _modelStatus.value = ModelStatus.Error(e.message ?: "Failed to initialize Embedder")
+                    throw e
+                }
             }
         }
     }
@@ -206,6 +305,7 @@ object EngineManager {
         }
         embedder = null
         _modelStatus.value = ModelStatus.Loading
+        _activeAccelerator.value = Accelerator.CPU
 
         try {
             store?.close()

@@ -12,18 +12,21 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
+import androidx.compose.foundation.layout.width
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.RadioButton
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Slider
 import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
+import com.localfind.data.Accelerator
 import com.localfind.data.ModelStatus
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
@@ -41,8 +44,9 @@ import kotlin.math.roundToInt
 
 /**
  * Clean, categorized Settings Screen styled after modern Android gallery settings:
- * - Uppercase accent section headers (`APPEARANCE`, `SEARCH & RETRIEVAL`, `DOCUMENT INDEXING`, `MEDIA INDEXING`, `LIBRARY & INDEXING`, `PRIVACY`).
+ * - Uppercase accent section headers (`APPEARANCE`, `SEARCH & RETRIEVAL`, `DOCUMENTS & IMAGES`, `AUDIO & VIDEO`, `LIBRARY & REINDEXING`, `HARDWARE ACCELERATION`, `PRIVACY`).
  * - Two-line setting items with title, active value subtitle, descriptive caption, switch, button, and slider controls.
+ * - Hardware acceleration selector with disabled options for unsupported device hardware.
  * - Full reset-to-defaults confirmation modal.
  */
 @OptIn(ExperimentalMaterial3Api::class)
@@ -55,6 +59,8 @@ fun SettingsScreen(
     isIndexing: Boolean = false,
     fileCount: Int = 0,
     modelStatus: ModelStatus = ModelStatus.Loading,
+    supportedAccelerators: Set<Accelerator> = setOf(Accelerator.CPU),
+    activeAccelerator: Accelerator = settings.accelerator,
     onRetryLoadModel: () -> Unit = {},
     onClose: () -> Unit,
     modifier: Modifier = Modifier
@@ -320,7 +326,51 @@ fun SettingsScreen(
             SettingsSectionDivider()
 
             // =================================================================
-            // SECTION 5: PRIVACY & ARCHITECTURE INFO
+            // SECTION 5: HARDWARE ACCELERATION
+            // =================================================================
+            SettingsCategoryHeader("HARDWARE ACCELERATION")
+
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 20.dp, vertical = 6.dp),
+                verticalArrangement = Arrangement.spacedBy(4.dp)
+            ) {
+                Text(
+                    text = "Inference accelerator",
+                    style = MaterialTheme.typography.bodyLarge,
+                    color = MaterialTheme.colorScheme.onSurface
+                )
+                Text(
+                    text = "Select execution hardware for on-device multimodal embeddings. Unsupported hardware on this device is disabled.",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+                Spacer(modifier = Modifier.height(4.dp))
+
+                Accelerator.entries.forEach { acceleratorOption ->
+                    val isSupported = supportedAccelerators.contains(acceleratorOption)
+                    val isSelected = settings.accelerator == acceleratorOption
+                    val isRunning = activeAccelerator == acceleratorOption
+
+                    SettingAcceleratorOptionRow(
+                        accelerator = acceleratorOption,
+                        isSelected = isSelected,
+                        isSupported = isSupported,
+                        isRunning = isRunning,
+                        onClick = {
+                            if (isSupported && !isSelected) {
+                                onSettingsChange(settings.copy(accelerator = acceleratorOption))
+                            }
+                        }
+                    )
+                }
+            }
+
+            SettingsSectionDivider()
+
+            // =================================================================
+            // SECTION 6: PRIVACY & ARCHITECTURE INFO
             // =================================================================
             SettingsCategoryHeader("PRIVACY & OFFLINE ENGINE")
 
@@ -550,3 +600,65 @@ private fun SettingActionRow(
         }
     }
 }
+
+@Composable
+private fun SettingAcceleratorOptionRow(
+    accelerator: Accelerator,
+    isSelected: Boolean,
+    isSupported: Boolean,
+    isRunning: Boolean,
+    onClick: () -> Unit
+) {
+    val contentAlpha = if (isSupported) 1.0f else 0.38f
+    val titleColor = MaterialTheme.colorScheme.onSurface.copy(alpha = contentAlpha)
+    val subtitleColor = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = contentAlpha)
+
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clickable(enabled = isSupported, onClick = onClick)
+            .padding(vertical = 8.dp),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        RadioButton(
+            selected = isSelected,
+            onClick = if (isSupported) onClick else null,
+            enabled = isSupported
+        )
+        Spacer(modifier = Modifier.width(12.dp))
+        Column(modifier = Modifier.weight(1f)) {
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                Text(
+                    text = accelerator.label,
+                    style = MaterialTheme.typography.bodyLarge,
+                    fontWeight = if (isSelected) FontWeight.SemiBold else FontWeight.Normal,
+                    color = titleColor
+                )
+                if (isRunning && isSupported) {
+                    Text(
+                        text = "• Active",
+                        style = MaterialTheme.typography.labelSmall,
+                        color = MaterialTheme.colorScheme.primary,
+                        fontWeight = FontWeight.Bold
+                    )
+                }
+                if (!isSupported) {
+                    Text(
+                        text = "(Unsupported on this device)",
+                        style = MaterialTheme.typography.labelSmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.5f)
+                    )
+                }
+            }
+            Text(
+                text = accelerator.description,
+                style = MaterialTheme.typography.bodySmall,
+                color = subtitleColor
+            )
+        }
+    }
+}
+
