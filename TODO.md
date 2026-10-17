@@ -43,7 +43,7 @@
 ## Bugs / Issues
 - [x] Can not cancel stuck sync file
 - [x] Should not allow import files other than supported that has builtin viewer
-- [ ] Fix resume indexing after app closed, and keep indexing working in background while showing notification to prevent the app from being stopped when closed
+- [x] Fix resume indexing after app closed, and keep indexing working in background while showing notification to prevent the app from being stopped when closed
 - [ ] Allow import new file or search while indexing
 - [ ] Fix stuck indexing after canceled
 - [ ] Fix flicker when opening a file or a search result and not to scroll back to start when closing it
@@ -69,6 +69,7 @@
 - Recent searches history
 
 ### Indexing & Performance
+- Real NPU & GPU support: Dynamic SoC-specific NPU runtime & model delivery: detect device chipset (Qualcomm SM8650/SM8550, MediaTek, Google Tensor) and dynamically download only the matching pre-compiled model and vendor .so runtime split (like Google AI Edge Gallery)
 - Battery / thermal-friendly indexing (pause on low battery / charging-only option)
 - Pause, resume, and cancel indexing queue
 - Vector quantization (FP16 / INT8 embeddings)

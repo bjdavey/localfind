@@ -25,7 +25,6 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
@@ -186,12 +185,6 @@ fun MainScreen(
     var filePendingDeletion by remember { mutableStateOf<ImportedFile?>(null) }
     var isSettingsOpen by remember { mutableStateOf(false) }
 
-    DisposableEffect(Unit) {
-        onDispose {
-            EngineManager.close()
-        }
-    }
-
     /**
      * Retries loading the model and resumes background indexing if files are pending.
      */
@@ -244,8 +237,15 @@ fun MainScreen(
         withContext(Dispatchers.IO) {
             EngineManager.ensureModelLoaded(context)
             val store = FileStore(context)
+            // Revert any files left in INDEXING status from an interrupted session back to PENDING
+            val pending = store.getPendingFiles()
+            for (f in pending) {
+                if (f.indexingStatus == IndexingStatus.INDEXING) {
+                    store.updateStatus(f.uri, IndexingStatus.PENDING)
+                }
+            }
             importedFiles = store.getAll()
-            // If the app was killed while indexing was in-flight, resume immediately via WorkManager
+            // If the app was closed/killed while indexing was in-flight, resume immediately via WorkManager
             if (store.getPendingFiles().isNotEmpty()) {
                 IndexingWorker.enqueue(context, replace = true)
             }
