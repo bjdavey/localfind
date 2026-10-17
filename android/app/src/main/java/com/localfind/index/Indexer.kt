@@ -138,10 +138,14 @@ class Indexer(
      */
     fun indexTextFile(
         file: ImportedFile,
+        isCancelled: () -> Boolean = { false },
         onProgress: ((current: Int, total: Int) -> Unit)? = null
     ): IndexResult {
         if (!isTextFile(file)) {
             return IndexResult(file.uri, 0, false, "Not a supported text file")
+        }
+        if (isCancelled()) {
+            return IndexResult(file.uri, 0, false, "Indexing cancelled")
         }
 
         val uri = file.uri.toUri()
@@ -151,6 +155,10 @@ class Indexer(
             BufferedReader(InputStreamReader(inputStream, Charsets.UTF_8)).use { it.readText() }
         } catch (e: Exception) {
             return IndexResult(file.uri, 0, false, "Read failed: ${e.message}")
+        }
+
+        if (isCancelled()) {
+            return IndexResult(file.uri, 0, false, "Indexing cancelled")
         }
 
         val chunks = TextChunker.chunk(
@@ -170,6 +178,9 @@ class Indexer(
 
         val records = mutableListOf<RetrievalRecord>()
         for ((index, chunk) in chunks.withIndex()) {
+            if (isCancelled()) {
+                return IndexResult(file.uri, 0, false, "Indexing cancelled")
+            }
             onProgress?.invoke(index + 1, chunks.size)
             // Unique ID per chunk: "<fileUri>_<chunkIndex>"
             val chunkId = "${file.uri}_$index"
@@ -196,6 +207,10 @@ class Indexer(
             )
         }
 
+        if (isCancelled()) {
+            return IndexResult(file.uri, 0, false, "Indexing cancelled")
+        }
+
         // Store all chunk records in one atomic SQLite transaction
         embeddingStore.storeBatch(records)
         return IndexResult(file.uri, records.size, true)
@@ -220,10 +235,14 @@ class Indexer(
      */
     fun indexPdfFile(
         file: ImportedFile,
+        isCancelled: () -> Boolean = { false },
         onProgress: ((current: Int, total: Int) -> Unit)? = null
     ): IndexResult {
         if (!isPdfFile(file)) {
             return IndexResult(file.uri, 0, false, "Not a supported PDF file")
+        }
+        if (isCancelled()) {
+            return IndexResult(file.uri, 0, false, "Indexing cancelled")
         }
 
         // Initialize PDFBox resource loader if not already initialized
@@ -246,6 +265,9 @@ class Indexer(
                     val stripper = PDFTextStripper()
                     val totalPages = document.numberOfPages
                     for (pageNum in 1..totalPages) {
+                        if (isCancelled()) {
+                            return IndexResult(file.uri, 0, false, "Indexing cancelled")
+                        }
                         onProgress?.invoke(pageNum, totalPages.coerceAtLeast(1))
                         stripper.startPage = pageNum
                         stripper.endPage = pageNum
@@ -264,6 +286,10 @@ class Indexer(
             return IndexResult(file.uri, 0, false, "PDF extraction failed: ${e.message}")
         }
 
+        if (isCancelled()) {
+            return IndexResult(file.uri, 0, false, "Indexing cancelled")
+        }
+
         // Delete existing chunks for this file before re-indexing
         embeddingStore.deleteByMetadata(mapOf("fileId" to file.uri))
 
@@ -275,6 +301,9 @@ class Indexer(
 
         val records = mutableListOf<RetrievalRecord>()
         for ((index, chunk) in chunks.withIndex()) {
+            if (isCancelled()) {
+                return IndexResult(file.uri, 0, false, "Indexing cancelled")
+            }
             val chunkId = "${file.uri}_$index"
             val embedding = embedder.embedText(chunk.text)
             val metadata = mapOf(
@@ -293,6 +322,10 @@ class Indexer(
                     metadata
                 )
             )
+        }
+
+        if (isCancelled()) {
+            return IndexResult(file.uri, 0, false, "Indexing cancelled")
         }
 
         embeddingStore.storeBatch(records)
@@ -316,10 +349,14 @@ class Indexer(
      */
     fun indexImageFile(
         file: ImportedFile,
+        isCancelled: () -> Boolean = { false },
         onProgress: ((current: Int, total: Int) -> Unit)? = null
     ): IndexResult {
         if (!isImageFile(file)) {
             return IndexResult(file.uri, 0, false, "Not a supported image file")
+        }
+        if (isCancelled()) {
+            return IndexResult(file.uri, 0, false, "Indexing cancelled")
         }
 
         val uri = file.uri.toUri()
@@ -330,6 +367,11 @@ class Indexer(
             return IndexResult(file.uri, 0, false, "Image decode failed: ${e.message}")
         }
 
+        if (isCancelled()) {
+            bitmap.recycle()
+            return IndexResult(file.uri, 0, false, "Indexing cancelled")
+        }
+
         onProgress?.invoke(1, 1)
         val embedding = try {
             embedder.embedImage(bitmap)
@@ -337,6 +379,10 @@ class Indexer(
             return IndexResult(file.uri, 0, false, "Image embedding failed: ${e.message}")
         } finally {
             bitmap.recycle()
+        }
+
+        if (isCancelled()) {
+            return IndexResult(file.uri, 0, false, "Indexing cancelled")
         }
 
         // Delete existing chunks for this file before storing the updated embedding
@@ -379,16 +425,24 @@ class Indexer(
      */
     fun indexAudioFile(
         file: ImportedFile,
+        isCancelled: () -> Boolean = { false },
         onProgress: ((current: Int, total: Int) -> Unit)? = null
     ): IndexResult {
         if (!isAudioFile(file)) {
             return IndexResult(file.uri, 0, false, "Not a supported audio file")
+        }
+        if (isCancelled()) {
+            return IndexResult(file.uri, 0, false, "Indexing cancelled")
         }
 
         val pcm = try {
             AudioDecoder.decodeToMono16k(context, file.uri.toUri())
         } catch (e: Exception) {
             return IndexResult(file.uri, 0, false, "Audio decode failed: ${e.message}")
+        }
+
+        if (isCancelled()) {
+            return IndexResult(file.uri, 0, false, "Indexing cancelled")
         }
 
         val windows = AudioChunker.windows(
@@ -403,6 +457,9 @@ class Indexer(
         val records = mutableListOf<RetrievalRecord>()
         try {
             for ((index, window) in windows.withIndex()) {
+                if (isCancelled()) {
+                    return IndexResult(file.uri, 0, false, "Indexing cancelled")
+                }
                 onProgress?.invoke(index + 1, windows.size)
                 val embedding = embedder.embedAudio(pcm.copyOfRange(window.startSample, window.endSample))
                 val metadata = mapOf(
@@ -420,6 +477,10 @@ class Indexer(
             }
         } catch (e: Exception) {
             return IndexResult(file.uri, 0, false, "Audio embedding failed: ${e.message}")
+        }
+
+        if (isCancelled()) {
+            return IndexResult(file.uri, 0, false, "Indexing cancelled")
         }
 
         // Replace old chunks only after embedding succeeded
@@ -448,17 +509,21 @@ class Indexer(
      */
     fun indexVideoFile(
         file: ImportedFile,
+        isCancelled: () -> Boolean = { false },
         onProgress: ((current: Int, total: Int) -> Unit)? = null
     ): IndexResult {
         if (!isVideoFile(file)) {
             return IndexResult(file.uri, 0, false, "Not a supported video file")
         }
+        if (isCancelled()) {
+            return IndexResult(file.uri, 0, false, "Indexing cancelled")
+        }
 
         val uri = file.uri.toUri()
         val pcm = try {
             AudioDecoder.decodeToMono16k(context, uri)
-        } catch (_: Exception) {
-            ShortArray(0) // no audio track: use frames only
+        } catch (_: Throwable) {
+            ShortArray(0) // no audio track or memory limit: use frames only
         }
 
         val records = mutableListOf<RetrievalRecord>()
@@ -477,6 +542,9 @@ class Indexer(
             }
 
             for ((index, window) in windows.withIndex()) {
+                if (isCancelled()) {
+                    return IndexResult(file.uri, 0, false, "Indexing cancelled")
+                }
                 onProgress?.invoke(index + 1, windows.size)
                 val frameTimes = VideoChunker.frameTimes(window, count = settings.videoFramesPerWindow)
                 val frames = frameTimes.map { videoFrameJpeg(retriever, it, maxDimension = settings.maxImageDimension) }
@@ -537,6 +605,10 @@ class Indexer(
             retriever.release()
         }
 
+        if (isCancelled()) {
+            return IndexResult(file.uri, 0, false, "Indexing cancelled")
+        }
+
         // Replace old chunks only after embedding succeeded
         embeddingStore.deleteByMetadata(mapOf("fileId" to file.uri))
         if (records.isNotEmpty()) embeddingStore.storeBatch(records)
@@ -574,14 +646,15 @@ class Indexer(
      */
     fun indexFile(
         file: ImportedFile,
+        isCancelled: () -> Boolean = { false },
         onProgress: ((current: Int, total: Int) -> Unit)? = null
     ): IndexResult {
         return when {
-            isPdfFile(file) -> indexPdfFile(file, onProgress)
-            isImageFile(file) -> indexImageFile(file, onProgress)
-            isAudioFile(file) -> indexAudioFile(file, onProgress)
-            isVideoFile(file) -> indexVideoFile(file, onProgress)
-            isTextFile(file) -> indexTextFile(file, onProgress)
+            isPdfFile(file) -> indexPdfFile(file, isCancelled, onProgress)
+            isImageFile(file) -> indexImageFile(file, isCancelled, onProgress)
+            isAudioFile(file) -> indexAudioFile(file, isCancelled, onProgress)
+            isVideoFile(file) -> indexVideoFile(file, isCancelled, onProgress)
+            isTextFile(file) -> indexTextFile(file, isCancelled, onProgress)
             else -> IndexResult(file.uri, 0, false, "Unsupported file format")
         }
     }

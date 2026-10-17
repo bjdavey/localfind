@@ -114,6 +114,8 @@ fun GalleryScreen(
     onFileClick: (ImportedFile) -> Unit,
     onRequestDeleteFile: (ImportedFile) -> Unit,
     onRetryIndexFile: ((ImportedFile) -> Unit)? = null,
+    onCancelIndexing: (() -> Unit)? = null,
+    onCancelIndexFile: ((ImportedFile) -> Unit)? = null,
     modifier: Modifier = Modifier
 ) {
     var selectedCategory by remember { mutableStateOf(GalleryCategory.ALL) }
@@ -144,6 +146,13 @@ fun GalleryScreen(
                     val target = file
                     inspectedFile = null
                     retryFn(target)
+                }
+            },
+            onCancelSync = onCancelIndexFile?.let { cancelFn ->
+                {
+                    val target = file
+                    inspectedFile = null
+                    cancelFn(target)
                 }
             }
         )
@@ -307,36 +316,59 @@ fun GalleryScreen(
                     shape = RoundedCornerShape(12.dp),
                     color = MaterialTheme.colorScheme.secondaryContainer
                 ) {
-                    Column(modifier = Modifier.padding(horizontal = 14.dp, vertical = 10.dp)) {
-                        val bannerText = if (indexingProgress.isIndexing && indexingProgress.message.isNotBlank()) {
-                            indexingProgress.message
-                        } else {
-                            statusMessage
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(horizontal = 14.dp, vertical = 10.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.SpaceBetween
+                    ) {
+                        Column(modifier = Modifier.weight(1f)) {
+                            val bannerText = if (indexingProgress.isIndexing && indexingProgress.message.isNotBlank()) {
+                                indexingProgress.message
+                            } else {
+                                statusMessage
+                            }
+                            Text(
+                                text = bannerText,
+                                style = MaterialTheme.typography.labelMedium,
+                                fontWeight = FontWeight.SemiBold,
+                                color = MaterialTheme.colorScheme.onSecondaryContainer,
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis
+                            )
+                            Spacer(modifier = Modifier.height(6.dp))
+                            if (indexingProgress.isIndexing && indexingProgress.progressFraction > 0f) {
+                                LinearProgressIndicator(
+                                    progress = { indexingProgress.progressFraction },
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .height(4.dp)
+                                        .clip(RoundedCornerShape(2.dp))
+                                )
+                            } else {
+                                LinearProgressIndicator(
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .height(4.dp)
+                                        .clip(RoundedCornerShape(2.dp))
+                                )
+                            }
                         }
-                        Text(
-                            text = bannerText,
-                            style = MaterialTheme.typography.labelMedium,
-                            fontWeight = FontWeight.SemiBold,
-                            color = MaterialTheme.colorScheme.onSecondaryContainer,
-                            maxLines = 1,
-                            overflow = TextOverflow.Ellipsis
-                        )
-                        Spacer(modifier = Modifier.height(6.dp))
-                        if (indexingProgress.isIndexing && indexingProgress.progressFraction > 0f) {
-                            LinearProgressIndicator(
-                                progress = { indexingProgress.progressFraction },
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .height(4.dp)
-                                    .clip(RoundedCornerShape(2.dp))
-                            )
-                        } else {
-                            LinearProgressIndicator(
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .height(4.dp)
-                                    .clip(RoundedCornerShape(2.dp))
-                            )
+                        if (onCancelIndexing != null) {
+                            Spacer(modifier = Modifier.width(10.dp))
+                            TextButton(
+                                onClick = onCancelIndexing,
+                                contentPadding = PaddingValues(horizontal = 10.dp, vertical = 4.dp),
+                                modifier = Modifier.height(34.dp)
+                            ) {
+                                Text(
+                                    text = "Cancel",
+                                    style = MaterialTheme.typography.labelSmall,
+                                    fontWeight = FontWeight.Bold,
+                                    color = MaterialTheme.colorScheme.error
+                                )
+                            }
                         }
                     }
                 }
@@ -447,7 +479,8 @@ fun GalleryScreen(
                             isActivelyIndexing = isActivelyIndexing,
                             activeProgressFraction = activeFraction,
                             onClick = { onFileClick(file) },
-                            onLongClick = { inspectedFile = file }
+                            onLongClick = { inspectedFile = file },
+                            onCancelIndex = onCancelIndexFile?.let { { it(file) } }
                         )
                     }
                 }
@@ -594,6 +627,7 @@ fun MediaGalleryTile(
     activeProgressFraction: Float = 0f,
     onClick: () -> Unit,
     onLongClick: () -> Unit,
+    onCancelIndex: (() -> Unit)? = null,
     modifier: Modifier = Modifier
 ) {
     val context = LocalContext.current
@@ -799,6 +833,23 @@ fun MediaGalleryTile(
                             fontWeight = FontWeight.SemiBold,
                             color = Color.White
                         )
+                        if (onCancelIndex != null) {
+                            Surface(
+                                shape = RoundedCornerShape(12.dp),
+                                color = Color.Black.copy(alpha = 0.65f),
+                                modifier = Modifier
+                                    .clip(RoundedCornerShape(12.dp))
+                                    .clickable(onClick = onCancelIndex)
+                            ) {
+                                Text(
+                                    text = "Cancel",
+                                    style = MaterialTheme.typography.labelSmall,
+                                    fontWeight = FontWeight.Bold,
+                                    color = Color(0xFFFF8A80),
+                                    modifier = Modifier.padding(horizontal = 8.dp, vertical = 2.dp)
+                                )
+                            }
+                        }
                     }
                 }
             }
@@ -1106,7 +1157,8 @@ private fun FileDetailsDialog(
     onDismiss: () -> Unit,
     onOpen: () -> Unit,
     onDelete: () -> Unit,
-    onRetry: (() -> Unit)? = null
+    onRetry: (() -> Unit)? = null,
+    onCancelSync: (() -> Unit)? = null
 ) {
     AlertDialog(
         onDismissRequest = onDismiss,
@@ -1138,7 +1190,7 @@ private fun FileDetailsDialog(
                     IndexingStatus.INDEXED -> "Indexed (${file.chunksCount} chunks)"
                     IndexingStatus.INDEXING -> "Indexing in background..."
                     IndexingStatus.PENDING -> "Waiting in background queue"
-                    IndexingStatus.FAILED -> "Indexing failed"
+                    IndexingStatus.FAILED -> "Indexing failed / cancelled"
                 }
                 Text(
                     text = "Index Status: $statusText",
@@ -1156,10 +1208,16 @@ private fun FileDetailsDialog(
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 if (file.indexingStatus == IndexingStatus.FAILED && onRetry != null) {
                     Button(
-                        onClick = onRetry,
-                        enabled = !isIndexing
+                        onClick = onRetry
                     ) {
                         Text("Retry Index")
+                    }
+                }
+                if ((file.indexingStatus == IndexingStatus.INDEXING || file.indexingStatus == IndexingStatus.PENDING) && onCancelSync != null) {
+                    FilledTonalButton(
+                        onClick = onCancelSync
+                    ) {
+                        Text("Cancel Sync", color = MaterialTheme.colorScheme.error)
                     }
                 }
                 Button(onClick = onOpen) {
@@ -1170,8 +1228,7 @@ private fun FileDetailsDialog(
         dismissButton = {
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 TextButton(
-                    onClick = onDelete,
-                    enabled = !isIndexing
+                    onClick = onDelete
                 ) {
                     Text("Remove", color = MaterialTheme.colorScheme.error)
                 }

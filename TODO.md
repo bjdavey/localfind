@@ -42,6 +42,8 @@
 - [ ] Support to open the origin file in phone gallery or its own app
 
 ## Bugs / Issues
+- [x] Can not cancel stuck sync file
+- [ ] Should not allow import files other than supported that has builtin viewer
 - [ ] Import files stuck when import new file
 - [ ] Fix flicker when opening a file or a search result and not to scroll back to start when closing it
 - [ ] Opening image/video should be smoth transition like a gallery app, perhaps just popup without opening it in a new view?

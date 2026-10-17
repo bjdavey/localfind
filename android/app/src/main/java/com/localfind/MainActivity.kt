@@ -257,6 +257,9 @@ fun MainScreen(
         scope.launch {
             status = "Removing ${file.displayName}..."
             withContext(Dispatchers.IO) {
+                // If file is actively indexing or queued, abort it immediately
+                IndexingWorker.cancelFile(context, file.uri)
+
                 try {
                     context.contentResolver.releasePersistableUriPermission(
                         Uri.parse(file.uri),
@@ -663,6 +666,26 @@ fun MainScreen(
                             store.updateStatus(file.uri, IndexingStatus.PENDING)
                             importedFiles = store.getAll()
                             IndexingWorker.enqueue(context, replace = true)
+                        }
+                    },
+                    onCancelIndexing = {
+                        scope.launch(Dispatchers.IO) {
+                            IndexingWorker.cancel(context)
+                            withContext(Dispatchers.Main) {
+                                status = "Indexing cancelled"
+                                Toast.makeText(context, "Indexing cancelled", Toast.LENGTH_SHORT).show()
+                            }
+                            reloadFiles()
+                        }
+                    },
+                    onCancelIndexFile = { file ->
+                        scope.launch(Dispatchers.IO) {
+                            IndexingWorker.cancelFile(context, file.uri)
+                            withContext(Dispatchers.Main) {
+                                status = "Cancelled sync for ${file.displayName}"
+                                Toast.makeText(context, "Cancelled sync for ${file.displayName}", Toast.LENGTH_SHORT).show()
+                            }
+                            reloadFiles()
                         }
                     }
                 )

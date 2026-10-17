@@ -39,8 +39,8 @@ object AudioDecoder {
 
             var channels = format.getInteger(MediaFormat.KEY_CHANNEL_COUNT)
             var sampleRate = format.getInteger(MediaFormat.KEY_SAMPLE_RATE)
-            var pcm = ShortArray(sampleRate * channels * 10) // grows as needed
-            var size = 0
+            val pcmChunks = mutableListOf<ShortArray>()
+            var totalShorts = 0
 
             val info = MediaCodec.BufferInfo()
             var inputDone = false
@@ -70,9 +70,12 @@ object AudioDecoder {
                         out.limit(info.offset + info.size)
                         val shorts = out.order(ByteOrder.nativeOrder()).asShortBuffer()
                         val count = shorts.remaining()
-                        if (size + count > pcm.size) pcm = pcm.copyOf(maxOf(pcm.size * 2, size + count))
-                        shorts.get(pcm, size, count)
-                        size += count
+                        if (count > 0) {
+                            val chunk = ShortArray(count)
+                            shorts.get(chunk)
+                            pcmChunks.add(chunk)
+                            totalShorts += count
+                        }
                         codec.releaseOutputBuffer(outIdx, false)
                         if (info.flags and MediaCodec.BUFFER_FLAG_END_OF_STREAM != 0) outputDone = true
                     }
@@ -85,7 +88,15 @@ object AudioDecoder {
                 }
             }
 
-            val mono = AudioChunker.downmixToMono(pcm.copyOf(size), channels)
+            val fullPcm = ShortArray(totalShorts)
+            var offset = 0
+            for (chunk in pcmChunks) {
+                System.arraycopy(chunk, 0, fullPcm, offset, chunk.size)
+                offset += chunk.size
+            }
+            pcmChunks.clear()
+
+            val mono = AudioChunker.downmixToMono(fullPcm, channels)
             return AudioChunker.resample(mono, sampleRate)
         } finally {
             try { codec?.stop() } catch (_: Exception) {}

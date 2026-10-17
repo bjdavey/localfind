@@ -84,6 +84,32 @@ object IndexingProgressState {
 }
 
 /**
+ * In-memory thread-safe state tracking for explicitly cancelled file URIs.
+ *
+ * Allows real-time cooperative cancellation of running or queued indexing tasks
+ * so stuck files can be aborted immediately without waiting for chunk loops to complete.
+ */
+object IndexingCancellationState {
+    private val cancelledUris = java.util.Collections.synchronizedSet(mutableSetOf<String>())
+
+    fun cancelFile(uri: String) {
+        cancelledUris.add(uri)
+    }
+
+    fun isFileCancelled(uri: String): Boolean {
+        return cancelledUris.contains(uri)
+    }
+
+    fun clear(uri: String) {
+        cancelledUris.remove(uri)
+    }
+
+    fun clearAll() {
+        cancelledUris.clear()
+    }
+}
+
+/**
  * Android [WorkManager] [CoroutineWorker] for offline background file indexing.
  *
  * Architecture and Resilience:
@@ -134,10 +160,32 @@ class IndexingWorker(
 
         /**
          * Cancels any running or enqueued indexing work.
+         * Marks all pending or active indexing files as FAILED so they
+         * do not get stuck in an infinite retry loop.
          */
         fun cancel(context: Context) {
             WorkManager.getInstance(context.applicationContext).cancelUniqueWork(WORK_NAME)
+            IndexingCancellationState.clearAll()
             IndexingProgressState.reset()
+            val fileStore = FileStore(context)
+            val pending = fileStore.getPendingFiles()
+            for (f in pending) {
+                fileStore.updateStatus(f.uri, IndexingStatus.FAILED, 0)
+            }
+        }
+
+        /**
+         * Cancels indexing for a specific file.
+         * Signals the active worker (if currently processing this file) to abort,
+         * and updates its status in [FileStore] to [IndexingStatus.FAILED].
+         */
+        fun cancelFile(context: Context, uri: String) {
+            IndexingCancellationState.cancelFile(uri)
+            val fileStore = FileStore(context)
+            fileStore.updateStatus(uri, IndexingStatus.FAILED, 0)
+            if (IndexingProgressState.progress.value.currentUri == uri) {
+                IndexingProgressState.reset()
+            }
         }
     }
 
@@ -169,7 +217,7 @@ class IndexingWorker(
             while (true) {
                 if (isStopped) {
                     IndexingProgressState.reset()
-                    return@withContext Result.retry()
+                    return@withContext Result.failure()
                 }
 
                 val pending = fileStore.getPendingFiles()
@@ -181,10 +229,15 @@ class IndexingWorker(
 
                 for ((idx, file) in pending.withIndex()) {
                     if (isStopped) {
-                        // Mark back to PENDING so resumption picks it up cleanly on next launch
-                        fileStore.updateStatus(file.uri, IndexingStatus.PENDING)
                         IndexingProgressState.reset()
-                        return@withContext Result.retry()
+                        return@withContext Result.failure()
+                    }
+
+                    // If file was already cancelled or marked failed, skip it
+                    val currentStatus = fileStore.get(file.uri)?.indexingStatus
+                    if (currentStatus == IndexingStatus.FAILED || IndexingCancellationState.isFileCancelled(file.uri)) {
+                        IndexingCancellationState.clear(file.uri)
+                        continue
                     }
 
                     val fileIndex = idx + 1
@@ -215,22 +268,38 @@ class IndexingWorker(
 
                     try {
                         val result = EngineManager.withIndexer(context, settings) { indexer ->
-                            indexer.indexFile(file) { cur, tot ->
-                                val fraction = if (tot > 0) cur.toFloat() / tot.toFloat() else 0f
-                                val percent = (fraction * 100).toInt()
-                                val msg = "Indexing $fileIndex/$totalInBatch: ${file.displayName} ($percent%)"
-                                IndexingProgressState.update(
-                                    isIndexing = true,
-                                    currentUri = file.uri,
-                                    currentFileName = file.displayName,
-                                    fileIndex = fileIndex,
-                                    totalFiles = totalInBatch,
-                                    currentChunk = cur,
-                                    totalChunks = tot,
-                                    progressFraction = fraction,
-                                    message = msg
-                                )
-                            }
+                            indexer.indexFile(
+                                file = file,
+                                isCancelled = { isStopped || IndexingCancellationState.isFileCancelled(file.uri) },
+                                onProgress = { cur, tot ->
+                                    val fraction = if (tot > 0) cur.toFloat() / tot.toFloat() else 0f
+                                    val percent = (fraction * 100).toInt()
+                                    val msg = "Indexing $fileIndex/$totalInBatch: ${file.displayName} ($percent%)"
+                                    IndexingProgressState.update(
+                                        isIndexing = true,
+                                        currentUri = file.uri,
+                                        currentFileName = file.displayName,
+                                        fileIndex = fileIndex,
+                                        totalFiles = totalInBatch,
+                                        currentChunk = cur,
+                                        totalChunks = tot,
+                                        progressFraction = fraction,
+                                        message = msg
+                                    )
+                                }
+                            )
+                        }
+
+                        if (IndexingCancellationState.isFileCancelled(file.uri)) {
+                            IndexingCancellationState.clear(file.uri)
+                            Log.i(TAG_INDEXING, "Indexing cancelled for ${file.displayName}")
+                            fileStore.updateStatus(file.uri, IndexingStatus.FAILED, 0)
+                            continue
+                        }
+
+                        if (isStopped) {
+                            IndexingProgressState.reset()
+                            return@withContext Result.failure()
                         }
 
                         if (result.isSuccess) {
@@ -240,12 +309,16 @@ class IndexingWorker(
                             Log.e(TAG_INDEXING, "Indexing failed for ${file.displayName}: ${result.errorMessage}")
                             fileStore.updateStatus(file.uri, IndexingStatus.FAILED, 0)
                         }
-                    } catch (e: Exception) {
+                    } catch (e: Throwable) {
                         Log.e(TAG_INDEXING, "Exception indexing ${file.displayName}", e)
+                        if (IndexingCancellationState.isFileCancelled(file.uri)) {
+                            IndexingCancellationState.clear(file.uri)
+                            fileStore.updateStatus(file.uri, IndexingStatus.FAILED, 0)
+                            continue
+                        }
                         if (isStopped) {
-                            fileStore.updateStatus(file.uri, IndexingStatus.PENDING)
                             IndexingProgressState.reset()
-                            return@withContext Result.retry()
+                            return@withContext Result.failure()
                         }
                         fileStore.updateStatus(file.uri, IndexingStatus.FAILED, 0)
                     }
@@ -254,10 +327,10 @@ class IndexingWorker(
 
             IndexingProgressState.reset()
             Result.success()
-        } catch (e: Exception) {
+        } catch (e: Throwable) {
             Log.e(TAG_INDEXING, "Fatal error in IndexingWorker", e)
             IndexingProgressState.reset()
-            if (isStopped) Result.retry() else Result.failure()
+            Result.failure()
         }
     }
 }

@@ -116,6 +116,55 @@ class IndexingWorkerLogicTest {
     }
 
     @Test
+    fun indexingCancellationState_trackAndClear() {
+        IndexingCancellationState.clearAll()
+        assertFalse(IndexingCancellationState.isFileCancelled("content://test/1"))
+
+        IndexingCancellationState.cancelFile("content://test/1")
+        assertTrue(IndexingCancellationState.isFileCancelled("content://test/1"))
+        assertFalse(IndexingCancellationState.isFileCancelled("content://test/2"))
+
+        IndexingCancellationState.cancelFile("content://test/2")
+        assertTrue(IndexingCancellationState.isFileCancelled("content://test/1"))
+        assertTrue(IndexingCancellationState.isFileCancelled("content://test/2"))
+
+        IndexingCancellationState.clear("content://test/1")
+        assertFalse(IndexingCancellationState.isFileCancelled("content://test/1"))
+        assertTrue(IndexingCancellationState.isFileCancelled("content://test/2"))
+
+        IndexingCancellationState.clearAll()
+        assertFalse(IndexingCancellationState.isFileCancelled("content://test/2"))
+    }
+
+    @Test
+    fun indexingProgressState_cancelledActiveFileReset() {
+        IndexingProgressState.update(
+            isIndexing = true,
+            currentUri = "content://test/stuck.pdf",
+            currentFileName = "stuck.pdf",
+            fileIndex = 1,
+            totalFiles = 1,
+            currentChunk = 0,
+            totalChunks = 10,
+            progressFraction = 0f,
+            message = "Indexing 1/1: stuck.pdf..."
+        )
+        assertTrue(IndexingProgressState.progress.value.isIndexing)
+        assertEquals("content://test/stuck.pdf", IndexingProgressState.progress.value.currentUri)
+
+        // Simulating cancellation of the active file
+        IndexingCancellationState.cancelFile("content://test/stuck.pdf")
+        assertTrue(IndexingCancellationState.isFileCancelled("content://test/stuck.pdf"))
+
+        if (IndexingProgressState.progress.value.currentUri == "content://test/stuck.pdf") {
+            IndexingProgressState.reset()
+        }
+
+        assertFalse(IndexingProgressState.progress.value.isIndexing)
+        assertEquals("Ready", IndexingProgressState.progress.value.message)
+    }
+
+    @Test
     fun indexingStatus_enumValues() {
         val names = IndexingStatus.entries.map { it.name }
         assertTrue(names.contains("PENDING"))
