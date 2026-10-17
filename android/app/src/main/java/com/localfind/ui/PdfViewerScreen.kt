@@ -79,6 +79,7 @@ data class PdfViewerParams(
 fun PdfViewerScreen(
     params: PdfViewerParams,
     onClose: () -> Unit,
+    onSearchInFile: (() -> Unit)? = null,
     modifier: Modifier = Modifier
 ) {
     val context = LocalContext.current
@@ -211,6 +212,16 @@ fun PdfViewerScreen(
                             text = "←",
                             style = MaterialTheme.typography.titleLarge
                         )
+                    }
+                },
+                actions = {
+                    if (onSearchInFile != null) {
+                        IconButton(onClick = onSearchInFile) {
+                            Text(
+                                text = "🔍",
+                                style = MaterialTheme.typography.titleMedium
+                            )
+                        }
                     }
                 }
             )

@@ -172,6 +172,7 @@ fun MainScreen(
     // Navigation & Search state
     var isSearchOpen by remember { mutableStateOf(false) }
     var searchQuery by remember { mutableStateOf("") }
+    var activeSearchFile by remember { mutableStateOf<ImportedFile?>(null) }
     var isSearching by remember { mutableStateOf(false) }
     var hasSearched by remember { mutableStateOf(false) }
     var searchResults by remember { mutableStateOf<List<SearchResult>>(emptyList()) }
@@ -310,7 +311,25 @@ fun MainScreen(
     }
 
     /**
+     * Prepares and navigates to the search view scoped to a specific [target] file.
+     */
+    fun startSearchInFile(target: ImportedFile) {
+        activeSearchFile = target
+        searchQuery = ""
+        hasSearched = false
+        searchResults = emptyList()
+        searchError = null
+        // Close any active viewers first so the search screen becomes active
+        activePdfViewer = null
+        activeImageViewer = null
+        activeMediaPlayer = null
+        activeTextViewer = null
+        isSearchOpen = true
+    }
+
+    /**
      * Executes a semantic search query against the local vector database.
+     * If [activeSearchFile] is set, restricts results to chunks originating from that document.
      */
     fun performSearch(queryText: String) {
         val trimmed = queryText.trim()
@@ -320,6 +339,7 @@ fun MainScreen(
             hasSearched = true
             return
         }
+        val fileFilter = activeSearchFile?.let { mapOf("fileId" to it.uri) } ?: emptyMap()
         scope.launch {
             isSearching = true
             searchError = null
@@ -329,7 +349,8 @@ fun MainScreen(
                         searcher.search(
                             query = trimmed,
                             topK = settings.topK,
-                            threshold = settings.similarityThreshold
+                            threshold = settings.similarityThreshold,
+                            metadataFilter = fileFilter
                         )
                     }
                 }
@@ -607,7 +628,18 @@ fun MainScreen(
                 activeMediaPlayer?.let { params ->
                     MediaPlayerScreen(
                         params = params,
-                        onClose = { activeMediaPlayer = null }
+                        onClose = { activeMediaPlayer = null },
+                        onSearchInFile = {
+                            val matchedFile = importedFiles.firstOrNull { it.uri == params.uri }
+                                ?: ImportedFile(
+                                    uri = params.uri,
+                                    displayName = params.fileName,
+                                    size = 0L,
+                                    mimeType = "video/*",
+                                    addedAt = 0L
+                                )
+                            startSearchInFile(matchedFile)
+                        }
                     )
                 }
             }
@@ -616,7 +648,18 @@ fun MainScreen(
                 activePdfViewer?.let { params ->
                     PdfViewerScreen(
                         params = params,
-                        onClose = { activePdfViewer = null }
+                        onClose = { activePdfViewer = null },
+                        onSearchInFile = {
+                            val matchedFile = importedFiles.firstOrNull { it.uri == params.uri }
+                                ?: ImportedFile(
+                                    uri = params.uri,
+                                    displayName = params.fileName,
+                                    size = 0L,
+                                    mimeType = "application/pdf",
+                                    addedAt = 0L
+                                )
+                            startSearchInFile(matchedFile)
+                        }
                     )
                 }
             }
@@ -625,7 +668,18 @@ fun MainScreen(
                 activeTextViewer?.let { params ->
                     TextViewerScreen(
                         params = params,
-                        onClose = { activeTextViewer = null }
+                        onClose = { activeTextViewer = null },
+                        onSearchInFile = {
+                            val matchedFile = importedFiles.firstOrNull { it.uri == params.uri }
+                                ?: ImportedFile(
+                                    uri = params.uri,
+                                    displayName = params.fileName,
+                                    size = 0L,
+                                    mimeType = "text/plain",
+                                    addedAt = 0L
+                                )
+                            startSearchInFile(matchedFile)
+                        }
                     )
                 }
             }
@@ -686,9 +740,19 @@ fun MainScreen(
                     hasSearched = hasSearched,
                     searchResults = searchResults,
                     onResultClick = { result -> openSearchResult(result) },
+                    targetFile = activeSearchFile,
+                    onClearTargetFile = {
+                        activeSearchFile = null
+                        if (searchQuery.isNotBlank()) {
+                            performSearch(searchQuery)
+                        }
+                    },
                     errorMessage = searchError ?: if (modelStatus is ModelStatus.Error) (modelStatus as ModelStatus.Error).message else null,
                     indexedChunksCount = indexedChunksCount,
-                    onClose = { isSearchOpen = false }
+                    onClose = {
+                        isSearchOpen = false
+                        activeSearchFile = null
+                    }
                 )
             }
 
@@ -705,7 +769,11 @@ fun MainScreen(
                     indexingProgress = indexingProgress,
                     modelStatus = modelStatus,
                     onRetryLoadModel = { retryLoadModel() },
-                    onOpenSearch = { isSearchOpen = true },
+                    onOpenSearch = {
+                        activeSearchFile = null
+                        isSearchOpen = true
+                    },
+                    onSearchInFile = { file -> startSearchInFile(file) },
                     onImportFiles = { pickerLauncher.launch(FileImporter.SUPPORTED_MIME_TYPES) },
                     onOpenSettings = { isSettingsOpen = true },
                     onFileClick = { file -> openLibraryFile(file) },

@@ -37,7 +37,7 @@
 - [x] Background indexing with progress indicator per file (WorkManager) which can resume if app killed and reopened
 - [x] Filter search results by file type (All, Video, Audio, Image, Document)
 - [x] Try support CPU, GPU, NPU with option in settings depending on device
-- [ ] Search inside a specific file
+- [x] Search inside a specific file
 - [ ] Support to open the origin file in phone gallery or its own app
 
 ## Bugs / Issues
@@ -55,10 +55,10 @@
 ## Backlog
 
 ### Core
+- Create folders and recursive folder import (DocumentFile / tree URI)
 - Find large online public dataset for testing
 - Allow other media files format
 - Import from URL without saving the file (streaming keyframe indexing)
-- Create folders and recursive folder import (DocumentFile / tree URI)
 - Export / Backup index and "Clear Database" reset
 - Support import by share from other apps\
 - Simplify UI for non-tech people and keep advanced mode option in settings
@@ -76,6 +76,7 @@
 - PDF OCR (ML Kit / on-device OCR for scanned documents)
 - File staleness detection (handle deleted or modified files)
 - fMP4 remuxing for seekable video (see ARCHITECTURE.md, Indexing)
+- Try and test to make video indexing faster
 
 ### Platforms
 - Move core and logic into separate folder/classes for easy porting into other platforms

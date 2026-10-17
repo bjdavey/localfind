@@ -291,5 +291,61 @@ class SearcherTest {
         val impossibleResults = searcher.search("query", topK = 10, threshold = 1.01f)
         assertTrue(impossibleResults.isEmpty())
     }
+
+    @Test
+    fun searchFilteredBySpecificFileIdReturnsOnlyChunksFromThatFile() {
+        val fakeStore = FakeVectorStore()
+        val embeddingStore = EmbeddingStore(fakeStore)
+
+        // Two chunks from file A
+        val fileAChunk1 = RetrievalRecord(
+            "fileA_c0",
+            listOf(TextPart("Document A intro")),
+            floatArrayOf(1.0f, 0.0f, 0.0f),
+            mapOf("fileId" to "content://com.localfind/fileA", "uri" to "content://com.localfind/fileA", "name" to "docA.txt", "type" to "text")
+        )
+        val fileAChunk2 = RetrievalRecord(
+            "fileA_c1",
+            listOf(TextPart("Document A details")),
+            floatArrayOf(0.9f, 0.1f, 0.0f),
+            mapOf("fileId" to "content://com.localfind/fileA", "uri" to "content://com.localfind/fileA", "name" to "docA.txt", "type" to "text")
+        )
+        // One chunk from file B
+        val fileBChunk1 = RetrievalRecord(
+            "fileB_c0",
+            listOf(TextPart("Document B content")),
+            floatArrayOf(0.95f, 0.05f, 0.0f),
+            mapOf("fileId" to "content://com.localfind/fileB", "uri" to "content://com.localfind/fileB", "name" to "docB.txt", "type" to "text")
+        )
+
+        fakeStore.upsert(listOf(fileAChunk1, fileAChunk2, fileBChunk1))
+
+        val searcher = Searcher(embeddingStore) { _ -> floatArrayOf(1.0f, 0.0f, 0.0f) }
+
+        // Unfiltered search: returns all 3 records
+        val allResults = searcher.search("query", topK = 10)
+        assertEquals(3, allResults.size)
+
+        // Search scoped specifically to file A
+        val fileAResults = searcher.search(
+            query = "query",
+            topK = 10,
+            metadataFilter = mapOf("fileId" to "content://com.localfind/fileA")
+        )
+        assertEquals(2, fileAResults.size)
+        assertTrue(fileAResults.all { it.fileUri == "content://com.localfind/fileA" })
+        assertEquals("fileA_c0", fileAResults[0].chunkId)
+        assertEquals("fileA_c1", fileAResults[1].chunkId)
+
+        // Search scoped specifically to file B
+        val fileBResults = searcher.search(
+            query = "query",
+            topK = 10,
+            metadataFilter = mapOf("fileId" to "content://com.localfind/fileB")
+        )
+        assertEquals(1, fileBResults.size)
+        assertEquals("fileB_c0", fileBResults[0].chunkId)
+        assertEquals("content://com.localfind/fileB", fileBResults[0].fileUri)
+    }
 }
 

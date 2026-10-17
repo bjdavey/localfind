@@ -48,6 +48,7 @@ data class MediaPlayerParams(
 fun MediaPlayerScreen(
     params: MediaPlayerParams,
     onClose: () -> Unit,
+    onSearchInFile: (() -> Unit)? = null,
     modifier: Modifier = Modifier
 ) {
     val context = LocalContext.current
@@ -91,6 +92,13 @@ fun MediaPlayerScreen(
                 navigationIcon = {
                     IconButton(onClick = onClose) {
                         Text(text = "←", style = MaterialTheme.typography.titleLarge)
+                    }
+                },
+                actions = {
+                    if (onSearchInFile != null) {
+                        IconButton(onClick = onSearchInFile) {
+                            Text(text = "🔍", style = MaterialTheme.typography.titleMedium)
+                        }
                     }
                 }
             )

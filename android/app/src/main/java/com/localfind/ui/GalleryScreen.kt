@@ -109,6 +109,7 @@ fun GalleryScreen(
     modelStatus: ModelStatus = ModelStatus.Loading,
     onRetryLoadModel: () -> Unit = {},
     onOpenSearch: () -> Unit,
+    onSearchInFile: ((ImportedFile) -> Unit)? = null,
     onImportFiles: () -> Unit,
     onOpenSettings: () -> Unit,
     onFileClick: (ImportedFile) -> Unit,
@@ -135,6 +136,13 @@ fun GalleryScreen(
                 val target = file
                 inspectedFile = null
                 onFileClick(target)
+            },
+            onSearchInFile = onSearchInFile?.let { searchFn ->
+                {
+                    val target = file
+                    inspectedFile = null
+                    searchFn(target)
+                }
             },
             onDelete = {
                 val target = file
@@ -1148,7 +1156,7 @@ private fun EmptyGalleryState(
 }
 
 /**
- * Dialog displaying file metadata and providing quick actions ("Open", "Remove from Library").
+ * Dialog displaying file metadata and providing quick actions ("Open", "Search in File", "Remove from Library").
  */
 @Composable
 private fun FileDetailsDialog(
@@ -1156,6 +1164,7 @@ private fun FileDetailsDialog(
     isIndexing: Boolean,
     onDismiss: () -> Unit,
     onOpen: () -> Unit,
+    onSearchInFile: (() -> Unit)? = null,
     onDelete: () -> Unit,
     onRetry: (() -> Unit)? = null,
     onCancelSync: (() -> Unit)? = null
@@ -1218,6 +1227,11 @@ private fun FileDetailsDialog(
                         onClick = onCancelSync
                     ) {
                         Text("Cancel Sync", color = MaterialTheme.colorScheme.error)
+                    }
+                }
+                if (file.indexingStatus == IndexingStatus.INDEXED && onSearchInFile != null) {
+                    FilledTonalButton(onClick = onSearchInFile) {
+                        Text("🔍 Search in File")
                     }
                 }
                 Button(onClick = onOpen) {

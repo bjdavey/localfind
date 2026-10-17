@@ -76,6 +76,7 @@ data class TextViewerParams(
 fun TextViewerScreen(
     params: TextViewerParams,
     onClose: () -> Unit,
+    onSearchInFile: (() -> Unit)? = null,
     modifier: Modifier = Modifier
 ) {
     val context = LocalContext.current
@@ -165,6 +166,16 @@ fun TextViewerScreen(
                             text = "←",
                             style = MaterialTheme.typography.titleLarge
                         )
+                    }
+                },
+                actions = {
+                    if (onSearchInFile != null) {
+                        IconButton(onClick = onSearchInFile) {
+                            Text(
+                                text = "🔍",
+                                style = MaterialTheme.typography.titleMedium
+                            )
+                        }
                     }
                 }
             )

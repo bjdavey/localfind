@@ -41,6 +41,7 @@ import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.SuggestionChip
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -69,6 +70,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import coil.compose.AsyncImage
 import coil.request.ImageRequest
+import com.localfind.data.ImportedFile
 import com.localfind.index.Indexer
 import com.localfind.search.SearchResult
 import com.localfind.ui.theme.BadgeAudio
@@ -82,10 +84,12 @@ import kotlinx.coroutines.withContext
 /**
  * Dedicated Full-Screen Semantic Search View.
  *
- * Opened when the user taps the bottom floating search bar in [GalleryScreen].
+ * Opened when the user taps the bottom floating search bar in [GalleryScreen]
+ * or triggers a search inside a specific file from file details / viewers.
  *
  * Features:
  * - Top search bar with back navigation (`←`), auto-focused query input, clear button, and Search button.
+ * - Optional scoped search banner when searching within a specific [targetFile].
  * - Modality filter chips (`All`, `Photos`, `Videos`, `Docs`, `Audio`) to filter ranked hits.
  * - Interactive example suggestion pills when idle.
  * - Ranked result cards with visual thumbnail previews, similarity percentage badge, location offset,
@@ -102,6 +106,8 @@ fun SearchScreen(
     searchResults: List<SearchResult>,
     onResultClick: (SearchResult) -> Unit,
     modifier: Modifier = Modifier,
+    targetFile: ImportedFile? = null,
+    onClearTargetFile: (() -> Unit)? = null,
     errorMessage: String? = null,
     indexedChunksCount: Int = 0,
     onClose: (() -> Unit)? = null
@@ -170,7 +176,7 @@ fun SearchScreen(
                     .focusRequester(focusRequester),
                 placeholder = {
                     Text(
-                        text = "Search files by meaning...",
+                        text = if (targetFile != null) "Search inside ${targetFile.displayName}..." else "Search files by meaning...",
                         maxLines = 1,
                         overflow = TextOverflow.Ellipsis
                     )
@@ -223,37 +229,92 @@ fun SearchScreen(
         }
 
         // =====================================================================
-        // 2. MODALITY FILTER CHIPS
+        // 1.5. SCOPED TARGET FILE BANNER (When searching inside a specific file)
         // =====================================================================
-        Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .horizontalScroll(rememberScrollState())
-                .padding(horizontal = 16.dp, vertical = 8.dp),
-            horizontalArrangement = Arrangement.spacedBy(8.dp),
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            GalleryCategory.entries.forEach { category ->
-                val count = remember(searchResults, category) {
-                    ThumbnailHelper.filterSearchResults(searchResults, category).size
-                }
-                val isSelected = selectedCategory == category
-                FilterChip(
-                    selected = isSelected,
-                    onClick = { selectedCategory = category },
-                    label = {
-                        val suffix = if (hasSearched && searchResults.isNotEmpty()) " ($count)" else ""
+        if (targetFile != null) {
+            Surface(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 16.dp, vertical = 6.dp),
+                shape = RoundedCornerShape(12.dp),
+                color = MaterialTheme.colorScheme.secondaryContainer.copy(alpha = 0.7f)
+            ) {
+                Row(
+                    modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.SpaceBetween
+                ) {
+                    Row(
+                        modifier = Modifier.weight(1f),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(6.dp)
+                    ) {
                         Text(
-                            text = "${category.icon} ${category.label}$suffix",
-                            fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Medium
+                            text = "🎯 In:",
+                            style = MaterialTheme.typography.labelMedium,
+                            fontWeight = FontWeight.Bold,
+                            color = MaterialTheme.colorScheme.onSecondaryContainer
                         )
-                    },
-                    shape = RoundedCornerShape(20.dp),
-                    colors = FilterChipDefaults.filterChipColors(
-                        selectedContainerColor = MaterialTheme.colorScheme.primaryContainer,
-                        selectedLabelColor = MaterialTheme.colorScheme.onPrimaryContainer
+                        Text(
+                            text = targetFile.displayName,
+                            style = MaterialTheme.typography.bodyMedium,
+                            fontWeight = FontWeight.SemiBold,
+                            color = MaterialTheme.colorScheme.onSecondaryContainer,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis
+                        )
+                    }
+                    if (onClearTargetFile != null) {
+                        TextButton(
+                            onClick = onClearTargetFile,
+                            contentPadding = PaddingValues(horizontal = 8.dp, vertical = 0.dp)
+                        ) {
+                            Text(
+                                text = "Search All Files ✕",
+                                style = MaterialTheme.typography.labelMedium,
+                                fontWeight = FontWeight.Bold,
+                                color = MaterialTheme.colorScheme.primary
+                            )
+                        }
+                    }
+                }
+            }
+        }
+
+        // =====================================================================
+        // 2. MODALITY FILTER CHIPS (Only shown when searching across all files)
+        // =====================================================================
+        if (targetFile == null) {
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .horizontalScroll(rememberScrollState())
+                    .padding(horizontal = 16.dp, vertical = 8.dp),
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                GalleryCategory.entries.forEach { category ->
+                    val count = remember(searchResults, category) {
+                        ThumbnailHelper.filterSearchResults(searchResults, category).size
+                    }
+                    val isSelected = selectedCategory == category
+                    FilterChip(
+                        selected = isSelected,
+                        onClick = { selectedCategory = category },
+                        label = {
+                            val suffix = if (hasSearched && searchResults.isNotEmpty()) " ($count)" else ""
+                            Text(
+                                text = "${category.icon} ${category.label}$suffix",
+                                fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Medium
+                            )
+                        },
+                        shape = RoundedCornerShape(20.dp),
+                        colors = FilterChipDefaults.filterChipColors(
+                            selectedContainerColor = MaterialTheme.colorScheme.primaryContainer,
+                            selectedLabelColor = MaterialTheme.colorScheme.onPrimaryContainer
+                        )
                     )
-                )
+                }
             }
         }
 
