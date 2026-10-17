@@ -115,11 +115,10 @@ class Indexer(
         isVideoNameOrMime(file.displayName, file.mimeType)
 
     /**
-     * Determines whether an imported file is supported by the indexer.
+     * Determines whether an imported file is supported by the indexer and has a builtin viewer.
      */
     fun isSupported(file: ImportedFile): Boolean =
-        isTextFile(file) || isPdfFile(file) || isImageFile(file) || isAudioFile(file) ||
-                isVideoFile(file)
+        isSupported(file.displayName, file.mimeType)
 
     /**
      * Reads, chunks, embeds, and stores an imported text or Markdown file.
@@ -624,7 +623,8 @@ class Indexer(
         timeMs: Long,
         maxDimension: Int = settings.maxImageDimension
     ): ByteArray? {
-        val full = retriever.getFrameAtTime(timeMs * 1000, MediaMetadataRetriever.OPTION_CLOSEST)
+        val full = retriever.getFrameAtTime(timeMs * 1000, MediaMetadataRetriever.OPTION_CLOSEST_SYNC)
+            ?: retriever.getFrameAtTime(timeMs * 1000, MediaMetadataRetriever.OPTION_CLOSEST)
             ?: return null
         val (w, h) = calculateTargetDimensions(full.width, full.height, maxDimension)
         val scaled = if (w != full.width || h != full.height) {
@@ -660,6 +660,18 @@ class Indexer(
     }
 
     companion object {
+        /**
+         * Checks whether a file with the given display name and MIME type is supported by
+         * LocalFind's indexers and has a corresponding builtin viewer.
+         */
+        fun isSupported(displayName: String, mimeType: String?): Boolean {
+            return isPdfNameOrMime(displayName, mimeType) ||
+                    isImageNameOrMime(displayName, mimeType) ||
+                    isAudioNameOrMime(displayName, mimeType) ||
+                    isVideoNameOrMime(displayName, mimeType) ||
+                    isTextNameOrMime(displayName, mimeType)
+        }
+
         /**
          * Pure helper that checks whether a file name or MIME type corresponds to a supported
          * text or markdown format (.txt, .md or text/ MIME type).

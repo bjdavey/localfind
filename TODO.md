@@ -36,15 +36,15 @@
 - [x] Add light/dark mode switch in settings
 - [x] Background indexing with progress indicator per file (WorkManager) which can resume if app killed and reopened
 - [x] Filter search results by file type (All, Video, Audio, Image, Document)
+- [ ] Keep indexing working in background while showing notification to prevent the app from being stopped when closed
 - [ ] Search inside a specific file
-- [ ] Import from URL without saving the file (streaming keyframe indexing)
 - [ ] Try support CPU, GPU, NPU with option in settings depending on device
 - [ ] Support to open the origin file in phone gallery or its own app
 
 ## Bugs / Issues
 - [x] Can not cancel stuck sync file
-- [ ] Should not allow import files other than supported that has builtin viewer
-- [ ] Import files stuck when import new file
+- [x] Should not allow import files other than supported that has builtin viewer
+- [ ] Allow import new file or search while indexing
 - [ ] Fix flicker when opening a file or a search result and not to scroll back to start when closing it
 - [ ] Opening image/video should be smoth transition like a gallery app, perhaps just popup without opening it in a new view?
 - [ ] Better PDF viewer
@@ -56,6 +56,8 @@
 
 ### Core
 - Find large online public dataset for testing
+- Allow other files format
+- Import from URL without saving the file (streaming keyframe indexing)
 - Create folders and recursive folder import (DocumentFile / tree URI)
 - Export / Backup index and "Clear Database" reset
 - Support import by share from other apps\

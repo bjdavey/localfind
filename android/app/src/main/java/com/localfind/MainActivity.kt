@@ -456,20 +456,12 @@ fun MainScreen(
             return
         }
 
-        try {
-            val uri = Uri.parse(file.uri)
-            val intent = Intent(Intent.ACTION_VIEW).apply {
-                setDataAndType(uri, file.mimeType ?: "*/*")
-                addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
-            }
-            context.startActivity(intent)
-        } catch (e: Exception) {
-            Toast.makeText(
-                context,
-                "Could not open ${file.displayName}: ${e.message}",
-                Toast.LENGTH_SHORT
-            ).show()
-        }
+        // Only files with builtin viewers are opened in LocalFind
+        Toast.makeText(
+            context,
+            "No builtin viewer available for ${file.displayName}",
+            Toast.LENGTH_SHORT
+        ).show()
     }
 
     // System file picker launcher using Storage Access Framework (SAF)
@@ -478,17 +470,44 @@ fun MainScreen(
     ) { uris ->
         if (uris.isNotEmpty()) {
             scope.launch {
-                status = "Importing ${uris.size} file(s)..."
-                withContext(Dispatchers.IO) {
+                val (supportedFiles, unsupportedCount) = withContext(Dispatchers.IO) {
                     val store = FileStore(context)
-                    val files = uris.map { uri ->
-                        FileImporter.importUri(context.contentResolver, uri)
-                            .copy(indexingStatus = IndexingStatus.PENDING)
+                    val supported = mutableListOf<ImportedFile>()
+                    var unsupported = 0
+
+                    for (uri in uris) {
+                        val imported = FileImporter.importUri(context.contentResolver, uri)
+                        if (imported != null) {
+                            supported.add(imported.copy(indexingStatus = IndexingStatus.PENDING))
+                        } else {
+                            unsupported++
+                        }
                     }
-                    store.insertAll(files)
-                    importedFiles = store.getAll()
+
+                    if (supported.isNotEmpty()) {
+                        store.insertAll(supported)
+                        importedFiles = store.getAll()
+                    }
+
+                    Pair(supported, unsupported)
                 }
-                IndexingWorker.enqueue(context)
+
+                if (supportedFiles.isNotEmpty()) {
+                    IndexingWorker.enqueue(context)
+                    if (unsupportedCount > 0) {
+                        val msg = "Imported ${supportedFiles.size} file(s). Skipped $unsupportedCount unsupported file(s)."
+                        status = msg
+                        Toast.makeText(context, msg, Toast.LENGTH_LONG).show()
+                    } else {
+                        val msg = "Imported ${supportedFiles.size} file(s)"
+                        status = msg
+                        Toast.makeText(context, msg, Toast.LENGTH_SHORT).show()
+                    }
+                } else if (unsupportedCount > 0) {
+                    val msg = "Cannot import unsupported file(s). Only files with builtin viewers (text, PDF, image, audio, video) are supported."
+                    status = msg
+                    Toast.makeText(context, msg, Toast.LENGTH_LONG).show()
+                }
             }
         }
     }
@@ -656,7 +675,7 @@ fun MainScreen(
                     modelStatus = modelStatus,
                     onRetryLoadModel = { retryLoadModel() },
                     onOpenSearch = { isSearchOpen = true },
-                    onImportFiles = { pickerLauncher.launch(arrayOf("*/*")) },
+                    onImportFiles = { pickerLauncher.launch(FileImporter.SUPPORTED_MIME_TYPES) },
                     onOpenSettings = { isSettingsOpen = true },
                     onFileClick = { file -> openLibraryFile(file) },
                     onRequestDeleteFile = { file -> filePendingDeletion = file },

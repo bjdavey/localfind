@@ -8,6 +8,7 @@ import android.database.sqlite.SQLiteDatabase
 import android.database.sqlite.SQLiteOpenHelper
 import android.net.Uri
 import android.provider.OpenableColumns
+import com.localfind.index.Indexer
 import java.util.Locale
 
 /**
@@ -60,38 +61,64 @@ fun formatFileSize(bytes: Long): String {
 }
 
 /**
- * Helper utility to resolve SAF document URIs into [ImportedFile] objects.
+ * Helper utility to validate and resolve SAF document URIs into [ImportedFile] objects.
  *
- * Key Steps:
- * 1. Takes persistable URI read permission via [ContentResolver.takePersistableUriPermission]
- *    so the app can reopen the file after device reboots or process death.
- * 2. Queries standard [OpenableColumns.DISPLAY_NAME] and [OpenableColumns.SIZE] from the ContentProvider.
- * 3. Resolves the MIME type via [ContentResolver.getType].
+ * Privacy / Viewer Guarantee:
+ * - LocalFind strictly only imports file types that have a corresponding builtin viewer
+ *   (Text/Markdown, PDF, Image, Audio, Video). Unsupported formats are rejected without
+ *   acquiring persistable read permissions.
+ * - Takes persistable URI read permission via [ContentResolver.takePersistableUriPermission]
+ *   only for validated, supported files.
  */
 object FileImporter {
+
     /**
-     * Resolves metadata and acquires persistable read permission for a picked document URI.
+     * Supported MIME types for system document pickers.
+     * Restricts the system file picker to only show supported file types with builtin viewers.
+     */
+    val SUPPORTED_MIME_TYPES = arrayOf(
+        "text/plain",
+        "text/markdown",
+        "text/*",
+        "application/pdf",
+        "image/jpeg",
+        "image/png",
+        "audio/mpeg",
+        "audio/mp4",
+        "audio/x-m4a",
+        "audio/wav",
+        "audio/x-wav",
+        "audio/*",
+        "video/mp4"
+    )
+
+    /**
+     * Checks whether a file with given name and MIME type is supported and has a builtin viewer.
+     */
+    fun isSupported(displayName: String, mimeType: String?): Boolean =
+        Indexer.isSupported(displayName, mimeType)
+
+    /**
+     * Checks whether an [ImportedFile] is supported and has a builtin viewer.
+     */
+    fun isSupported(file: ImportedFile): Boolean =
+        Indexer.isSupported(file.displayName, file.mimeType)
+
+    /**
+     * Resolves metadata for a picked document URI, verifies that it is supported by LocalFind's
+     * indexers and builtin viewers, and acquires persistable read permission.
+     *
+     * If the file is not supported, returns `null` and does NOT take persistable permissions.
      *
      * @param contentResolver The Android [ContentResolver] instance.
      * @param uri The document [Uri] returned by the system file picker.
-     * @return Fully populated [ImportedFile] metadata object.
+     * @return Fully populated [ImportedFile] metadata object if supported, or null if unsupported.
      */
-    fun importUri(contentResolver: ContentResolver, uri: Uri): ImportedFile {
-        // Take persistable permission to retain access across device reboots and app launches
-        // without copying the file or needing any broad external storage permissions.
-        try {
-            contentResolver.takePersistableUriPermission(
-                uri,
-                Intent.FLAG_GRANT_READ_URI_PERMISSION
-            )
-        } catch (_: SecurityException) {
-            // Some providers or temporary test URIs might not support persistable grants
-        }
-
+    fun importUri(contentResolver: ContentResolver, uri: Uri): ImportedFile? {
         var displayName: String? = null
         var size: Long = 0L
 
-        // Query metadata from the document provider
+        // Query metadata from the document provider first
         try {
             contentResolver.query(
                 uri,
@@ -121,6 +148,22 @@ object FileImporter {
             contentResolver.getType(uri)
         } catch (_: Exception) {
             null
+        }
+
+        // Enforce supported formats: reject any file that does not have a builtin viewer
+        if (!isSupported(name, mimeType)) {
+            return null
+        }
+
+        // Take persistable permission only after validating the file is supported,
+        // retaining access across device reboots without copying or needing broad storage permissions.
+        try {
+            contentResolver.takePersistableUriPermission(
+                uri,
+                Intent.FLAG_GRANT_READ_URI_PERMISSION
+            )
+        } catch (_: SecurityException) {
+            // Some providers or temporary test URIs might not support persistable grants
         }
 
         return ImportedFile(
