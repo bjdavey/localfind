@@ -45,6 +45,7 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.withContext
 
 /**
@@ -77,6 +78,7 @@ fun TextViewerScreen(
     params: TextViewerParams,
     onClose: () -> Unit,
     onSearchInFile: (() -> Unit)? = null,
+    backHandlerEnabled: Boolean = true,
     modifier: Modifier = Modifier
 ) {
     val context = LocalContext.current
@@ -85,9 +87,20 @@ fun TextViewerScreen(
     var isLoading by remember(params.uri) { mutableStateOf(true) }
     var errorMessage by remember(params.uri) { mutableStateOf<String?>(null) }
 
-    // Intercept hardware and gesture back navigation
-    BackHandler {
+    // Intercept hardware and gesture back navigation when active
+    BackHandler(enabled = backHandlerEnabled) {
         onClose()
+    }
+
+    // Delay showing the loading spinner by 200ms so fast local reads don't flash a spinner
+    var showLoadingSpinner by remember(params.uri) { mutableStateOf(false) }
+    LaunchedEffect(isLoading, fullText) {
+        if (isLoading && fullText == null) {
+            delay(200)
+            showLoadingSpinner = true
+        } else {
+            showLoadingSpinner = false
+        }
     }
 
     // Asynchronously read text content from SAF document URI on Dispatchers.IO
@@ -189,7 +202,7 @@ fun TextViewerScreen(
             contentAlignment = Alignment.Center
         ) {
             when {
-                isLoading -> {
+                isLoading && fullText == null && showLoadingSpinner -> {
                     Column(
                         horizontalAlignment = Alignment.CenterHorizontally,
                         verticalArrangement = Arrangement.spacedBy(12.dp)

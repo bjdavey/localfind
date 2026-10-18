@@ -32,8 +32,10 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBars
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.grid.GridCells
+import androidx.compose.foundation.lazy.grid.LazyGridState
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.foundation.lazy.grid.items
+import androidx.compose.foundation.lazy.grid.rememberLazyGridState
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -117,6 +119,7 @@ fun GalleryScreen(
     onRetryIndexFile: ((ImportedFile) -> Unit)? = null,
     onCancelIndexing: (() -> Unit)? = null,
     onCancelIndexFile: ((ImportedFile) -> Unit)? = null,
+    gridState: LazyGridState = rememberLazyGridState(),
     modifier: Modifier = Modifier
 ) {
     var selectedCategory by remember { mutableStateOf(GalleryCategory.ALL) }
@@ -466,6 +469,7 @@ fun GalleryScreen(
             } else {
                 LazyVerticalGrid(
                     columns = GridCells.Fixed(2),
+                    state = gridState,
                     modifier = Modifier
                         .weight(1f)
                         .fillMaxWidth(),

@@ -18,7 +18,9 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBar
+import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableStateOf
@@ -27,6 +29,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.ContentScale
@@ -37,6 +40,7 @@ import androidx.compose.ui.unit.dp
 import coil.compose.AsyncImage
 import coil.compose.AsyncImagePainter
 import coil.request.ImageRequest
+import kotlinx.coroutines.delay
 
 /**
  * Parameters used to open and display an image in the in-app image viewer.
@@ -50,20 +54,22 @@ data class ImageViewerParams(
 )
 
 /**
- * In-app Image Viewer Screen using Coil's [AsyncImage] with interactive zoom & pan.
+ * In-app Image Viewer Screen styled as a gallery popup overlay with interactive zoom & pan.
  *
  * Implements ARCHITECTURE.md §2 & §8 and PRD.md §2:
  * - 100% offline image rendering directly from the persisted SAF document URI.
  * - Interactive pinch-to-zoom (up to 5x) and pan gestures.
  * - Double-tap gesture to quickly toggle between 1x and 2.5x zoom.
- * - Handles EXIF orientation and memory-safe bitmap downsampling via Coil.
- * - Displays loading progress and error fallback UI.
+ * - Deep black gallery backdrop with translucent top bar.
+ * - Flicker-free: delays progress spinner by 200ms so fast local bitmap loads render instantly without flashing.
+ * - Tap background backdrop when unzoomed or back button to dismiss smoothly.
  */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun ImageViewerScreen(
     params: ImageViewerParams,
     onClose: () -> Unit,
+    backHandlerEnabled: Boolean = true,
     modifier: Modifier = Modifier
 ) {
     val context = LocalContext.current
@@ -75,21 +81,41 @@ fun ImageViewerScreen(
     var scale by remember(params.uri) { mutableFloatStateOf(1f) }
     var offset by remember(params.uri) { mutableStateOf(Offset.Zero) }
 
-    // Intercept hardware and gesture back navigation to return
-    BackHandler {
+    // Intercept hardware and gesture back navigation when active
+    BackHandler(enabled = backHandlerEnabled) {
         onClose()
+    }
+
+    // Delay showing the progress spinner by 200ms so local image files decode and display
+    // instantly without an annoying visual spinner flicker/flash
+    var showLoadingSpinner by remember(params.uri) { mutableStateOf(false) }
+    LaunchedEffect(painterState) {
+        if (painterState is AsyncImagePainter.State.Loading) {
+            delay(200)
+            showLoadingSpinner = true
+        } else {
+            showLoadingSpinner = false
+        }
     }
 
     Scaffold(
         modifier = modifier.fillMaxSize(),
+        containerColor = Color.Black,
         topBar = {
             TopAppBar(
+                colors = TopAppBarDefaults.topAppBarColors(
+                    containerColor = Color(0xCC111111),
+                    titleContentColor = Color.White,
+                    navigationIconContentColor = Color.White,
+                    actionIconContentColor = Color.White
+                ),
                 title = {
                     Column {
                         Text(
                             text = params.fileName.ifEmpty { "Image Viewer" },
                             style = MaterialTheme.typography.titleMedium,
                             fontWeight = FontWeight.Bold,
+                            color = Color.White,
                             maxLines = 1,
                             overflow = TextOverflow.Ellipsis
                         )
@@ -101,7 +127,7 @@ fun ImageViewerScreen(
                         Text(
                             text = subtitle,
                             style = MaterialTheme.typography.bodySmall,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                            color = Color(0xCCFFFFFF)
                         )
                     }
                 },
@@ -109,7 +135,8 @@ fun ImageViewerScreen(
                     IconButton(onClick = onClose) {
                         Text(
                             text = "←",
-                            style = MaterialTheme.typography.titleLarge
+                            style = MaterialTheme.typography.titleLarge,
+                            color = Color.White
                         )
                     }
                 },
@@ -121,7 +148,8 @@ fun ImageViewerScreen(
                         }) {
                             Text(
                                 text = "↺",
-                                style = MaterialTheme.typography.titleMedium
+                                style = MaterialTheme.typography.titleMedium,
+                                color = Color.White
                             )
                         }
                     }
@@ -133,13 +161,22 @@ fun ImageViewerScreen(
             modifier = Modifier
                 .fillMaxSize()
                 .padding(innerPadding)
-                .background(MaterialTheme.colorScheme.surfaceVariant),
+                .background(Color.Black)
+                .pointerInput(params.uri) {
+                    detectTapGestures(
+                        onTap = {
+                            if (scale <= 1.05f) {
+                                onClose()
+                            }
+                        }
+                    )
+                },
             contentAlignment = Alignment.Center
         ) {
             AsyncImage(
                 model = ImageRequest.Builder(context)
                     .data(Uri.parse(params.uri))
-                    .crossfade(true)
+                    .crossfade(150)
                     .build(),
                 contentDescription = params.fileName.ifEmpty { "Matched image" },
                 contentScale = ContentScale.Fit,
@@ -175,32 +212,33 @@ fun ImageViewerScreen(
                         translationX = offset.x,
                         translationY = offset.y
                     )
-                    .padding(12.dp)
+                    .padding(8.dp)
             )
 
-            when (val state = painterState) {
-                is AsyncImagePainter.State.Loading -> {
+            when {
+                painterState is AsyncImagePainter.State.Loading && showLoadingSpinner -> {
                     Column(
                         horizontalAlignment = Alignment.CenterHorizontally,
                         verticalArrangement = Arrangement.spacedBy(12.dp)
                     ) {
-                        CircularProgressIndicator()
+                        CircularProgressIndicator(color = Color.White)
                         Text(
                             text = "Loading image...",
                             style = MaterialTheme.typography.bodyMedium,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                            color = Color(0xCCFFFFFF)
                         )
                     }
                 }
 
-                is AsyncImagePainter.State.Error -> {
+                painterState is AsyncImagePainter.State.Error -> {
+                    val errorState = painterState as AsyncImagePainter.State.Error
                     Column(
                         horizontalAlignment = Alignment.CenterHorizontally,
                         verticalArrangement = Arrangement.spacedBy(12.dp),
                         modifier = Modifier.padding(24.dp)
                     ) {
                         Text(
-                            text = "Failed to load image: ${state.result.throwable.message ?: "Unknown error"}",
+                            text = "Failed to load image: ${errorState.result.throwable.message ?: "Unknown error"}",
                             style = MaterialTheme.typography.bodyMedium,
                             color = MaterialTheme.colorScheme.error
                         )
@@ -211,7 +249,7 @@ fun ImageViewerScreen(
                 }
 
                 else -> {
-                    // Image loaded or empty
+                    // Image loaded or decoding without spinner
                 }
             }
         }

@@ -62,10 +62,11 @@ fun SettingsScreen(
     supportedAccelerators: Set<Accelerator> = setOf(Accelerator.CPU),
     activeAccelerator: Accelerator = settings.accelerator,
     onRetryLoadModel: () -> Unit = {},
+    backHandlerEnabled: Boolean = true,
     onClose: () -> Unit,
     modifier: Modifier = Modifier
 ) {
-    BackHandler {
+    BackHandler(enabled = backHandlerEnabled) {
         onClose()
     }
 

@@ -23,7 +23,9 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBars
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.LazyListState
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardActions
@@ -110,6 +112,8 @@ fun SearchScreen(
     onClearTargetFile: (() -> Unit)? = null,
     errorMessage: String? = null,
     indexedChunksCount: Int = 0,
+    listState: LazyListState = rememberLazyListState(),
+    backHandlerEnabled: Boolean = true,
     onClose: (() -> Unit)? = null
 ) {
     val focusManager = LocalFocusManager.current
@@ -118,7 +122,7 @@ fun SearchScreen(
 
     // Intercept system back button to return to the Gallery
     if (onClose != null) {
-        BackHandler {
+        BackHandler(enabled = backHandlerEnabled) {
             onClose()
         }
     }
@@ -406,6 +410,7 @@ fun SearchScreen(
                 SearchResultsList(
                     results = filteredResults,
                     onResultClick = onResultClick,
+                    listState = listState,
                     modifier = Modifier.weight(1f)
                 )
             }
@@ -496,9 +501,11 @@ fun SearchScreen(
 fun SearchResultsList(
     results: List<SearchResult>,
     onResultClick: (SearchResult) -> Unit,
+    listState: LazyListState = rememberLazyListState(),
     modifier: Modifier = Modifier
 ) {
     LazyColumn(
+        state = listState,
         modifier = modifier,
         contentPadding = PaddingValues(horizontal = 16.dp, vertical = 8.dp),
         verticalArrangement = Arrangement.spacedBy(12.dp)

@@ -9,16 +9,22 @@ import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import androidx.activity.result.contract.ActivityResultContracts
-import androidx.compose.animation.AnimatedContent
+import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.core.FastOutSlowInEasing
 import androidx.compose.animation.core.tween
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.animation.scaleIn
 import androidx.compose.animation.scaleOut
-import androidx.compose.animation.togetherWith
+import androidx.compose.animation.slideInHorizontally
+import androidx.compose.animation.slideInVertically
+import androidx.compose.animation.slideOutHorizontally
+import androidx.compose.animation.slideOutVertically
 import androidx.compose.foundation.isSystemInDarkTheme
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.lazy.grid.rememberLazyGridState
+import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.MaterialTheme
@@ -67,19 +73,6 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 
-/**
- * Active navigation screen key used by [AnimatedContent] to perform seamless
- * zoom/expand transitions between the Gallery grid, Search view, Settings, and Viewers.
- */
-private enum class ActiveScreen {
-    GALLERY,
-    SEARCH,
-    SETTINGS,
-    VIEWER_IMAGE,
-    VIEWER_MEDIA,
-    VIEWER_PDF,
-    VIEWER_TEXT
-}
 
 /**
  * Main application activity for LocalFind.
@@ -178,13 +171,29 @@ fun MainScreen(
     var searchResults by remember { mutableStateOf<List<SearchResult>>(emptyList()) }
     var searchError by remember { mutableStateOf<String?>(null) }
 
-    // Active full-screen viewers
+    // Active full-screen viewers and persistent parameters for smooth exit transitions
     var activePdfViewer by remember { mutableStateOf<PdfViewerParams?>(null) }
+    var displayedPdfViewer by remember { mutableStateOf<PdfViewerParams?>(null) }
+    if (activePdfViewer != null) displayedPdfViewer = activePdfViewer
+
     var activeImageViewer by remember { mutableStateOf<ImageViewerParams?>(null) }
+    var displayedImageViewer by remember { mutableStateOf<ImageViewerParams?>(null) }
+    if (activeImageViewer != null) displayedImageViewer = activeImageViewer
+
     var activeMediaPlayer by remember { mutableStateOf<MediaPlayerParams?>(null) }
+    var displayedMediaPlayer by remember { mutableStateOf<MediaPlayerParams?>(null) }
+    if (activeMediaPlayer != null) displayedMediaPlayer = activeMediaPlayer
+
     var activeTextViewer by remember { mutableStateOf<TextViewerParams?>(null) }
+    var displayedTextViewer by remember { mutableStateOf<TextViewerParams?>(null) }
+    if (activeTextViewer != null) displayedTextViewer = activeTextViewer
+
     var filePendingDeletion by remember { mutableStateOf<ImportedFile?>(null) }
     var isSettingsOpen by remember { mutableStateOf(false) }
+
+    // Hoisted scroll states to guarantee scroll position is never lost when opening/closing files or search
+    val galleryGridState = rememberLazyGridState()
+    val searchListState = rememberLazyListState()
 
     /**
      * Retries loading the model and resumes background indexing if files are pending.
@@ -356,6 +365,12 @@ fun MainScreen(
                 }
                 searchResults = results
                 hasSearched = true
+                scope.launch {
+                    try {
+                        searchListState.scrollToItem(0)
+                    } catch (_: Exception) {
+                    }
+                }
             } catch (e: Exception) {
                 searchError = e.message ?: "An error occurred during search"
                 searchResults = emptyList()
@@ -575,236 +590,277 @@ fun MainScreen(
         )
     }
 
-    // Determine current active screen for seamless animated transition
-    val currentScreen = when {
-        activeImageViewer != null -> ActiveScreen.VIEWER_IMAGE
-        activeMediaPlayer != null -> ActiveScreen.VIEWER_MEDIA
-        activePdfViewer != null -> ActiveScreen.VIEWER_PDF
-        activeTextViewer != null -> ActiveScreen.VIEWER_TEXT
-        isSettingsOpen -> ActiveScreen.SETTINGS
-        isSearchOpen -> ActiveScreen.SEARCH
-        else -> ActiveScreen.GALLERY
-    }
-
-    // Seamless scale + fade transition when opening/closing images, videos, documents, or search
-    AnimatedContent(
-        targetState = currentScreen,
-        modifier = Modifier.fillMaxSize(),
-        transitionSpec = {
-            val isOpeningSubScreen = targetState != ActiveScreen.GALLERY
-            if (isOpeningSubScreen) {
-                (scaleIn(
-                    initialScale = 0.88f,
-                    animationSpec = tween(260, easing = FastOutSlowInEasing)
-                ) + fadeIn(animationSpec = tween(220))) togetherWith
-                        (scaleOut(
-                            targetScale = 0.96f,
-                            animationSpec = tween(220, easing = FastOutSlowInEasing)
-                        ) + fadeOut(animationSpec = tween(180)))
+    // Layered Composition Architecture:
+    // 1. BASE SCREEN: GalleryScreen is always composed at the base of the Box. Its grid state
+    //    and cached tiles are never destroyed, guaranteeing zero scroll reset and zero reload flicker.
+    // 2. SEARCH & SETTINGS: Smooth slide/fade overlay screens on top of the gallery.
+    // 3. IMAGE & MEDIA POPUPS: Full-screen gallery-app style popups with scale + fade animations.
+    // 4. DOCUMENT VIEWERS: Document overlay viewers with smooth slide + fade animations.
+    Box(modifier = Modifier.fillMaxSize()) {
+        // 1. Gallery Base Screen
+        GalleryScreen(
+            importedFiles = importedFiles,
+            indexedChunksCount = indexedChunksCount,
+            isIndexing = isIndexing,
+            statusMessage = if (indexingProgress.isIndexing && indexingProgress.message.isNotBlank()) {
+                indexingProgress.message
             } else {
-                (scaleIn(
-                    initialScale = 0.96f,
-                    animationSpec = tween(240, easing = FastOutSlowInEasing)
-                ) + fadeIn(animationSpec = tween(200))) togetherWith
-                        (scaleOut(
-                            targetScale = 0.88f,
-                            animationSpec = tween(220, easing = FastOutSlowInEasing)
-                        ) + fadeOut(animationSpec = tween(180)))
-            }
-        },
-        label = "ScreenTransition"
-    ) { screen ->
-        when (screen) {
-            ActiveScreen.VIEWER_IMAGE -> {
-                activeImageViewer?.let { params ->
-                    ImageViewerScreen(
-                        params = params,
-                        onClose = { activeImageViewer = null }
-                    )
+                status
+            },
+            indexingProgress = indexingProgress,
+            modelStatus = modelStatus,
+            gridState = galleryGridState,
+            onRetryLoadModel = { retryLoadModel() },
+            onOpenSearch = {
+                activeSearchFile = null
+                isSearchOpen = true
+            },
+            onSearchInFile = { file -> startSearchInFile(file) },
+            onImportFiles = { pickerLauncher.launch(FileImporter.SUPPORTED_MIME_TYPES) },
+            onOpenSettings = { isSettingsOpen = true },
+            onFileClick = { file -> openLibraryFile(file) },
+            onRequestDeleteFile = { file -> filePendingDeletion = file },
+            onRetryIndexFile = { file ->
+                scope.launch(Dispatchers.IO) {
+                    val store = FileStore(context)
+                    store.updateStatus(file.uri, IndexingStatus.PENDING)
+                    importedFiles = store.getAll()
+                    IndexingWorker.enqueue(context, replace = true)
+                }
+            },
+            onCancelIndexing = {
+                scope.launch(Dispatchers.IO) {
+                    IndexingWorker.cancel(context)
+                    withContext(Dispatchers.Main) {
+                        status = "Ready"
+                        Toast.makeText(context, "Indexing cancelled", Toast.LENGTH_SHORT).show()
+                    }
+                    reloadFiles()
+                }
+            },
+            onCancelIndexFile = { file ->
+                scope.launch(Dispatchers.IO) {
+                    IndexingWorker.cancelFile(context, file.uri)
+                    withContext(Dispatchers.Main) {
+                        status = "Ready"
+                        Toast.makeText(context, "Cancelled sync for ${file.displayName}", Toast.LENGTH_SHORT).show()
+                    }
+                    reloadFiles()
                 }
             }
+        )
 
-            ActiveScreen.VIEWER_MEDIA -> {
-                activeMediaPlayer?.let { params ->
-                    MediaPlayerScreen(
-                        params = params,
-                        onClose = { activeMediaPlayer = null },
-                        onSearchInFile = {
-                            val matchedFile = importedFiles.firstOrNull { it.uri == params.uri }
-                                ?: ImportedFile(
-                                    uri = params.uri,
-                                    displayName = params.fileName,
-                                    size = 0L,
-                                    mimeType = "video/*",
-                                    addedAt = 0L
-                                )
-                            startSearchInFile(matchedFile)
+        // 2. Dedicated Search Screen (Overlay)
+        AnimatedVisibility(
+            visible = isSearchOpen,
+            enter = fadeIn(animationSpec = tween(200)) + slideInVertically(
+                initialOffsetY = { (it * 0.06f).toInt() },
+                animationSpec = tween(220, easing = FastOutSlowInEasing)
+            ),
+            exit = fadeOut(animationSpec = tween(180)) + slideOutVertically(
+                targetOffsetY = { (it * 0.06f).toInt() },
+                animationSpec = tween(200, easing = FastOutSlowInEasing)
+            )
+        ) {
+            SearchScreen(
+                query = searchQuery,
+                onQueryChange = { searchQuery = it },
+                onSearch = { performSearch(searchQuery) },
+                onClear = {
+                    searchQuery = ""
+                    hasSearched = false
+                    searchResults = emptyList()
+                    searchError = null
+                    scope.launch {
+                        try {
+                            searchListState.scrollToItem(0)
+                        } catch (_: Exception) {
                         }
-                    )
+                    }
+                },
+                isSearching = isSearching,
+                hasSearched = hasSearched,
+                searchResults = searchResults,
+                listState = searchListState,
+                backHandlerEnabled = isSearchOpen && activeImageViewer == null &&
+                        activeMediaPlayer == null && activePdfViewer == null &&
+                        activeTextViewer == null,
+                onResultClick = { result -> openSearchResult(result) },
+                targetFile = activeSearchFile,
+                onClearTargetFile = {
+                    activeSearchFile = null
+                    if (searchQuery.isNotBlank()) {
+                        performSearch(searchQuery)
+                    }
+                },
+                errorMessage = searchError ?: if (modelStatus is ModelStatus.Error) (modelStatus as ModelStatus.Error).message else null,
+                indexedChunksCount = indexedChunksCount,
+                onClose = {
+                    isSearchOpen = false
+                    activeSearchFile = null
                 }
-            }
+            )
+        }
 
-            ActiveScreen.VIEWER_PDF -> {
-                activePdfViewer?.let { params ->
-                    PdfViewerScreen(
-                        params = params,
-                        onClose = { activePdfViewer = null },
-                        onSearchInFile = {
-                            val matchedFile = importedFiles.firstOrNull { it.uri == params.uri }
-                                ?: ImportedFile(
-                                    uri = params.uri,
-                                    displayName = params.fileName,
-                                    size = 0L,
-                                    mimeType = "application/pdf",
-                                    addedAt = 0L
-                                )
-                            startSearchInFile(matchedFile)
-                        }
-                    )
-                }
-            }
-
-            ActiveScreen.VIEWER_TEXT -> {
-                activeTextViewer?.let { params ->
-                    TextViewerScreen(
-                        params = params,
-                        onClose = { activeTextViewer = null },
-                        onSearchInFile = {
-                            val matchedFile = importedFiles.firstOrNull { it.uri == params.uri }
-                                ?: ImportedFile(
-                                    uri = params.uri,
-                                    displayName = params.fileName,
-                                    size = 0L,
-                                    mimeType = "text/plain",
-                                    addedAt = 0L
-                                )
-                            startSearchInFile(matchedFile)
-                        }
-                    )
-                }
-            }
-
-            ActiveScreen.SETTINGS -> {
-                SettingsScreen(
-                    settings = settings,
-                    onSettingsChange = { updated ->
-                        if (updated.accelerator != settings.accelerator) {
-                            scope.launch(Dispatchers.IO) {
-                                EngineManager.setAccelerator(context, updated.accelerator)
-                            }
-                        }
-                        onSettingsChange(updated)
-                    },
-                    onResetDefaults = {
-                        onResetDefaults()
+        // 3. Settings Screen (Overlay)
+        AnimatedVisibility(
+            visible = isSettingsOpen,
+            enter = fadeIn(animationSpec = tween(200)) + slideInHorizontally(
+                initialOffsetX = { (it * 0.15f).toInt() },
+                animationSpec = tween(240, easing = FastOutSlowInEasing)
+            ),
+            exit = fadeOut(animationSpec = tween(180)) + slideOutHorizontally(
+                targetOffsetX = { (it * 0.15f).toInt() },
+                animationSpec = tween(200, easing = FastOutSlowInEasing)
+            )
+        ) {
+            SettingsScreen(
+                settings = settings,
+                onSettingsChange = { updated ->
+                    if (updated.accelerator != settings.accelerator) {
                         scope.launch(Dispatchers.IO) {
-                            val defaultAcc = when {
-                                Accelerator.NPU in supportedAccelerators -> Accelerator.NPU
-                                Accelerator.GPU in supportedAccelerators -> Accelerator.GPU
-                                else -> Accelerator.CPU
-                            }
-                            EngineManager.setAccelerator(context, defaultAcc)
+                            EngineManager.setAccelerator(context, updated.accelerator)
                         }
-                    },
-                    onReindexAll = {
-                        scope.launch(Dispatchers.IO) {
-                            val store = FileStore(context)
-                            store.markAllPending()
-                            importedFiles = store.getAll()
-                            IndexingWorker.enqueue(context, replace = true)
+                    }
+                    onSettingsChange(updated)
+                },
+                onResetDefaults = {
+                    onResetDefaults()
+                    scope.launch(Dispatchers.IO) {
+                        val defaultAcc = when {
+                            Accelerator.NPU in supportedAccelerators -> Accelerator.NPU
+                            Accelerator.GPU in supportedAccelerators -> Accelerator.GPU
+                            else -> Accelerator.CPU
                         }
-                        isSettingsOpen = false
-                    },
-                    isIndexing = isIndexing,
-                    fileCount = importedFiles.size,
-                    modelStatus = modelStatus,
-                    supportedAccelerators = supportedAccelerators,
-                    activeAccelerator = activeAccelerator,
-                    onRetryLoadModel = { retryLoadModel() },
-                    onClose = { isSettingsOpen = false }
+                        EngineManager.setAccelerator(context, defaultAcc)
+                    }
+                },
+                onReindexAll = {
+                    scope.launch(Dispatchers.IO) {
+                        val store = FileStore(context)
+                        store.markAllPending()
+                        importedFiles = store.getAll()
+                        IndexingWorker.enqueue(context, replace = true)
+                    }
+                    isSettingsOpen = false
+                },
+                isIndexing = isIndexing,
+                fileCount = importedFiles.size,
+                modelStatus = modelStatus,
+                supportedAccelerators = supportedAccelerators,
+                activeAccelerator = activeAccelerator,
+                onRetryLoadModel = { retryLoadModel() },
+                backHandlerEnabled = isSettingsOpen,
+                onClose = { isSettingsOpen = false }
+            )
+        }
+
+        // 4. Image Viewer: Gallery app style popup transition
+        AnimatedVisibility(
+            visible = activeImageViewer != null,
+            enter = fadeIn(animationSpec = tween(200)) + scaleIn(
+                initialScale = 0.90f,
+                animationSpec = tween(240, easing = FastOutSlowInEasing)
+            ),
+            exit = fadeOut(animationSpec = tween(180)) + scaleOut(
+                targetScale = 0.90f,
+                animationSpec = tween(200, easing = FastOutSlowInEasing)
+            )
+        ) {
+            displayedImageViewer?.let { params ->
+                ImageViewerScreen(
+                    params = params,
+                    onClose = { activeImageViewer = null },
+                    backHandlerEnabled = activeImageViewer != null
                 )
             }
+        }
 
-            ActiveScreen.SEARCH -> {
-                SearchScreen(
-                    query = searchQuery,
-                    onQueryChange = { searchQuery = it },
-                    onSearch = { performSearch(searchQuery) },
-                    onClear = {
-                        searchQuery = ""
-                        hasSearched = false
-                        searchResults = emptyList()
-                        searchError = null
-                    },
-                    isSearching = isSearching,
-                    hasSearched = hasSearched,
-                    searchResults = searchResults,
-                    onResultClick = { result -> openSearchResult(result) },
-                    targetFile = activeSearchFile,
-                    onClearTargetFile = {
-                        activeSearchFile = null
-                        if (searchQuery.isNotBlank()) {
-                            performSearch(searchQuery)
-                        }
-                    },
-                    errorMessage = searchError ?: if (modelStatus is ModelStatus.Error) (modelStatus as ModelStatus.Error).message else null,
-                    indexedChunksCount = indexedChunksCount,
-                    onClose = {
-                        isSearchOpen = false
-                        activeSearchFile = null
+        // 5. Media Player (Video & Audio): Gallery app style popup transition with smooth crossfade
+        AnimatedVisibility(
+            visible = activeMediaPlayer != null,
+            enter = fadeIn(animationSpec = tween(200)),
+            exit = fadeOut(animationSpec = tween(180))
+        ) {
+            displayedMediaPlayer?.let { params ->
+                MediaPlayerScreen(
+                    params = params,
+                    onClose = { activeMediaPlayer = null },
+                    backHandlerEnabled = activeMediaPlayer != null,
+                    onSearchInFile = {
+                        val matchedFile = importedFiles.firstOrNull { it.uri == params.uri }
+                            ?: ImportedFile(
+                                uri = params.uri,
+                                displayName = params.fileName,
+                                size = 0L,
+                                mimeType = "video/*",
+                                addedAt = 0L
+                            )
+                        startSearchInFile(matchedFile)
                     }
                 )
             }
+        }
 
-            ActiveScreen.GALLERY -> {
-                GalleryScreen(
-                    importedFiles = importedFiles,
-                    indexedChunksCount = indexedChunksCount,
-                    isIndexing = isIndexing,
-                    statusMessage = if (indexingProgress.isIndexing && indexingProgress.message.isNotBlank()) {
-                        indexingProgress.message
-                    } else {
-                        status
-                    },
-                    indexingProgress = indexingProgress,
-                    modelStatus = modelStatus,
-                    onRetryLoadModel = { retryLoadModel() },
-                    onOpenSearch = {
-                        activeSearchFile = null
-                        isSearchOpen = true
-                    },
-                    onSearchInFile = { file -> startSearchInFile(file) },
-                    onImportFiles = { pickerLauncher.launch(FileImporter.SUPPORTED_MIME_TYPES) },
-                    onOpenSettings = { isSettingsOpen = true },
-                    onFileClick = { file -> openLibraryFile(file) },
-                    onRequestDeleteFile = { file -> filePendingDeletion = file },
-                    onRetryIndexFile = { file ->
-                        scope.launch(Dispatchers.IO) {
-                            val store = FileStore(context)
-                            store.updateStatus(file.uri, IndexingStatus.PENDING)
-                            importedFiles = store.getAll()
-                            IndexingWorker.enqueue(context, replace = true)
-                        }
-                    },
-                    onCancelIndexing = {
-                        scope.launch(Dispatchers.IO) {
-                            IndexingWorker.cancel(context)
-                            withContext(Dispatchers.Main) {
-                                status = "Ready"
-                                Toast.makeText(context, "Indexing cancelled", Toast.LENGTH_SHORT).show()
-                            }
-                            reloadFiles()
-                        }
-                    },
-                    onCancelIndexFile = { file ->
-                        scope.launch(Dispatchers.IO) {
-                            IndexingWorker.cancelFile(context, file.uri)
-                            withContext(Dispatchers.Main) {
-                                status = "Ready"
-                                Toast.makeText(context, "Cancelled sync for ${file.displayName}", Toast.LENGTH_SHORT).show()
-                            }
-                            reloadFiles()
-                        }
+        // 6. PDF Viewer: Smooth overlay over current screen
+        AnimatedVisibility(
+            visible = activePdfViewer != null,
+            enter = fadeIn(animationSpec = tween(200)) + slideInVertically(
+                initialOffsetY = { (it * 0.06f).toInt() },
+                animationSpec = tween(240, easing = FastOutSlowInEasing)
+            ),
+            exit = fadeOut(animationSpec = tween(180)) + slideOutVertically(
+                targetOffsetY = { (it * 0.06f).toInt() },
+                animationSpec = tween(200, easing = FastOutSlowInEasing)
+            )
+        ) {
+            displayedPdfViewer?.let { params ->
+                PdfViewerScreen(
+                    params = params,
+                    onClose = { activePdfViewer = null },
+                    backHandlerEnabled = activePdfViewer != null,
+                    onSearchInFile = {
+                        val matchedFile = importedFiles.firstOrNull { it.uri == params.uri }
+                            ?: ImportedFile(
+                                uri = params.uri,
+                                displayName = params.fileName,
+                                size = 0L,
+                                mimeType = "application/pdf",
+                                addedAt = 0L
+                            )
+                        startSearchInFile(matchedFile)
+                    }
+                )
+            }
+        }
+
+        // 7. Text Viewer: Smooth overlay over current screen
+        AnimatedVisibility(
+            visible = activeTextViewer != null,
+            enter = fadeIn(animationSpec = tween(200)) + slideInVertically(
+                initialOffsetY = { (it * 0.06f).toInt() },
+                animationSpec = tween(240, easing = FastOutSlowInEasing)
+            ),
+            exit = fadeOut(animationSpec = tween(180)) + slideOutVertically(
+                targetOffsetY = { (it * 0.06f).toInt() },
+                animationSpec = tween(200, easing = FastOutSlowInEasing)
+            )
+        ) {
+            displayedTextViewer?.let { params ->
+                TextViewerScreen(
+                    params = params,
+                    onClose = { activeTextViewer = null },
+                    backHandlerEnabled = activeTextViewer != null,
+                    onSearchInFile = {
+                        val matchedFile = importedFiles.firstOrNull { it.uri == params.uri }
+                            ?: ImportedFile(
+                                uri = params.uri,
+                                displayName = params.fileName,
+                                size = 0L,
+                                mimeType = "text/plain",
+                                addedAt = 0L
+                            )
+                        startSearchInFile(matchedFile)
                     }
                 )
             }

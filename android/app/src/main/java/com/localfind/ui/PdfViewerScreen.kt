@@ -48,6 +48,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.withContext
 import java.io.File
 
@@ -80,6 +81,7 @@ fun PdfViewerScreen(
     params: PdfViewerParams,
     onClose: () -> Unit,
     onSearchInFile: (() -> Unit)? = null,
+    backHandlerEnabled: Boolean = true,
     modifier: Modifier = Modifier
 ) {
     val context = LocalContext.current
@@ -96,9 +98,20 @@ fun PdfViewerScreen(
     var pfd by remember { mutableStateOf<ParcelFileDescriptor?>(null) }
     var tempFile by remember { mutableStateOf<File?>(null) }
 
-    // Intercept hardware and gesture back navigation
-    BackHandler {
+    // Intercept hardware and gesture back navigation when active
+    BackHandler(enabled = backHandlerEnabled) {
         onClose()
+    }
+
+    // Delay showing the loading spinner by 200ms so fast page renders don't flash a spinner
+    var showLoadingSpinner by remember(params.uri) { mutableStateOf(false) }
+    LaunchedEffect(isLoading, renderedBitmap) {
+        if (isLoading && renderedBitmap == null) {
+            delay(200)
+            showLoadingSpinner = true
+        } else {
+            showLoadingSpinner = false
+        }
     }
 
     // Initialize PdfRenderer from the document URI
@@ -279,7 +292,7 @@ fun PdfViewerScreen(
             contentAlignment = Alignment.Center
         ) {
             when {
-                isLoading && renderedBitmap == null -> {
+                isLoading && renderedBitmap == null && showLoadingSpinner -> {
                     Column(
                         horizontalAlignment = Alignment.CenterHorizontally,
                         verticalArrangement = Arrangement.spacedBy(12.dp)
