@@ -75,5 +75,76 @@ class PdfChunkerTest {
         assertEquals("Clean text on page 4.", chunks[0].text)
         assertEquals(4, chunks[0].pageNumber)
     }
+
+    @Test
+    fun isKindaEmpty_detectsBlankAndPlaceholderPages() {
+        // Empty and blank strings
+        assertTrue(PdfChunker.isKindaEmpty(""))
+        assertTrue(PdfChunker.isKindaEmpty("   \n\t  "))
+
+        // Standard placeholder notices in books and official reports
+        assertTrue(PdfChunker.isKindaEmpty("This page intentionally left blank."))
+        assertTrue(PdfChunker.isKindaEmpty("THIS PAGE IS INTENTIONALLY LEFT BLANK"))
+        assertTrue(PdfChunker.isKindaEmpty("  this page intentionally left blank  "))
+    }
+
+    @Test
+    fun isKindaEmpty_detectsPaginationAndPageNumbers() {
+        // Solitary page numbers and pagination markers
+        assertTrue(PdfChunker.isKindaEmpty("12"))
+        assertTrue(PdfChunker.isKindaEmpty("Page 4"))
+        assertTrue(PdfChunker.isKindaEmpty("page 12 of 80"))
+        assertTrue(PdfChunker.isKindaEmpty("12 / 80"))
+        assertTrue(PdfChunker.isKindaEmpty("- 5 -"))
+        assertTrue(PdfChunker.isKindaEmpty("[ 42 ]"))
+    }
+
+    @Test
+    fun isKindaEmpty_detectsSparseHeadersWatermarksAndSymbols() {
+        // Stray punctuation, bullets, or symbols
+        assertTrue(PdfChunker.isKindaEmpty("• • •"))
+        assertTrue(PdfChunker.isKindaEmpty("--- ... ---"))
+        assertTrue(PdfChunker.isKindaEmpty("=== *** ==="))
+
+        // Isolated 1 or 2 word headers / watermarks
+        assertTrue(PdfChunker.isKindaEmpty("Confidential"))
+        assertTrue(PdfChunker.isKindaEmpty("Draft"))
+        assertTrue(PdfChunker.isKindaEmpty("Chapter 1"))
+        assertTrue(PdfChunker.isKindaEmpty("Part 2"))
+
+        // Very short 3-word labels under 25 alphanumeric chars
+        assertTrue(PdfChunker.isKindaEmpty("Part 1 - Intro"))
+    }
+
+    @Test
+    fun isKindaEmpty_allowsSubstantivePageContent() {
+        // Substantive text should not be treated as kinda empty
+        org.junit.Assert.assertFalse(
+            PdfChunker.isKindaEmpty("This is a single page document introducing local semantic search.")
+        )
+        org.junit.Assert.assertFalse(
+            PdfChunker.isKindaEmpty("Architecture of the offline search engine and vector index.")
+        )
+        org.junit.Assert.assertFalse(
+            PdfChunker.isKindaEmpty("Clean text on page 4.")
+        )
+    }
+
+    @Test
+    fun chunkPage_skipsKindaEmptyPages() {
+        // Verify chunkPage produces no chunks for kinda empty pages
+        assertTrue(PdfChunker.chunkPage("This page intentionally left blank.", pageNumber = 3).isEmpty())
+        assertTrue(PdfChunker.chunkPage("Page 12 of 100", pageNumber = 12).isEmpty())
+        assertTrue(PdfChunker.chunkPage("Confidential", pageNumber = 1).isEmpty())
+        assertTrue(PdfChunker.chunkPage("• • •", pageNumber = 5).isEmpty())
+
+        // Non-empty page should produce chunk
+        val validPageChunks = PdfChunker.chunkPage(
+            "Executive overview of the offline local retrieval pipeline with vector embeddings.",
+            pageNumber = 2
+        )
+        assertEquals(1, validPageChunks.size)
+        assertEquals(2, validPageChunks[0].pageNumber)
+    }
 }
 

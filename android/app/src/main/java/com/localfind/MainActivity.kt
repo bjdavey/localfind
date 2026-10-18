@@ -255,9 +255,14 @@ fun MainScreen(
                 }
             }
             importedFiles = store.getAll()
-            // If the app was closed/killed while indexing was in-flight, resume immediately via WorkManager
-            if (store.getPendingFiles().isNotEmpty()) {
-                IndexingWorker.enqueue(context, replace = true)
+            // If the app was closed/killed while indexing was in-flight, resume immediately via WorkManager unless paused
+            val pendingCount = store.getPendingFiles().size
+            if (pendingCount > 0) {
+                if (IndexingWorker.isPaused(context)) {
+                    IndexingProgressState.setPaused(true, "Indexing paused ($pendingCount pending)")
+                } else {
+                    IndexingWorker.enqueue(context, replace = true)
+                }
             }
         }
         refreshIndexCount()
@@ -266,6 +271,9 @@ fun MainScreen(
     // Refresh file statuses and index counts as files transition lifecycle states
     LaunchedEffect(activeWorkInfo?.state, indexingProgress.currentUri, indexingProgress.isIndexing) {
         reloadFiles()
+        if (!isIndexing && !indexingProgress.isIndexing && !indexingProgress.isPaused) {
+            status = "Ready"
+        }
     }
 
     /**
@@ -541,7 +549,12 @@ fun MainScreen(
                 }
 
                 if (supportedFiles.isNotEmpty()) {
-                    IndexingWorker.enqueue(context)
+                    if (IndexingWorker.isPaused(context)) {
+                        val pendingCount = withContext(Dispatchers.IO) { FileStore(context).getPendingFiles().size }
+                        IndexingProgressState.setPaused(true, "Indexing paused ($pendingCount pending)")
+                    } else {
+                        IndexingWorker.enqueue(context)
+                    }
                     if (unsupportedCount > 0) {
                         val msg = "Imported ${supportedFiles.size} file(s). Skipped $unsupportedCount unsupported file(s)."
                         status = msg
@@ -626,6 +639,24 @@ fun MainScreen(
                     store.updateStatus(file.uri, IndexingStatus.PENDING)
                     importedFiles = store.getAll()
                     IndexingWorker.enqueue(context, replace = true)
+                }
+            },
+            onPauseIndexing = {
+                scope.launch(Dispatchers.IO) {
+                    IndexingWorker.pause(context)
+                    withContext(Dispatchers.Main) {
+                        Toast.makeText(context, "Indexing paused", Toast.LENGTH_SHORT).show()
+                    }
+                    reloadFiles()
+                }
+            },
+            onResumeIndexing = {
+                scope.launch(Dispatchers.IO) {
+                    IndexingWorker.resume(context)
+                    withContext(Dispatchers.Main) {
+                        Toast.makeText(context, "Indexing resumed", Toast.LENGTH_SHORT).show()
+                    }
+                    reloadFiles()
                 }
             },
             onCancelIndexing = {

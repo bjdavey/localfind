@@ -39,16 +39,16 @@
 - [x] Try support CPU, GPU, NPU with option in settings depending on device
 - [x] Search inside a specific file
 
-## Milestone 4: First beta
-- Don't index kinda empty pages pdf
-- Pause, resume, and cancel indexing queue
+## Milestone 4: First alpha
+- [x] Don't index kinda empty pages pdf
+- [x] Pause, resume, and cancel indexing queue
 - Find tricks, try and test to make video indexing faster
 - Optimize long video indexing like avoiding thermal throttling
 - GPU Support
 - Create folders and recursive folder import (DocumentFile / tree URI)
 - Support GIF
 - Set good dataset for testing
-- e2e test
+- e2e test with edge cases
 
 ## Bugs / Issues
 - [x] Can not cancel stuck sync file

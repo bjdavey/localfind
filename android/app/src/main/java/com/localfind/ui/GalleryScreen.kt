@@ -117,6 +117,8 @@ fun GalleryScreen(
     onFileClick: (ImportedFile) -> Unit,
     onRequestDeleteFile: (ImportedFile) -> Unit,
     onRetryIndexFile: ((ImportedFile) -> Unit)? = null,
+    onPauseIndexing: (() -> Unit)? = null,
+    onResumeIndexing: (() -> Unit)? = null,
     onCancelIndexing: (() -> Unit)? = null,
     onCancelIndexFile: ((ImportedFile) -> Unit)? = null,
     gridState: LazyGridState = rememberLazyGridState(),
@@ -134,6 +136,7 @@ fun GalleryScreen(
         FileDetailsDialog(
             file = file,
             isIndexing = isIndexing || indexingProgress.isIndexing,
+            isQueuePaused = indexingProgress.isPaused,
             onDismiss = { inspectedFile = null },
             onOpen = {
                 val target = file
@@ -315,11 +318,12 @@ fun GalleryScreen(
             // =====================================================================
             // 2. LIVE INDEXING PROGRESS BANNER
             // =====================================================================
+            val hasPending = importedFiles.any {
+                it.indexingStatus == IndexingStatus.PENDING || it.indexingStatus == IndexingStatus.INDEXING
+            }
             val isCancelledMessage = statusMessage.contains("cancelled", ignoreCase = true)
             val showIndexingBanner = !isCancelledMessage && (
-                isIndexing ||
-                indexingProgress.isIndexing ||
-                (statusMessage.startsWith("Indexing") && !statusMessage.startsWith("Indexing cancelled")) ||
+                ((isIndexing || indexingProgress.isIndexing || indexingProgress.isPaused) && hasPending) ||
                 statusMessage.startsWith("Importing")
             )
             AnimatedVisibility(
@@ -342,10 +346,13 @@ fun GalleryScreen(
                         horizontalArrangement = Arrangement.SpaceBetween
                     ) {
                         Column(modifier = Modifier.weight(1f)) {
-                            val bannerText = if (indexingProgress.isIndexing && indexingProgress.message.isNotBlank()) {
+                            val isPaused = indexingProgress.isPaused
+                            val bannerText = if (isPaused) {
+                                if (indexingProgress.message.isNotBlank()) indexingProgress.message else "Indexing paused"
+                            } else if (indexingProgress.message.isNotBlank()) {
                                 indexingProgress.message
                             } else {
-                                statusMessage
+                                "Indexing files..."
                             }
                             Text(
                                 text = bannerText,
@@ -356,7 +363,16 @@ fun GalleryScreen(
                                 overflow = TextOverflow.Ellipsis
                             )
                             Spacer(modifier = Modifier.height(6.dp))
-                            if (indexingProgress.isIndexing && indexingProgress.progressFraction > 0f) {
+                            if (isPaused) {
+                                LinearProgressIndicator(
+                                    progress = { indexingProgress.progressFraction.coerceIn(0f, 1f) },
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .height(4.dp)
+                                        .clip(RoundedCornerShape(2.dp)),
+                                    color = MaterialTheme.colorScheme.outline
+                                )
+                            } else if (indexingProgress.isIndexing && indexingProgress.progressFraction > 0f) {
                                 LinearProgressIndicator(
                                     progress = { indexingProgress.progressFraction },
                                     modifier = Modifier
@@ -373,19 +389,57 @@ fun GalleryScreen(
                                 )
                             }
                         }
-                        if (onCancelIndexing != null) {
-                            Spacer(modifier = Modifier.width(10.dp))
-                            TextButton(
-                                onClick = onCancelIndexing,
-                                contentPadding = PaddingValues(horizontal = 10.dp, vertical = 4.dp),
-                                modifier = Modifier.height(34.dp)
-                            ) {
-                                Text(
-                                    text = "Cancel",
-                                    style = MaterialTheme.typography.labelSmall,
-                                    fontWeight = FontWeight.Bold,
-                                    color = MaterialTheme.colorScheme.error
-                                )
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(4.dp)
+                        ) {
+                            if (indexingProgress.isPaused) {
+                                if (onResumeIndexing != null) {
+                                    Spacer(modifier = Modifier.width(6.dp))
+                                    TextButton(
+                                        onClick = onResumeIndexing,
+                                        contentPadding = PaddingValues(horizontal = 8.dp, vertical = 4.dp),
+                                        modifier = Modifier.height(34.dp)
+                                    ) {
+                                        Text(
+                                            text = "Resume",
+                                            style = MaterialTheme.typography.labelSmall,
+                                            fontWeight = FontWeight.Bold,
+                                            color = MaterialTheme.colorScheme.primary
+                                        )
+                                    }
+                                }
+                            } else {
+                                if (onPauseIndexing != null) {
+                                    Spacer(modifier = Modifier.width(6.dp))
+                                    TextButton(
+                                        onClick = onPauseIndexing,
+                                        contentPadding = PaddingValues(horizontal = 8.dp, vertical = 4.dp),
+                                        modifier = Modifier.height(34.dp)
+                                    ) {
+                                        Text(
+                                            text = "Pause",
+                                            style = MaterialTheme.typography.labelSmall,
+                                            fontWeight = FontWeight.Bold,
+                                            color = MaterialTheme.colorScheme.secondary
+                                        )
+                                    }
+                                }
+                            }
+                            if (onCancelIndexing != null) {
+                                Spacer(modifier = Modifier.width(4.dp))
+                                TextButton(
+                                    onClick = onCancelIndexing,
+                                    contentPadding = PaddingValues(horizontal = 8.dp, vertical = 4.dp),
+                                    modifier = Modifier.height(34.dp)
+                                ) {
+                                    Text(
+                                        text = "Cancel",
+                                        style = MaterialTheme.typography.labelSmall,
+                                        fontWeight = FontWeight.Bold,
+                                        color = MaterialTheme.colorScheme.error
+                                    )
+                                }
                             }
                         }
                     }
@@ -497,6 +551,7 @@ fun GalleryScreen(
                             file = file,
                             isActivelyIndexing = isActivelyIndexing,
                             activeProgressFraction = activeFraction,
+                            isQueuePaused = indexingProgress.isPaused,
                             onClick = { onFileClick(file) },
                             onLongClick = { inspectedFile = file },
                             onCancelIndex = onCancelIndexFile?.let { { it(file) } }
@@ -636,6 +691,7 @@ fun MediaGalleryTile(
     file: ImportedFile,
     isActivelyIndexing: Boolean = false,
     activeProgressFraction: Float = 0f,
+    isQueuePaused: Boolean = false,
     onClick: () -> Unit,
     onLongClick: () -> Unit,
     onCancelIndex: (() -> Unit)? = null,
@@ -992,7 +1048,8 @@ fun MediaGalleryTile(
                         isActivelyIndexing ->
                             "Indexing... • ${formatFileSize(file.size)}"
                         file.indexingStatus == IndexingStatus.PENDING ->
-                            "In queue • ${formatFileSize(file.size)}"
+                            if (isQueuePaused) "Paused • ${formatFileSize(file.size)}"
+                            else "In queue • ${formatFileSize(file.size)}"
                         file.indexingStatus == IndexingStatus.FAILED ->
                             "Indexing failed • ${formatFileSize(file.size)}"
                         file.chunksCount > 0 ->
@@ -1164,6 +1221,7 @@ private fun EmptyGalleryState(
 private fun FileDetailsDialog(
     file: ImportedFile,
     isIndexing: Boolean,
+    isQueuePaused: Boolean = false,
     onDismiss: () -> Unit,
     onOpen: () -> Unit,
     onSearchInFile: (() -> Unit)? = null,
@@ -1200,7 +1258,9 @@ private fun FileDetailsDialog(
                 val statusText = when (file.indexingStatus) {
                     IndexingStatus.INDEXED -> "Indexed (${file.chunksCount} chunks)"
                     IndexingStatus.INDEXING -> "Indexing in background..."
-                    IndexingStatus.PENDING -> "Waiting in background queue"
+                    IndexingStatus.PENDING ->
+                        if (isQueuePaused) "Indexing paused in queue"
+                        else "Waiting in background queue"
                     IndexingStatus.FAILED -> "Indexing failed / cancelled"
                 }
                 Text(

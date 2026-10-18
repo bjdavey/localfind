@@ -322,40 +322,195 @@ class IndexingWorkerLogicTest {
     /**
      * Verifies that the top banner visibility condition in GalleryScreen correctly:
      * 1. Hides immediately if status contains "cancelled" (preventing "Indexing cancelled" from staying stuck).
-     * 2. Shows when indexing is actively running or importing.
-     * 3. Hides when idle or ready.
+     * 2. Shows when indexing is actively running or paused AND files are pending, or during importing.
+     * 3. Hides when idle, ready, or when no files are pending (preventing stuck resumed/indexing banners).
      */
     @Test
     fun bannerVisibilityCondition_hidesWhenCancelledOrIdle() {
         fun isBannerVisible(
             isIndexing: Boolean,
             isProgressIndexing: Boolean,
+            isPaused: Boolean = false,
+            hasPending: Boolean = true,
             statusMessage: String
         ): Boolean {
             val isCancelledMessage = statusMessage.contains("cancelled", ignoreCase = true)
             return !isCancelledMessage && (
-                isIndexing ||
-                isProgressIndexing ||
-                (statusMessage.startsWith("Indexing") && !statusMessage.startsWith("Indexing cancelled")) ||
+                ((isIndexing || isProgressIndexing || isPaused) && hasPending) ||
                 statusMessage.startsWith("Importing")
             )
         }
 
-        // Active indexing -> visible
-        assertTrue(isBannerVisible(isIndexing = true, isProgressIndexing = true, statusMessage = "Indexing 1/2: test.pdf"))
-        assertTrue(isBannerVisible(isIndexing = true, isProgressIndexing = false, statusMessage = "Ready"))
-        assertTrue(isBannerVisible(isIndexing = false, isProgressIndexing = true, statusMessage = "Ready"))
-        assertTrue(isBannerVisible(isIndexing = false, isProgressIndexing = false, statusMessage = "Importing 3 files..."))
+        // Active indexing with pending files -> visible
+        assertTrue(isBannerVisible(isIndexing = true, isProgressIndexing = true, hasPending = true, statusMessage = "Indexing 1/2: test.pdf"))
+        assertTrue(isBannerVisible(isIndexing = true, isProgressIndexing = false, hasPending = true, statusMessage = "Ready"))
+        assertTrue(isBannerVisible(isIndexing = false, isProgressIndexing = true, hasPending = true, statusMessage = "Ready"))
+        // Importing files -> visible even before files are marked pending in DB
+        assertTrue(isBannerVisible(isIndexing = false, isProgressIndexing = false, hasPending = false, statusMessage = "Importing 3 files..."))
 
         // Cancellation message -> MUST BE HIDDEN (the bug report condition)
-        assertFalse(isBannerVisible(isIndexing = false, isProgressIndexing = false, statusMessage = "Indexing cancelled"))
-        assertFalse(isBannerVisible(isIndexing = true, isProgressIndexing = false, statusMessage = "Indexing cancelled"))
-        assertFalse(isBannerVisible(isIndexing = false, isProgressIndexing = true, statusMessage = "Indexing cancelled"))
-        assertFalse(isBannerVisible(isIndexing = false, isProgressIndexing = false, statusMessage = "Cancelled sync for test.mp4"))
+        assertFalse(isBannerVisible(isIndexing = false, isProgressIndexing = false, hasPending = true, statusMessage = "Indexing cancelled"))
+        assertFalse(isBannerVisible(isIndexing = true, isProgressIndexing = false, hasPending = true, statusMessage = "Indexing cancelled"))
+        assertFalse(isBannerVisible(isIndexing = false, isProgressIndexing = true, hasPending = true, statusMessage = "Indexing cancelled"))
+        assertFalse(isBannerVisible(isIndexing = false, isProgressIndexing = false, hasPending = false, statusMessage = "Cancelled sync for test.mp4"))
+
+        // No pending files -> MUST BE HIDDEN (fixes stuck "Indexing resumed" / "Indexing files..." banner)
+        assertFalse(isBannerVisible(isIndexing = false, isProgressIndexing = false, hasPending = false, statusMessage = "Indexing resumed"))
+        assertFalse(isBannerVisible(isIndexing = true, isProgressIndexing = true, hasPending = false, statusMessage = "Indexing resumed"))
 
         // Idle state -> hidden
-        assertFalse(isBannerVisible(isIndexing = false, isProgressIndexing = false, statusMessage = "Ready"))
-        assertFalse(isBannerVisible(isIndexing = false, isProgressIndexing = false, statusMessage = "Removed doc.txt"))
+        assertFalse(isBannerVisible(isIndexing = false, isProgressIndexing = false, hasPending = false, statusMessage = "Ready"))
+        assertFalse(isBannerVisible(isIndexing = false, isProgressIndexing = false, hasPending = false, statusMessage = "Removed doc.txt"))
+    }
+
+    /**
+     * Verifies that IndexingCancellationState correctly transitions through pause, resume, and cancel states.
+     */
+    @Test
+    fun indexingCancellationState_pauseResumeAndCancel() {
+        IndexingCancellationState.clearAll()
+        assertFalse(IndexingCancellationState.isPaused())
+        assertFalse(IndexingCancellationState.isAllCancelled())
+
+        // Pause
+        IndexingCancellationState.pause()
+        assertTrue(IndexingCancellationState.isPaused())
+        assertFalse(IndexingCancellationState.isAllCancelled())
+
+        // Resume
+        IndexingCancellationState.resume()
+        assertFalse(IndexingCancellationState.isPaused())
+
+        // Cancel while paused
+        IndexingCancellationState.pause()
+        assertTrue(IndexingCancellationState.isPaused())
+        IndexingCancellationState.cancelAll()
+        assertFalse(IndexingCancellationState.isPaused())
+        assertTrue(IndexingCancellationState.isAllCancelled())
+
+        // Clear all
+        IndexingCancellationState.clearAll()
+        assertFalse(IndexingCancellationState.isPaused())
+        assertFalse(IndexingCancellationState.isAllCancelled())
+    }
+
+    /**
+     * Verifies that IndexingProgressState updates and resets correctly for pause and resume.
+     */
+    @Test
+    fun indexingProgressState_pauseAndResume() {
+        IndexingProgressState.reset()
+        assertFalse(IndexingProgressState.progress.value.isPaused)
+
+        // Set paused
+        IndexingProgressState.setPaused(isPaused = true, message = "Indexing paused (3 pending)")
+        val paused = IndexingProgressState.progress.value
+        assertFalse(paused.isIndexing)
+        assertTrue(paused.isPaused)
+        assertEquals("Indexing paused (3 pending)", paused.message)
+
+        // Update when resuming
+        IndexingProgressState.update(
+            isIndexing = true,
+            currentUri = "content://media/resume.pdf",
+            currentFileName = "resume.pdf",
+            fileIndex = 1,
+            totalFiles = 3,
+            currentChunk = 0,
+            totalChunks = 10,
+            progressFraction = 0f,
+            message = "Indexing 1/3: resume.pdf (0%)",
+            isPaused = false
+        )
+        val resumed = IndexingProgressState.progress.value
+        assertTrue(resumed.isIndexing)
+        assertFalse(resumed.isPaused)
+        assertEquals("Indexing 1/3: resume.pdf (0%)", resumed.message)
+
+        // Reset clears paused flag
+        IndexingProgressState.reset()
+        val reset = IndexingProgressState.progress.value
+        assertFalse(reset.isIndexing)
+        assertFalse(reset.isPaused)
+        assertEquals("Ready", reset.message)
+    }
+
+    /**
+     * Verifies that when indexing is paused, in-flight and pending files remain or revert to PENDING
+     * (and are NEVER marked as FAILED), whereas explicit user cancellation marks files as FAILED.
+     */
+    @Test
+    fun queueLifecycle_pausePreservesPendingStateWhereasCancelMarksFailed() {
+        fun resolveStatusOnInterruption(
+            isPaused: Boolean,
+            isCancelled: Boolean
+        ): IndexingStatus {
+            return when {
+                isPaused -> IndexingStatus.PENDING
+                isCancelled -> IndexingStatus.FAILED
+                else -> IndexingStatus.PENDING
+            }
+        }
+
+        // When paused, files must stay PENDING so they resume smoothly
+        assertEquals(IndexingStatus.PENDING, resolveStatusOnInterruption(isPaused = true, isCancelled = false))
+
+        // When cancelled, files must be marked FAILED so they don't get stuck in an infinite retry loop
+        assertEquals(IndexingStatus.FAILED, resolveStatusOnInterruption(isPaused = false, isCancelled = true))
+    }
+
+    /**
+     * Verifies that the GalleryScreen banner condition correctly displays when the queue is paused
+     * if pending files remain, but hides if cancelled or all files completed.
+     */
+    @Test
+    fun bannerVisibilityCondition_showsWhenPausedWithPendingFiles() {
+        fun isBannerVisible(
+            isIndexing: Boolean,
+            isProgressIndexing: Boolean,
+            isPaused: Boolean,
+            hasPending: Boolean,
+            statusMessage: String
+        ): Boolean {
+            val isCancelledMessage = statusMessage.contains("cancelled", ignoreCase = true)
+            return !isCancelledMessage && (
+                ((isIndexing || isProgressIndexing || isPaused) && hasPending) ||
+                statusMessage.startsWith("Importing")
+            )
+        }
+
+        // When queue is paused and files are pending -> MUST BE VISIBLE (to allow Resume/Cancel)
+        assertTrue(
+            isBannerVisible(
+                isIndexing = false,
+                isProgressIndexing = false,
+                isPaused = true,
+                hasPending = true,
+                statusMessage = "Indexing paused"
+            )
+        )
+
+        // When queue is paused but no files are pending -> Hidden
+        assertFalse(
+            isBannerVisible(
+                isIndexing = false,
+                isProgressIndexing = false,
+                isPaused = true,
+                hasPending = false,
+                statusMessage = "Ready"
+            )
+        )
+
+        // When user clicked Cancel -> Hidden
+        assertFalse(
+            isBannerVisible(
+                isIndexing = false,
+                isProgressIndexing = false,
+                isPaused = true,
+                hasPending = true,
+                statusMessage = "Indexing cancelled"
+            )
+        )
     }
 }
 

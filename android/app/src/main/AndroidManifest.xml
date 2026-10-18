@@ -38,6 +38,10 @@
             android:name="androidx.work.impl.foreground.SystemForegroundService"
             android:foregroundServiceType="dataSync"
             tools:node="merge" />
+        <!-- Notification action receiver for Pause, Resume, and Cancel -->
+        <receiver
+            android:name=".index.IndexingActionReceiver"
+            android:exported="false" />
     </application>
 
 </manifest>
