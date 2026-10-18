@@ -591,24 +591,16 @@ fun FloatingSearchAndImportDock(
                 modifier = Modifier
                     .size(46.dp)
                     .clip(CircleShape)
-                    .clickable(enabled = !isIndexing, onClick = onImportClick),
+                    .clickable(onClick = onImportClick),
                 shape = CircleShape,
-                color = if (isIndexing) {
-                    MaterialTheme.colorScheme.surface
-                } else {
-                    MaterialTheme.colorScheme.primary
-                }
+                color = MaterialTheme.colorScheme.primary
             ) {
                 Box(contentAlignment = Alignment.Center) {
                     Text(
                         text = "+",
                         fontSize = 24.sp,
                         fontWeight = FontWeight.Bold,
-                        color = if (isIndexing) {
-                            MaterialTheme.colorScheme.outline
-                        } else {
-                            MaterialTheme.colorScheme.onPrimary
-                        }
+                        color = MaterialTheme.colorScheme.onPrimary
                     )
                 }
             }
@@ -1141,7 +1133,6 @@ private fun EmptyGalleryState(
                 Spacer(modifier = Modifier.height(4.dp))
                 Button(
                     onClick = onImportFiles,
-                    enabled = !isIndexing,
                     shape = RoundedCornerShape(20.dp)
                 ) {
                     Text(

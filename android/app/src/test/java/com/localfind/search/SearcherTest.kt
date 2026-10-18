@@ -347,5 +347,74 @@ class SearcherTest {
         assertEquals("fileB_c0", fileBResults[0].chunkId)
         assertEquals("content://com.localfind/fileB", fileBResults[0].fileUri)
     }
+
+    /**
+     * Verifies that searching while indexing is actively writing new chunks executes concurrently
+     * and returns ranked results without race conditions, deadlocks, or exceptions.
+     */
+    @Test
+    fun search_whileIndexingConcurrently_succeedsWithoutDeadlock() {
+        val fakeStore = FakeVectorStore()
+        val embeddingStore = EmbeddingStore(fakeStore)
+
+        // Seed store with initial indexed file
+        val initialRecord = RetrievalRecord(
+            "file0_c0",
+            listOf(TextPart("Initial indexed document")),
+            floatArrayOf(1.0f, 0.0f, 0.0f),
+            mapOf("fileId" to "content://com.localfind/file0", "uri" to "content://com.localfind/file0", "name" to "file0.txt", "type" to "text")
+        )
+        embeddingStore.storeBatch(listOf(initialRecord))
+
+        val searcher = Searcher(embeddingStore) { _ -> floatArrayOf(1.0f, 0.0f, 0.0f) }
+
+        val indexingDone = java.util.concurrent.atomic.AtomicBoolean(false)
+        val searchSuccessCount = java.util.concurrent.atomic.AtomicInteger(0)
+        val errors = java.util.concurrent.CopyOnWriteArrayList<Throwable>()
+
+        // Background thread: continuously simulates chunks being indexed and saved to EmbeddingStore
+        val indexThread = Thread {
+            try {
+                for (i in 1..20) {
+                    val record = RetrievalRecord(
+                        "stream_c$i",
+                        listOf(TextPart("Streaming chunk $i")),
+                        floatArrayOf(0.9f, 0.1f, 0.0f),
+                        mapOf("fileId" to "content://com.localfind/stream", "uri" to "content://com.localfind/stream", "name" to "stream.txt", "type" to "text")
+                    )
+                    embeddingStore.store(record.id, record.embeddings, "Streaming chunk $i", record.metadata)
+                    Thread.sleep(5)
+                }
+            } catch (t: Throwable) {
+                errors.add(t)
+            } finally {
+                indexingDone.set(true)
+            }
+        }
+
+        // Foreground / UI thread: repeatedly searches while indexing is running
+        val searchThread = Thread {
+            try {
+                while (!indexingDone.get() || searchSuccessCount.get() < 5) {
+                    val results = searcher.search(query = "query", topK = 5)
+                    assertTrue("Search must return at least initial indexed record", results.isNotEmpty())
+                    searchSuccessCount.incrementAndGet()
+                    Thread.sleep(3)
+                }
+            } catch (t: Throwable) {
+                errors.add(t)
+            }
+        }
+
+        indexThread.start()
+        searchThread.start()
+
+        indexThread.join(5000)
+        searchThread.join(5000)
+
+        assertTrue("No thread exceptions occurred during concurrent search and indexing", errors.isEmpty())
+        assertTrue("At least 5 searches executed while indexing was active", searchSuccessCount.get() >= 5)
+        assertTrue("Store contains all chunks after concurrent indexing", embeddingStore.getAllRecordIds().size >= 21)
+    }
 }
 

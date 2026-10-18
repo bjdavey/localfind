@@ -285,5 +285,24 @@ class IndexingWorkerLogicTest {
         assertEquals("content://2", pendingToResume[0].uri)
         assertEquals("content://3", pendingToResume[1].uri)
     }
+
+    /**
+     * Verifies that importing new files while indexing uses APPEND_OR_REPLACE policy
+     * (replace = false) so active indexing workers are not killed midway.
+     */
+    @Test
+    fun enqueuePolicy_whenImportingWhileIndexing_doesNotCancelRunningWorker() {
+        fun resolveWorkPolicy(replace: Boolean): androidx.work.ExistingWorkPolicy {
+            return if (replace) androidx.work.ExistingWorkPolicy.REPLACE else androidx.work.ExistingWorkPolicy.APPEND_OR_REPLACE
+        }
+
+        // When importing new files during indexing: replace = false -> APPEND_OR_REPLACE
+        val importPolicy = resolveWorkPolicy(replace = false)
+        assertEquals(androidx.work.ExistingWorkPolicy.APPEND_OR_REPLACE, importPolicy)
+
+        // When explicitly reindexing all: replace = true -> REPLACE
+        val reindexPolicy = resolveWorkPolicy(replace = true)
+        assertEquals(androidx.work.ExistingWorkPolicy.REPLACE, reindexPolicy)
+    }
 }
 

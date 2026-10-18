@@ -88,15 +88,21 @@ class Embedder(
     /**
      * Converts a text string or passage into a 768-dimensional normalized float embedding vector.
      *
+     * Synchronized on `this` to prevent concurrent native LiteRT inference calls between
+     * background indexing workers and UI search queries.
+     *
      * @param text The input passage or search query string to embed.
      * @return FloatArray of 768 elements representing the semantic vector.
      */
-    fun embedText(text: String): FloatArray =
+    fun embedText(text: String): FloatArray = synchronized(this) {
         embedder.embedText(text).embeddings()[0].floatEmbedding()
+    }
 
     /**
      * Converts an image [Bitmap] into a 768-dimensional normalized float embedding vector
      * in the same shared multimodal vector space as text.
+     *
+     * Synchronized on `this` to ensure thread-safe native inference.
      *
      * Under the hood, wraps the [Bitmap] in a MediaPipe [com.google.mediapipe.framework.image.MPImage]
      * via [BitmapImageBuilder] and invokes [UniversalEmbedder.embedImage], which encodes the bitmap
@@ -105,21 +111,25 @@ class Embedder(
      * @param bitmap The decoded, upright ARGB_8888 image bitmap to embed.
      * @return FloatArray of 768 elements representing the semantic vector.
      */
-    fun embedImage(bitmap: Bitmap): FloatArray =
+    fun embedImage(bitmap: Bitmap): FloatArray = synchronized(this) {
         BitmapImageBuilder(bitmap).build().use { mpImage ->
             embedder.embedImage(mpImage).embeddings()[0].floatEmbedding()
         }
+    }
 
     /**
      * Converts a window of audio into a 768-dimensional normalized float embedding vector
      * in the same shared multimodal vector space as text and images.
      *
+     * Synchronized on `this` to ensure thread-safe native inference.
+     *
      * @param samples 16 kHz mono signed 16-bit PCM samples (the rate EmbeddingGemma's
      *   mel-spectrogram frontend expects).
      * @return FloatArray of 768 elements representing the semantic vector.
      */
-    fun embedAudio(samples: ShortArray): FloatArray =
+    fun embedAudio(samples: ShortArray): FloatArray = synchronized(this) {
         embedder.embedAudio(toAudioData(samples)).embeddings()[0].floatEmbedding()
+    }
 
     /**
      * Wraps 16 kHz mono PCM samples as a content part for [embedVideoWindow].
@@ -132,11 +142,14 @@ class Embedder(
      * (GOOGLE_AI_EDGE_GALLERY.md §6.2). The model has no dedicated video input,
      * so a video window is represented as frames plus audio in one sequence.
      *
+     * Synchronized on `this` to ensure thread-safe native inference.
+     *
      * @param parts [TextPart] time markers, [AudioPart] slices and [ImagePart] JPEG frames.
      * @return FloatArray of 768 elements representing the semantic vector.
      */
-    fun embedVideoWindow(parts: List<Part>): FloatArray =
+    fun embedVideoWindow(parts: List<Part>): FloatArray = synchronized(this) {
         embedder.embedContent(parts).embeddings()[0].floatEmbedding()
+    }
 
     private fun toAudioData(samples: ShortArray): AudioData {
         val format = AudioData.AudioDataFormat.builder()
@@ -148,8 +161,11 @@ class Embedder(
 
     /**
      * Releases native memory and interpreter instances allocated by MediaPipe Tasks.
+     * Synchronized on `this` to avoid closing while an active inference call is running.
      */
-    override fun close() = embedder.close()
+    override fun close() = synchronized(this) {
+        embedder.close()
+    }
 
     companion object {
         private const val TAG = "Embedder"

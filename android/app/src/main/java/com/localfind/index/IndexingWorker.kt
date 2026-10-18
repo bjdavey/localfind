@@ -156,17 +156,18 @@ class IndexingWorker(
          *
          * @param context Application context.
          * @param replace If true, replaces any existing/completed unique work with a fresh worker.
-         *                Defaults to true so that newly queued, retried, or re-indexed files
-         *                are guaranteed to be processed immediately by WorkManager.
+         *                If false (default), uses [ExistingWorkPolicy.APPEND_OR_REPLACE] so that any
+         *                actively executing worker continues uninterrupted while newly imported
+         *                files are picked up and indexed seamlessly.
          */
-        fun enqueue(context: Context, replace: Boolean = true) {
+        fun enqueue(context: Context, replace: Boolean = false) {
             val request = OneTimeWorkRequestBuilder<IndexingWorker>()
                 .addTag(TAG_INDEXING)
                 .build()
 
             WorkManager.getInstance(context.applicationContext).enqueueUniqueWork(
                 WORK_NAME,
-                if (replace) ExistingWorkPolicy.REPLACE else ExistingWorkPolicy.KEEP,
+                if (replace) ExistingWorkPolicy.REPLACE else ExistingWorkPolicy.APPEND_OR_REPLACE,
                 request
             )
         }
