@@ -134,6 +134,20 @@ class IndexingWorkerLogicTest {
 
         IndexingCancellationState.clearAll()
         assertFalse(IndexingCancellationState.isFileCancelled("content://test/2"))
+
+        // Test cancelAll and resetAllCancelled
+        assertFalse(IndexingCancellationState.isAllCancelled())
+        assertFalse(IndexingCancellationState.isCancelled("content://test/any"))
+        IndexingCancellationState.cancelAll()
+        assertTrue(IndexingCancellationState.isAllCancelled())
+        assertTrue(IndexingCancellationState.isCancelled("content://test/any"))
+        assertTrue(IndexingCancellationState.isCancelled("content://test/other"))
+
+        IndexingCancellationState.resetAllCancelled()
+        assertFalse(IndexingCancellationState.isAllCancelled())
+        assertFalse(IndexingCancellationState.isCancelled("content://test/any"))
+
+        IndexingCancellationState.clearAll()
     }
 
     @Test
@@ -303,6 +317,45 @@ class IndexingWorkerLogicTest {
         // When explicitly reindexing all: replace = true -> REPLACE
         val reindexPolicy = resolveWorkPolicy(replace = true)
         assertEquals(androidx.work.ExistingWorkPolicy.REPLACE, reindexPolicy)
+    }
+
+    /**
+     * Verifies that the top banner visibility condition in GalleryScreen correctly:
+     * 1. Hides immediately if status contains "cancelled" (preventing "Indexing cancelled" from staying stuck).
+     * 2. Shows when indexing is actively running or importing.
+     * 3. Hides when idle or ready.
+     */
+    @Test
+    fun bannerVisibilityCondition_hidesWhenCancelledOrIdle() {
+        fun isBannerVisible(
+            isIndexing: Boolean,
+            isProgressIndexing: Boolean,
+            statusMessage: String
+        ): Boolean {
+            val isCancelledMessage = statusMessage.contains("cancelled", ignoreCase = true)
+            return !isCancelledMessage && (
+                isIndexing ||
+                isProgressIndexing ||
+                (statusMessage.startsWith("Indexing") && !statusMessage.startsWith("Indexing cancelled")) ||
+                statusMessage.startsWith("Importing")
+            )
+        }
+
+        // Active indexing -> visible
+        assertTrue(isBannerVisible(isIndexing = true, isProgressIndexing = true, statusMessage = "Indexing 1/2: test.pdf"))
+        assertTrue(isBannerVisible(isIndexing = true, isProgressIndexing = false, statusMessage = "Ready"))
+        assertTrue(isBannerVisible(isIndexing = false, isProgressIndexing = true, statusMessage = "Ready"))
+        assertTrue(isBannerVisible(isIndexing = false, isProgressIndexing = false, statusMessage = "Importing 3 files..."))
+
+        // Cancellation message -> MUST BE HIDDEN (the bug report condition)
+        assertFalse(isBannerVisible(isIndexing = false, isProgressIndexing = false, statusMessage = "Indexing cancelled"))
+        assertFalse(isBannerVisible(isIndexing = true, isProgressIndexing = false, statusMessage = "Indexing cancelled"))
+        assertFalse(isBannerVisible(isIndexing = false, isProgressIndexing = true, statusMessage = "Indexing cancelled"))
+        assertFalse(isBannerVisible(isIndexing = false, isProgressIndexing = false, statusMessage = "Cancelled sync for test.mp4"))
+
+        // Idle state -> hidden
+        assertFalse(isBannerVisible(isIndexing = false, isProgressIndexing = false, statusMessage = "Ready"))
+        assertFalse(isBannerVisible(isIndexing = false, isProgressIndexing = false, statusMessage = "Removed doc.txt"))
     }
 }
 

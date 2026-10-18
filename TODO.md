@@ -55,7 +55,7 @@
 - [x] Should not allow import files other than supported that has builtin viewer
 - [x] Fix resume indexing after app closed, and keep indexing working in background while showing notification to prevent the app from being stopped when closed
 - [x] Allow import new file or search while indexing
-- [ ] Fix stuck indexing after canceled
+- [x] Fix stuck indexing after canceled
 - [ ] Opening image/video should be smoth transition like a gallery app, perhaps just popup without opening it in a new view?
 - [ ] Fix flicker when opening a file or a search result and not to scroll back to start when closing it
 - [ ] Better PDF viewer

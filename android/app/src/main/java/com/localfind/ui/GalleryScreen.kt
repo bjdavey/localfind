@@ -312,8 +312,15 @@ fun GalleryScreen(
             // =====================================================================
             // 2. LIVE INDEXING PROGRESS BANNER
             // =====================================================================
+            val isCancelledMessage = statusMessage.contains("cancelled", ignoreCase = true)
+            val showIndexingBanner = !isCancelledMessage && (
+                isIndexing ||
+                indexingProgress.isIndexing ||
+                (statusMessage.startsWith("Indexing") && !statusMessage.startsWith("Indexing cancelled")) ||
+                statusMessage.startsWith("Importing")
+            )
             AnimatedVisibility(
-                visible = isIndexing || indexingProgress.isIndexing || statusMessage.startsWith("Indexing") || statusMessage.startsWith("Importing"),
+                visible = showIndexingBanner,
                 enter = fadeIn(),
                 exit = fadeOut()
             ) {

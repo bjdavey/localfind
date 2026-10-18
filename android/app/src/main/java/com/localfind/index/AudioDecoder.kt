@@ -13,16 +13,23 @@ import java.nio.ByteOrder
  *
  * Uses the Android framework only ([MediaExtractor] + [MediaCodec]), so no extra dependency.
  * The whole file is decoded into memory (~1.9 MB per minute), which is fine for the MVP.
+ * Supports cooperative cancellation via [isCancelled] to abort decoding loops immediately.
  */
 object AudioDecoder {
 
     private const val TIMEOUT_US = 10_000L
 
     /**
+     * @param isCancelled Cooperative cancellation probe checked inside the decode loop.
+     *                    If it returns true, decoding stops immediately and returns empty PCM.
      * @return 16 kHz mono PCM samples.
      * @throws IllegalArgumentException if the file has no audio track.
      */
-    fun decodeToMono16k(context: Context, uri: Uri): ShortArray {
+    fun decodeToMono16k(
+        context: Context,
+        uri: Uri,
+        isCancelled: () -> Boolean = { false }
+    ): ShortArray {
         val extractor = MediaExtractor()
         var codec: MediaCodec? = null
         try {
@@ -46,6 +53,11 @@ object AudioDecoder {
             var inputDone = false
             var outputDone = false
             while (!outputDone) {
+                // Check cooperative cancellation before processing next chunk
+                if (isCancelled()) {
+                    pcmChunks.clear()
+                    return ShortArray(0)
+                }
                 // Feed compressed input
                 if (!inputDone) {
                     val inIdx = codec.dequeueInputBuffer(TIMEOUT_US)

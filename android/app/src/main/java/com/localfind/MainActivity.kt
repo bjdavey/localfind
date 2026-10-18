@@ -790,7 +790,7 @@ fun MainScreen(
                         scope.launch(Dispatchers.IO) {
                             IndexingWorker.cancel(context)
                             withContext(Dispatchers.Main) {
-                                status = "Indexing cancelled"
+                                status = "Ready"
                                 Toast.makeText(context, "Indexing cancelled", Toast.LENGTH_SHORT).show()
                             }
                             reloadFiles()
@@ -800,7 +800,7 @@ fun MainScreen(
                         scope.launch(Dispatchers.IO) {
                             IndexingWorker.cancelFile(context, file.uri)
                             withContext(Dispatchers.Main) {
-                                status = "Cancelled sync for ${file.displayName}"
+                                status = "Ready"
                                 Toast.makeText(context, "Cancelled sync for ${file.displayName}", Toast.LENGTH_SHORT).show()
                             }
                             reloadFiles()

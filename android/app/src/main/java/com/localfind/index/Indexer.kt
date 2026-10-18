@@ -435,7 +435,7 @@ class Indexer(
         }
 
         val pcm = try {
-            AudioDecoder.decodeToMono16k(context, file.uri.toUri())
+            AudioDecoder.decodeToMono16k(context, file.uri.toUri(), isCancelled)
         } catch (e: Exception) {
             return IndexResult(file.uri, 0, false, "Audio decode failed: ${e.message}")
         }
@@ -520,9 +520,13 @@ class Indexer(
 
         val uri = file.uri.toUri()
         val pcm = try {
-            AudioDecoder.decodeToMono16k(context, uri)
+            AudioDecoder.decodeToMono16k(context, uri, isCancelled)
         } catch (_: Throwable) {
             ShortArray(0) // no audio track or memory limit: use frames only
+        }
+
+        if (isCancelled()) {
+            return IndexResult(file.uri, 0, false, "Indexing cancelled")
         }
 
         val records = mutableListOf<RetrievalRecord>()
@@ -568,6 +572,10 @@ class Indexer(
                     }
                     parts.add(TextPart(label))
                     parts.add(ImagePart(jpeg!!))
+                }
+
+                if (isCancelled()) {
+                    return IndexResult(file.uri, 0, false, "Indexing cancelled")
                 }
 
                 val embedding = try {

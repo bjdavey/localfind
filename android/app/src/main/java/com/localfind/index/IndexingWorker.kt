@@ -95,27 +95,54 @@ object IndexingProgressState {
 }
 
 /**
- * In-memory thread-safe state tracking for explicitly cancelled file URIs.
+ * In-memory thread-safe state tracking for explicitly cancelled file URIs and queue cancellations.
  *
  * Allows real-time cooperative cancellation of running or queued indexing tasks
- * so stuck files can be aborted immediately without waiting for chunk loops to complete.
+ * so stuck files and queues can be aborted immediately without waiting for chunk loops to complete.
  */
 object IndexingCancellationState {
     private val cancelledUris = java.util.Collections.synchronizedSet(mutableSetOf<String>())
+    @Volatile
+    private var allCancelled: Boolean = false
 
+    /**
+     * Signals cooperative cancellation to all running and enqueued indexing tasks.
+     */
+    fun cancelAll() {
+        allCancelled = true
+    }
+
+    /**
+     * Resets global cancellation state before launching a new indexing batch.
+     */
+    fun resetAllCancelled() {
+        allCancelled = false
+    }
+
+    /**
+     * Cancels indexing for a specific file URI.
+     */
     fun cancelFile(uri: String) {
         cancelledUris.add(uri)
     }
 
-    fun isFileCancelled(uri: String): Boolean {
-        return cancelledUris.contains(uri)
+    /**
+     * Checks whether the specified file URI or the entire queue has been cancelled.
+     */
+    fun isCancelled(uri: String): Boolean {
+        return allCancelled || cancelledUris.contains(uri)
     }
+
+    fun isFileCancelled(uri: String): Boolean = isCancelled(uri)
+
+    fun isAllCancelled(): Boolean = allCancelled
 
     fun clear(uri: String) {
         cancelledUris.remove(uri)
     }
 
     fun clearAll() {
+        allCancelled = false
         cancelledUris.clear()
     }
 }
@@ -161,6 +188,8 @@ class IndexingWorker(
          *                files are picked up and indexed seamlessly.
          */
         fun enqueue(context: Context, replace: Boolean = false) {
+            // Reset global cancellation before enqueueing new work
+            IndexingCancellationState.resetAllCancelled()
             val request = OneTimeWorkRequestBuilder<IndexingWorker>()
                 .addTag(TAG_INDEXING)
                 .build()
@@ -174,12 +203,14 @@ class IndexingWorker(
 
         /**
          * Cancels any running or enqueued indexing work.
-         * Marks all pending or active indexing files as FAILED so they
+         * Signals immediate cooperative cancellation to running workers and
+         * marks all pending or active indexing files as FAILED so they
          * do not get stuck in an infinite retry loop.
          */
         fun cancel(context: Context) {
+            // Flag global cancellation so any active worker loop stops immediately
+            IndexingCancellationState.cancelAll()
             WorkManager.getInstance(context.applicationContext).cancelUniqueWork(WORK_NAME)
-            IndexingCancellationState.clearAll()
             IndexingProgressState.reset()
             val notificationManager = context.getSystemService(Context.NOTIFICATION_SERVICE) as? NotificationManager
             notificationManager?.cancel(NOTIFICATION_ID)
@@ -336,9 +367,9 @@ class IndexingWorker(
 
             // Process batches until no pending or interrupted files remain in FileStore
             while (true) {
-                if (isStopped) {
+                if (isStopped || IndexingCancellationState.isAllCancelled()) {
                     IndexingProgressState.reset()
-                    return@withContext Result.retry()
+                    return@withContext if (IndexingCancellationState.isAllCancelled()) Result.success() else Result.retry()
                 }
 
                 val pending = fileStore.getPendingFiles()
@@ -349,15 +380,17 @@ class IndexingWorker(
                 val totalInBatch = pending.size
 
                 for ((idx, file) in pending.withIndex()) {
-                    if (isStopped) {
-                        fileStore.updateStatus(file.uri, IndexingStatus.PENDING)
+                    if (isStopped || IndexingCancellationState.isAllCancelled()) {
+                        if (!IndexingCancellationState.isAllCancelled()) {
+                            fileStore.updateStatus(file.uri, IndexingStatus.PENDING)
+                        }
                         IndexingProgressState.reset()
-                        return@withContext Result.retry()
+                        return@withContext if (IndexingCancellationState.isAllCancelled()) Result.success() else Result.retry()
                     }
 
                     // If file was already cancelled or marked failed, skip it
                     val currentStatus = fileStore.get(file.uri)?.indexingStatus
-                    if (currentStatus == IndexingStatus.FAILED || IndexingCancellationState.isFileCancelled(file.uri)) {
+                    if (currentStatus == IndexingStatus.FAILED || IndexingCancellationState.isCancelled(file.uri)) {
                         IndexingCancellationState.clear(file.uri)
                         continue
                     }
@@ -393,7 +426,7 @@ class IndexingWorker(
                         val result = EngineManager.withIndexer(context, settings) { indexer ->
                             indexer.indexFile(
                                 file = file,
-                                isCancelled = { isStopped || IndexingCancellationState.isFileCancelled(file.uri) },
+                                isCancelled = { isStopped || IndexingCancellationState.isCancelled(file.uri) },
                                 onProgress = { cur, tot ->
                                     val fraction = if (tot > 0) cur.toFloat() / tot.toFloat() else 0f
                                     val percent = (fraction * 100).toInt()
@@ -414,16 +447,26 @@ class IndexingWorker(
                             )
                         }
 
-                        // Explicit user cancellation of this specific file
-                        if (IndexingCancellationState.isFileCancelled(file.uri)) {
+                        // Explicit user cancellation of this specific file or all files
+                        if (IndexingCancellationState.isCancelled(file.uri)) {
                             IndexingCancellationState.clear(file.uri)
                             Log.i(TAG_INDEXING, "Indexing explicitly cancelled for ${file.displayName}")
                             fileStore.updateStatus(file.uri, IndexingStatus.FAILED, 0)
+                            if (IndexingCancellationState.isAllCancelled()) {
+                                IndexingProgressState.reset()
+                                return@withContext Result.success()
+                            }
                             continue
                         }
 
                         // Interruption / worker preemption: revert to PENDING so next session auto-resumes
                         if (isStopped) {
+                            if (IndexingCancellationState.isAllCancelled()) {
+                                Log.i(TAG_INDEXING, "Indexing worker stopped due to cancellation by user for ${file.displayName}")
+                                fileStore.updateStatus(file.uri, IndexingStatus.FAILED, 0)
+                                IndexingProgressState.reset()
+                                return@withContext Result.success()
+                            }
                             Log.i(TAG_INDEXING, "Worker stopped while indexing ${file.displayName}, reverting to PENDING for auto-resume")
                             fileStore.updateStatus(file.uri, IndexingStatus.PENDING, 0)
                             IndexingProgressState.reset()
@@ -438,8 +481,12 @@ class IndexingWorker(
                             if (result.errorMessage?.contains("cancelled", ignoreCase = true) == true ||
                                 result.errorMessage?.contains("not initialized", ignoreCase = true) == true
                             ) {
-                                Log.i(TAG_INDEXING, "Indexing interrupted for ${file.displayName} (${result.errorMessage}), reverting to PENDING")
-                                fileStore.updateStatus(file.uri, IndexingStatus.PENDING, 0)
+                                if (IndexingCancellationState.isAllCancelled() || IndexingCancellationState.isCancelled(file.uri)) {
+                                    fileStore.updateStatus(file.uri, IndexingStatus.FAILED, 0)
+                                } else {
+                                    Log.i(TAG_INDEXING, "Indexing interrupted for ${file.displayName} (${result.errorMessage}), reverting to PENDING")
+                                    fileStore.updateStatus(file.uri, IndexingStatus.PENDING, 0)
+                                }
                             } else {
                                 Log.e(TAG_INDEXING, "Indexing failed for ${file.displayName}: ${result.errorMessage}")
                                 fileStore.updateStatus(file.uri, IndexingStatus.FAILED, 0)
@@ -447,12 +494,21 @@ class IndexingWorker(
                         }
                     } catch (e: Throwable) {
                         Log.e(TAG_INDEXING, "Exception indexing ${file.displayName}", e)
-                        if (IndexingCancellationState.isFileCancelled(file.uri)) {
+                        if (IndexingCancellationState.isCancelled(file.uri)) {
                             IndexingCancellationState.clear(file.uri)
                             fileStore.updateStatus(file.uri, IndexingStatus.FAILED, 0)
+                            if (IndexingCancellationState.isAllCancelled()) {
+                                IndexingProgressState.reset()
+                                return@withContext Result.success()
+                            }
                             continue
                         }
                         if (isStopped || e is kotlinx.coroutines.CancellationException || e is InterruptedException) {
+                            if (IndexingCancellationState.isAllCancelled()) {
+                                fileStore.updateStatus(file.uri, IndexingStatus.FAILED, 0)
+                                IndexingProgressState.reset()
+                                return@withContext Result.success()
+                            }
                             Log.i(TAG_INDEXING, "Worker interrupted while indexing ${file.displayName}, reverting to PENDING")
                             fileStore.updateStatus(file.uri, IndexingStatus.PENDING, 0)
                             IndexingProgressState.reset()
@@ -471,8 +527,8 @@ class IndexingWorker(
             val notificationManager = context.getSystemService(Context.NOTIFICATION_SERVICE) as? NotificationManager
             notificationManager?.cancel(NOTIFICATION_ID)
             IndexingProgressState.reset()
-            // If worker was stopped or cancelled, revert any in-flight files from INDEXING to PENDING so they auto-resume next time
-            if (isStopped) {
+            // If worker was stopped by OS preemption (not user cancellation), revert in-flight files from INDEXING to PENDING
+            if (isStopped && !IndexingCancellationState.isAllCancelled()) {
                 try {
                     val pending = fileStore.getPendingFiles()
                     for (f in pending) {
