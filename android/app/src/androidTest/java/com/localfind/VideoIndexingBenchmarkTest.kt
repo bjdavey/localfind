@@ -9,25 +9,26 @@ import android.os.PowerManager
 import android.util.Log
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.platform.app.InstrumentationRegistry
-import com.google.mediapipe.tasks.core.BaseOptions
 import com.google.mediapipe.tasks.core.ImagePart
 import com.google.mediapipe.tasks.core.Part
 import com.google.mediapipe.tasks.core.TextPart
-import com.google.mediapipe.tasks.retrieval.universalembedder.UniversalEmbedderOptions
 import com.localfind.data.AppSettings
 import com.localfind.data.EmbeddingStore
 import com.localfind.data.ImportedFile
 import com.localfind.embed.Embedder
-import com.localfind.index.AudioDecoder
 import com.localfind.index.Indexer
-import com.localfind.index.MAX_INPUT_TOKENS
-import com.localfind.index.VideoChunker
+import com.localfind.index.audio.AudioDecoder
+import com.localfind.index.video.MAX_INPUT_TOKENS
+import com.localfind.index.video.VideoChunker
+import com.localfind.index.video.indexVideoFile
 import com.localfind.ui.SearchResultFormatter
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.async
 import kotlinx.coroutines.runBlocking
 import org.junit.Assert.assertTrue
+import org.junit.Assume.assumeTrue
 import org.junit.Before
+import org.junit.Ignore
 import org.junit.Test
 import org.junit.runner.RunWith
 import java.io.ByteArrayOutputStream
@@ -46,17 +47,24 @@ import kotlin.math.abs
  * 6. Hardware Subsampling to 256px (Direct hardware decoder downscaling)
  * 7. Combined Full Optimization Pipeline
  */
+@Ignore("Manual benchmark suite")
 @RunWith(AndroidJUnit4::class)
 class VideoIndexingBenchmarkTest {
+
+    companion object {
+        // Benchmark video filenames - change these variables as needed
+        var fiveMinuteVideoName: String = "Planet-Earth.mp4"
+        var shortSecondsVideoName: String = "Girls_Door.mp4"
+    }
 
     private val tag = "BENCHMARK_VIDEO"
     private lateinit var context: Context
     private lateinit var videoFile: File
     private lateinit var videoUri: Uri
     private lateinit var importedFile: ImportedFile
-    private lateinit var girlsDoorFile: File
-    private lateinit var girlsDoorUri: Uri
-    private lateinit var girlsDoorImportedFile: ImportedFile
+    private lateinit var shortSecondsVideoFile: File
+    private lateinit var shortSecondsVideoUri: Uri
+    private lateinit var shortSecondsVideoImportedFile: ImportedFile
     private lateinit var powerManager: PowerManager
 
     @Before
@@ -64,39 +72,39 @@ class VideoIndexingBenchmarkTest {
         context = InstrumentationRegistry.getInstrumentation().targetContext
         powerManager = context.getSystemService(Context.POWER_SERVICE) as PowerManager
 
-        // Setup Planet-Earth.mp4
-        videoFile = File(context.cacheDir, "Planet-Earth.mp4")
+        // Setup 5-minute video (Planet-Earth.mp4)
+        videoFile = File(context.cacheDir, fiveMinuteVideoName)
         if (!videoFile.exists() || videoFile.length() == 0L) {
-            val fallback = File("/data/local/tmp/Planet-Earth.mp4")
+            val fallback = File("/data/local/tmp/$fiveMinuteVideoName")
             if (fallback.exists()) {
                 fallback.copyTo(videoFile, overwrite = true)
             }
         }
-        if (videoFile.exists()) {
+        if (videoFile.exists() && videoFile.length() > 0L) {
             videoUri = Uri.fromFile(videoFile)
             importedFile = ImportedFile(
                 uri = videoUri.toString(),
-                displayName = "Planet-Earth.mp4",
+                displayName = fiveMinuteVideoName,
                 mimeType = "video/mp4",
                 size = videoFile.length()
             )
         }
 
-        // Setup Girls_Door.mp4
-        girlsDoorFile = File(context.cacheDir, "Girls_Door.mp4")
-        if (!girlsDoorFile.exists() || girlsDoorFile.length() == 0L) {
-            val fallback = File("/data/local/tmp/Girls_Door.mp4")
+        // Setup short seconds video (Girls_Door.mp4)
+        shortSecondsVideoFile = File(context.cacheDir, shortSecondsVideoName)
+        if (!shortSecondsVideoFile.exists() || shortSecondsVideoFile.length() == 0L) {
+            val fallback = File("/data/local/tmp/$shortSecondsVideoName")
             if (fallback.exists()) {
-                fallback.copyTo(girlsDoorFile, overwrite = true)
+                fallback.copyTo(shortSecondsVideoFile, overwrite = true)
             }
         }
-        if (girlsDoorFile.exists()) {
-            girlsDoorUri = Uri.fromFile(girlsDoorFile)
-            girlsDoorImportedFile = ImportedFile(
-                uri = girlsDoorUri.toString(),
-                displayName = "Girls_Door.mp4",
+        if (shortSecondsVideoFile.exists() && shortSecondsVideoFile.length() > 0L) {
+            shortSecondsVideoUri = Uri.fromFile(shortSecondsVideoFile)
+            shortSecondsVideoImportedFile = ImportedFile(
+                uri = shortSecondsVideoUri.toString(),
+                displayName = shortSecondsVideoName,
                 mimeType = "video/mp4",
-                size = girlsDoorFile.length()
+                size = shortSecondsVideoFile.length()
             )
         }
     }
@@ -106,6 +114,7 @@ class VideoIndexingBenchmarkTest {
      */
     @Test
     fun test01_baseline() {
+        assumeTrue("$fiveMinuteVideoName must exist for benchmark", ::videoUri.isInitialized && videoFile.exists())
         Log.i(tag, "=== [TEST 1] BASELINE INDEXING ===")
         val retriever = MediaMetadataRetriever()
         retriever.setDataSource(context, videoUri)
@@ -160,6 +169,7 @@ class VideoIndexingBenchmarkTest {
      */
     @Test
     fun test02_visualRedundancyAndThermal() {
+        assumeTrue("$fiveMinuteVideoName must exist for benchmark", ::videoUri.isInitialized && videoFile.exists())
         Log.i(tag, "=== [TEST 2] VISUAL REDUNDANCY (85%) + THERMAL MITIGATION ===")
         val retriever = MediaMetadataRetriever()
         retriever.setDataSource(context, videoUri)
@@ -226,6 +236,7 @@ class VideoIndexingBenchmarkTest {
      */
     @Test
     fun test03_hardwareScalingAndSyncFrames() {
+        assumeTrue("$fiveMinuteVideoName must exist for benchmark", ::videoUri.isInitialized && videoFile.exists())
         Log.i(tag, "=== [TEST 3] HARDWARE 256PX DOWNSAMPLING + SYNC I-FRAMES ===")
         val retriever = MediaMetadataRetriever()
         retriever.setDataSource(context, videoUri)
@@ -265,6 +276,7 @@ class VideoIndexingBenchmarkTest {
      */
     @Test
     fun test04_pipelineOverlap() {
+        assumeTrue("$fiveMinuteVideoName must exist for benchmark", ::videoUri.isInitialized && videoFile.exists())
         runBlocking {
             Log.i(tag, "=== [TEST 4] PIPELINE OVERLAP (CONCURRENT AUDIO + VIDEO) ===")
         val retriever = MediaMetadataRetriever()
@@ -324,6 +336,7 @@ class VideoIndexingBenchmarkTest {
      */
     @Test
     fun test05_skipAudioVisionOnly() {
+        assumeTrue("$fiveMinuteVideoName must exist for benchmark", ::videoUri.isInitialized && videoFile.exists())
         Log.i(tag, "=== [TEST 5] SKIP AUDIO (VISION ONLY) ===")
         val retriever = MediaMetadataRetriever()
         retriever.setDataSource(context, videoUri)
@@ -365,16 +378,6 @@ class VideoIndexingBenchmarkTest {
     }
 
     /**
-     * Test 6: ALL TRICKS COMBINED (Grand Benchmark).
-     *
-     * Combines:
-     * - Hardware 256px downsampling
-     * - Sync (I-Frame) extraction
-     * - Visual Redundancy (85% similarity skip/reuse)
-     * - Thermal Throttling Mitigation (ADPF / Headroom)
-     * - Skip Audio Option (Vision Only) vs Parallel Audio
-     */
-    /**
      * Test 6a: ALL TRICKS COMBINED (Vision-Only Mode).
      *
      * Combines:
@@ -388,6 +391,7 @@ class VideoIndexingBenchmarkTest {
      */
     @Test
     fun test06a_allTricks_visionOnly() {
+        assumeTrue("$fiveMinuteVideoName must exist for benchmark", ::videoUri.isInitialized && videoFile.exists())
         Log.i(tag, "=== [TEST 6a] ALL TRICKS COMBINED (VISION-ONLY + COMPLETE SKIPPING) ===")
         val retriever = MediaMetadataRetriever()
         retriever.setDataSource(context, videoUri)
@@ -547,6 +551,7 @@ class VideoIndexingBenchmarkTest {
      */
     @Test
     fun test06b_allTricks_withAudioOverlap() {
+        assumeTrue("$fiveMinuteVideoName must exist for benchmark", ::videoUri.isInitialized && videoFile.exists())
         runBlocking {
             Log.i(tag, "=== [TEST 6b] ALL TRICKS COMBINED (WITH AUDIO PIPELINE OVERLAP) ===")
             val retriever = MediaMetadataRetriever()
@@ -713,20 +718,20 @@ class VideoIndexingBenchmarkTest {
      */
     @Test
     fun test08_girlsDoor_productionDefault_visionOnly() {
-        Log.i(tag, "=== [TEST 8] GIRLS_DOOR.MP4: PRODUCTION DEFAULT (VISION ONLY) ===")
-        assertTrue("Girls_Door.mp4 must exist", ::girlsDoorImportedFile.isInitialized && girlsDoorFile.exists())
+        Log.i(tag, "=== [TEST 8] $shortSecondsVideoName: PRODUCTION DEFAULT (VISION ONLY) ===")
+        assumeTrue("$shortSecondsVideoName must exist for benchmark", ::shortSecondsVideoImportedFile.isInitialized && shortSecondsVideoFile.exists())
 
         val settings = AppSettings() // Defaults: videoIncludeAudio = false, videoSkipSimilarChunks = true
         Log.i(tag, "Settings: videoIncludeAudio=${settings.videoIncludeAudio}, videoSkipSimilarChunks=${settings.videoSkipSimilarChunks}")
 
         EmbeddingStore.create(context).use { store ->
-            store.deleteByMetadata(mapOf("fileId" to girlsDoorImportedFile.uri))
+            store.deleteByMetadata(mapOf("fileId" to shortSecondsVideoImportedFile.uri))
 
             Embedder(context).use { embedder ->
                 val indexer = Indexer(context, embedder, store, settings)
 
                 val t0 = System.currentTimeMillis()
-                val result = indexer.indexVideoFile(girlsDoorImportedFile)
+                val result = indexer.indexVideoFile(shortSecondsVideoImportedFile)
                 val durationMs = System.currentTimeMillis() - t0
 
                 Log.i(tag, "--> [TEST 8 RESULT] Indexing result: success=${result.isSuccess}, chunks=${result.chunksCount}, error=${result.errorMessage}")
@@ -747,7 +752,7 @@ class VideoIndexingBenchmarkTest {
                     assertTrue("Search for '$query' should return results", searchResults.isNotEmpty())
                 }
 
-                store.deleteByMetadata(mapOf("fileId" to girlsDoorImportedFile.uri))
+                store.deleteByMetadata(mapOf("fileId" to shortSecondsVideoImportedFile.uri))
             }
         }
     }
@@ -764,20 +769,20 @@ class VideoIndexingBenchmarkTest {
      */
     @Test
     fun test09_girlsDoor_productionAudioOverlap() {
-        Log.i(tag, "=== [TEST 9] GIRLS_DOOR.MP4: PRODUCTION WITH AUDIO OVERLAP ===")
-        assertTrue("Girls_Door.mp4 must exist", ::girlsDoorImportedFile.isInitialized && girlsDoorFile.exists())
+        Log.i(tag, "=== [TEST 9] $shortSecondsVideoName: PRODUCTION WITH AUDIO OVERLAP ===")
+        assumeTrue("$shortSecondsVideoName must exist for benchmark", ::shortSecondsVideoImportedFile.isInitialized && shortSecondsVideoFile.exists())
 
         val settings = AppSettings(videoIncludeAudio = true)
         Log.i(tag, "Settings: videoIncludeAudio=${settings.videoIncludeAudio}, videoSkipSimilarChunks=${settings.videoSkipSimilarChunks}")
 
         EmbeddingStore.create(context).use { store ->
-            store.deleteByMetadata(mapOf("fileId" to girlsDoorImportedFile.uri))
+            store.deleteByMetadata(mapOf("fileId" to shortSecondsVideoImportedFile.uri))
 
             Embedder(context).use { embedder ->
                 val indexer = Indexer(context, embedder, store, settings)
 
                 val t0 = System.currentTimeMillis()
-                val result = indexer.indexVideoFile(girlsDoorImportedFile)
+                val result = indexer.indexVideoFile(shortSecondsVideoImportedFile)
                 val durationMs = System.currentTimeMillis() - t0
 
                 Log.i(tag, "--> [TEST 9 RESULT] Indexing result: success=${result.isSuccess}, chunks=${result.chunksCount}, error=${result.errorMessage}")
@@ -798,7 +803,7 @@ class VideoIndexingBenchmarkTest {
                     assertTrue("Search for '$query' should return results", searchResults.isNotEmpty())
                 }
 
-                store.deleteByMetadata(mapOf("fileId" to girlsDoorImportedFile.uri))
+                store.deleteByMetadata(mapOf("fileId" to shortSecondsVideoImportedFile.uri))
             }
         }
     }
@@ -814,8 +819,8 @@ class VideoIndexingBenchmarkTest {
      */
     @Test
     fun test10_girlsDoor_gpuSupport() {
-        Log.i(tag, "=== [TEST 10] EVALUATING GPU SUPPORT ON GIRLS_DOOR.MP4 ===")
-        assertTrue("Girls_Door.mp4 must exist", ::girlsDoorImportedFile.isInitialized && girlsDoorFile.exists())
+        Log.i(tag, "=== [TEST 10] EVALUATING GPU SUPPORT ON $shortSecondsVideoName ===")
+        assumeTrue("$shortSecondsVideoName must exist for benchmark", ::shortSecondsVideoImportedFile.isInitialized && shortSecondsVideoFile.exists())
 
         Log.i(tag, "Step 1: Attempting to initialize Embedder with default GPU vision acceleration...")
         val gpuEmbedder: Embedder
@@ -837,14 +842,14 @@ class VideoIndexingBenchmarkTest {
             Log.i(tag, "Step 2 SUCCESS: Text embedding on GPU took ${textMs}ms (dim=${textVec.size})")
 
             // Step 3: Run full video indexing using GPU embedder
-            Log.i(tag, "Step 3: Indexing Girls_Door.mp4 using GPU embedder...")
+            Log.i(tag, "Step 3: Indexing $shortSecondsVideoName using GPU embedder...")
             val settings = AppSettings(videoIncludeAudio = false, videoSkipSimilarChunks = true)
             EmbeddingStore.create(context).use { store ->
-                store.deleteByMetadata(mapOf("fileId" to girlsDoorImportedFile.uri))
+                store.deleteByMetadata(mapOf("fileId" to shortSecondsVideoImportedFile.uri))
 
                 val indexer = Indexer(context, embedder, store, settings)
                 val t0 = System.currentTimeMillis()
-                val result = indexer.indexVideoFile(girlsDoorImportedFile)
+                val result = indexer.indexVideoFile(shortSecondsVideoImportedFile)
                 val durationMs = System.currentTimeMillis() - t0
 
                 Log.i(tag, "--> [TEST 10 GPU RESULT] Indexing result: success=${result.isSuccess}, chunks=${result.chunksCount}, error=${result.errorMessage}")
@@ -866,7 +871,7 @@ class VideoIndexingBenchmarkTest {
                     assertTrue("Search for '$query' on GPU embeddings should return results", searchResults.isNotEmpty())
                 }
 
-                store.deleteByMetadata(mapOf("fileId" to girlsDoorImportedFile.uri))
+                store.deleteByMetadata(mapOf("fileId" to shortSecondsVideoImportedFile.uri))
             }
         }
     }
@@ -908,7 +913,7 @@ class VideoIndexingBenchmarkTest {
     }
 
     private fun buildParts(
-        window: com.localfind.index.VideoWindow,
+        window: com.localfind.index.video.VideoWindow,
         frames: List<ByteArray?>,
         frameTimes: List<Long>,
         pcm: ShortArray,
