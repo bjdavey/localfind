@@ -687,6 +687,19 @@ class IndexingWorker(
                         if (result.isSuccess) {
                             Log.i(TAG_INDEXING, "Indexed ${file.displayName}: ${result.chunksCount} chunks")
                             fileStore.updateStatus(file.uri, IndexingStatus.INDEXED, result.chunksCount)
+                            val doneMsg = "Indexed $fileIndex/$totalInBatch: ${file.displayName}"
+                            IndexingProgressState.update(
+                                isIndexing = true,
+                                currentUri = file.uri,
+                                currentFileName = file.displayName,
+                                fileIndex = fileIndex,
+                                totalFiles = totalInBatch,
+                                currentChunk = result.chunksCount,
+                                totalChunks = result.chunksCount.coerceAtLeast(1),
+                                progressFraction = 1f,
+                                message = doneMsg
+                            )
+                            updateNotification(doneMsg, 1f, fileIndex, totalInBatch)
                         } else {
                             // If indexing failed because it was interrupted, cancelled by stop, or engine closed, keep as PENDING
                             if (result.errorMessage?.contains("cancelled", ignoreCase = true) == true ||

@@ -272,7 +272,8 @@ class Indexer(
                         if (isCancelled()) {
                             return IndexResult(file.uri, 0, false, "Indexing cancelled")
                         }
-                        onProgress?.invoke(pageNum, totalPages.coerceAtLeast(1))
+                        // Phase 1 (Text extraction): Advance smoothly from 0% to ~15% of overall work
+                        onProgress?.invoke(pageNum, totalPages.coerceAtLeast(1) * 7)
                         stripper.startPage = pageNum
                         stripper.endPage = pageNum
                         val pageText = stripper.getText(document)
@@ -294,7 +295,7 @@ class Indexer(
             return IndexResult(file.uri, 0, false, "Indexing cancelled")
         }
 
-        // Delete existing chunks for this file before re-indexing
+        // Delete existing chunks for this file before storing updated embeddings
         embeddingStore.deleteByMetadata(mapOf("fileId" to file.uri))
 
         if (chunks.isEmpty()) {
@@ -303,11 +304,14 @@ class Indexer(
             return IndexResult(file.uri, 0, true)
         }
 
+        // Phase 2 (Embedding & Persistence): Provide live progress on every chunk
+        // and commit in batches of 100 to bound memory usage and prevent UI freeze
         val records = mutableListOf<RetrievalRecord>()
         for ((index, chunk) in chunks.withIndex()) {
             if (isCancelled()) {
                 return IndexResult(file.uri, 0, false, "Indexing cancelled")
             }
+            onProgress?.invoke(index + 1, chunks.size)
             val chunkId = "${file.uri}_$index"
             val embedding = embedder.embedText(chunk.text)
             val metadata = mapOf(
@@ -326,14 +330,23 @@ class Indexer(
                     metadata
                 )
             )
+
+            // Commit in 100-chunk batches to keep memory small and save progressive chunks
+            if (records.size >= 100) {
+                embeddingStore.storeBatch(records)
+                records.clear()
+            }
         }
 
         if (isCancelled()) {
             return IndexResult(file.uri, 0, false, "Indexing cancelled")
         }
 
-        embeddingStore.storeBatch(records)
-        return IndexResult(file.uri, records.size, true)
+        if (records.isNotEmpty()) {
+            embeddingStore.storeBatch(records)
+            records.clear()
+        }
+        return IndexResult(file.uri, chunks.size, true)
     }
 
     /**

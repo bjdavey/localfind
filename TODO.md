@@ -72,8 +72,9 @@
 - [x] Fix stuck indexing after canceled
 - [x] Opening image/video should be smoth transition like a gallery app, perhaps just popup without opening it in a new view?
 - [x] Fix flicker when opening a file or a search result and not to scroll back to start when closing it
-- [ ] Stuck after PDF indexing 
-- [ ] Check if original file is deleted
+- [x] Stuck after PDF indexing 
+- [x] Check if original file is deleted when opening
+- Search after filter, not filter search results
 
 
 ## Backlog

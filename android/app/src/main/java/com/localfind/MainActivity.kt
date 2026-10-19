@@ -46,6 +46,7 @@ import androidx.work.WorkInfo
 import androidx.work.WorkManager
 import com.localfind.data.AppSettings
 import com.localfind.data.EngineManager
+import com.localfind.data.FileAvailability
 import com.localfind.data.FileImporter
 import com.localfind.data.FileStore
 import com.localfind.data.ImportedFile
@@ -179,6 +180,7 @@ fun MainScreen(
     if (activeTextViewer != null) displayedTextViewer = activeTextViewer
 
     var filePendingDeletion by remember { mutableStateOf<ImportedFile?>(null) }
+    var missingFileToDelete by remember { mutableStateOf<ImportedFile?>(null) }
     var isSettingsOpen by remember { mutableStateOf(false) }
 
     // Hoisted scroll states to guarantee scroll position is never lost when opening/closing files or search
@@ -259,7 +261,12 @@ fun MainScreen(
     }
 
     // Refresh file statuses and index counts as files transition lifecycle states
-    LaunchedEffect(activeWorkInfo?.state, indexingProgress.currentUri, indexingProgress.isIndexing) {
+    LaunchedEffect(
+        activeWorkInfo?.state,
+        indexingProgress.currentUri,
+        indexingProgress.isIndexing,
+        indexingProgress.fileIndex
+    ) {
         reloadFiles()
         if (!isIndexing && !indexingProgress.isIndexing && !indexingProgress.isPaused) {
             status = "Ready"
@@ -321,6 +328,10 @@ fun MainScreen(
      * Prepares and navigates to the search view scoped to a specific [target] file.
      */
     fun startSearchInFile(target: ImportedFile) {
+        if (!FileAvailability.isFileAvailable(context, target.uri)) {
+            missingFileToDelete = target
+            return
+        }
         activeSearchFile = target
         searchQuery = ""
         hasSearched = false
@@ -385,6 +396,19 @@ fun MainScreen(
     fun openSearchResult(result: SearchResult) {
         if (result.fileUri.isBlank()) {
             Toast.makeText(context, "No file URI associated with result", Toast.LENGTH_SHORT).show()
+            return
+        }
+
+        if (!FileAvailability.isFileAvailable(context, result.fileUri)) {
+            val matchedFile = importedFiles.firstOrNull { it.uri == result.fileUri }
+                ?: ImportedFile(
+                    uri = result.fileUri,
+                    displayName = result.fileName,
+                    size = 0L,
+                    mimeType = "*/*",
+                    addedAt = 0L
+                )
+            missingFileToDelete = matchedFile
             return
         }
 
@@ -461,6 +485,11 @@ fun MainScreen(
     fun openLibraryFile(file: ImportedFile) {
         if (file.uri.isBlank()) {
             Toast.makeText(context, "No file URI associated with file", Toast.LENGTH_SHORT).show()
+            return
+        }
+
+        if (!FileAvailability.isFileAvailable(context, file.uri)) {
+            missingFileToDelete = file
             return
         }
 
@@ -593,6 +622,36 @@ fun MainScreen(
         )
     }
 
+    // Prompt when an original file is missing/deleted from storage
+    missingFileToDelete?.let { file ->
+        AlertDialog(
+            onDismissRequest = { missingFileToDelete = null },
+            title = { Text("File Not Found") },
+            text = {
+                Text(
+                    "\"${file.displayName}\" could not be found on your device. The original file may have been moved or deleted.\n\n" +
+                            "Would you like to remove it from LocalFind and clean up its search index?"
+                )
+            },
+            confirmButton = {
+                TextButton(
+                    onClick = {
+                        val toDelete = file
+                        missingFileToDelete = null
+                        removeFile(toDelete)
+                    }
+                ) {
+                    Text("Remove", color = MaterialTheme.colorScheme.error)
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { missingFileToDelete = null }) {
+                    Text("Keep")
+                }
+            }
+        )
+    }
+
     // Layered Composition Architecture:
     // 1. BASE SCREEN: GalleryScreen is always composed at the base of the Box. Its grid state
     //    and cached tiles are never destroyed, guaranteeing zero scroll reset and zero reload flicker.
@@ -624,11 +683,15 @@ fun MainScreen(
             onFileClick = { file -> openLibraryFile(file) },
             onRequestDeleteFile = { file -> filePendingDeletion = file },
             onRetryIndexFile = { file ->
-                scope.launch(Dispatchers.IO) {
-                    val store = FileStore(context)
-                    store.updateStatus(file.uri, IndexingStatus.PENDING)
-                    importedFiles = store.getAll()
-                    IndexingWorker.enqueue(context, replace = true)
+                if (!FileAvailability.isFileAvailable(context, file.uri)) {
+                    missingFileToDelete = file
+                } else {
+                    scope.launch(Dispatchers.IO) {
+                        val store = FileStore(context)
+                        store.updateStatus(file.uri, IndexingStatus.PENDING)
+                        importedFiles = store.getAll()
+                        IndexingWorker.enqueue(context, replace = true)
+                    }
                 }
             },
             onPauseIndexing = {
