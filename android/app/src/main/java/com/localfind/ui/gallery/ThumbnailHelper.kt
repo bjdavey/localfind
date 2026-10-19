@@ -1,4 +1,4 @@
-package com.localfind.ui
+package com.localfind.ui.gallery
 
 import android.content.Context
 import android.graphics.Bitmap
@@ -8,10 +8,12 @@ import android.graphics.pdf.PdfRenderer
 import android.media.MediaMetadataRetriever
 import android.net.Uri
 import android.util.LruCache
+import androidx.core.net.toUri
 import com.localfind.data.Folder
 import com.localfind.data.ImportedFile
 import com.localfind.index.Indexer
 import com.localfind.search.SearchResult
+import com.localfind.ui.search.SearchResultFormatter
 import java.io.BufferedReader
 import java.io.InputStreamReader
 import kotlin.math.max
@@ -148,14 +150,6 @@ object ThumbnailHelper {
     }
 
     /**
-     * Filters a list of [SearchResult] items by the selected [GalleryCategory].
-     */
-    fun filterSearchResults(results: List<SearchResult>, category: GalleryCategory): List<SearchResult> {
-        if (category == GalleryCategory.ALL) return results
-        return results.filter { categorizeSearchResult(it) == category }
-    }
-
-    /**
      * Cleans raw text from the beginning of a `.txt` or `.md` file so it displays neatly
      * inside a miniature document thumbnail card.
      */
@@ -185,6 +179,15 @@ object ThumbnailHelper {
     }
 
     /**
+     * Evicts a cached preview entry when a file or folder is removed from the library.
+     */
+    fun evictPreview(uri: String) {
+        synchronized(previewCache) {
+            previewCache.remove(uri)
+        }
+    }
+
+    /**
      * Loads or generates the visual preview for a file on a background thread and stores it in cache.
      *
      * - **PDF**: Renders Page 1 onto a white bitmap via [PdfRenderer] and formats `"N p."` badge.
@@ -201,7 +204,7 @@ object ThumbnailHelper {
         getCachedPreview(uriString)?.let { return it }
 
         val uri = try {
-            Uri.parse(uriString)
+            uriString.toUri()
         } catch (_: Exception) {
             return FilePreviewData()
         }
@@ -267,8 +270,13 @@ object ThumbnailHelper {
                 ?.toLongOrNull() ?: 0L
             val badge = if (durationMs > 0L) SearchResultFormatter.formatTimeMs(durationMs) else "VIDEO"
 
-            // Try extracting a frame at 500ms (avoids black fade-in at 0ms), fallback to any frame
-            val rawFrame = retriever.getFrameAtTime(
+            // Try extracting a hardware-downscaled frame at 500ms (avoids black fade-in at 0ms), fallback to any frame
+            val rawFrame = retriever.getScaledFrameAtTime(
+                500_000L,
+                MediaMetadataRetriever.OPTION_CLOSEST_SYNC,
+                THUMBNAIL_MAX_DIM,
+                THUMBNAIL_MAX_DIM
+            ) ?: retriever.getFrameAtTime(
                 500_000L,
                 MediaMetadataRetriever.OPTION_CLOSEST_SYNC
             ) ?: retriever.frameAtTime
@@ -354,7 +362,8 @@ object ThumbnailHelper {
     }
 
     /**
-     * Scales down a [Bitmap] so neither width nor height exceeds [maxDim].
+     * Scales down a [Bitmap] so neither width nor height exceeds [maxDim], recycling the
+     * intermediate [source] bitmap when a new scaled bitmap is allocated.
      */
     private fun scaleDownBitmap(source: Bitmap, maxDim: Int): Bitmap {
         val maxSide = max(source.width, source.height)
@@ -362,6 +371,10 @@ object ThumbnailHelper {
         val ratio = maxDim.toFloat() / maxSide.toFloat()
         val targetWidth = (source.width * ratio).roundToInt().coerceAtLeast(1)
         val targetHeight = (source.height * ratio).roundToInt().coerceAtLeast(1)
-        return Bitmap.createScaledBitmap(source, targetWidth, targetHeight, true)
+        val scaled = Bitmap.createScaledBitmap(source, targetWidth, targetHeight, true)
+        if (scaled !== source) {
+            source.recycle()
+        }
+        return scaled
     }
 }

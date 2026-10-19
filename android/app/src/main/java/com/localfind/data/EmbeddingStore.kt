@@ -94,6 +94,13 @@ class EmbeddingStore(
     }
 
     /**
+     * Returns the total number of embedded chunk records stored in the vector database.
+     */
+    fun count(): Int = synchronized(this) {
+        vectorStore.allRecordIds.size
+    }
+
+    /**
      * Deletes a record by its unique chunk ID.
      */
     fun delete(id: String) = synchronized(this) {

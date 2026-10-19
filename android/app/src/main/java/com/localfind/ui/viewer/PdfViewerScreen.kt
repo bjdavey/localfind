@@ -1,10 +1,9 @@
-package com.localfind.ui
+package com.localfind.ui.viewer
 
 import android.graphics.Bitmap
 import android.graphics.Canvas
 import android.graphics.Color
 import android.graphics.pdf.PdfRenderer
-import android.net.Uri
 import android.os.ParcelFileDescriptor
 import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.Image
@@ -14,12 +13,9 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Button
@@ -47,6 +43,7 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import androidx.core.net.toUri
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.withContext
@@ -72,8 +69,8 @@ data class PdfViewerParams(
  * - 100% offline document rendering using built-in Android SDK `PdfRenderer`.
  * - Opens directly to the matched page ([initialPage]).
  * - Provides navigation controls (Previous/Next page, page count display).
- * - Caches document to private cache file to guarantee seekable descriptor access for [PdfRenderer].
- * - Safely recycles and disposes bitmaps and file descriptors on screen dismissal.
+ * - Opens a direct seekable file descriptor when supported, falling back to a temporary cache file only when needed.
+ * - Safely disposes renderer, file descriptors, and temporary cache files on screen dismissal.
  */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -94,6 +91,7 @@ fun PdfViewerScreen(
     var errorMessage by remember { mutableStateOf<String?>(null) }
 
     // References held across recompositions for proper resource cleanup
+    val rendererLock = remember { Any() }
     var pdfRenderer by remember { mutableStateOf<PdfRenderer?>(null) }
     var pfd by remember { mutableStateOf<ParcelFileDescriptor?>(null) }
     var tempFile by remember { mutableStateOf<File?>(null) }
@@ -120,21 +118,40 @@ fun PdfViewerScreen(
         errorMessage = null
         withContext(Dispatchers.IO) {
             try {
-                val uri = Uri.parse(params.uri)
-                // Copy to cache dir to guarantee seekable ParcelFileDescriptor across all SAF providers
-                val cacheFile = File(context.cacheDir, "pdf_preview_${System.currentTimeMillis()}.pdf")
-                tempFile = cacheFile
-
-                context.contentResolver.openInputStream(uri)?.use { input ->
-                    cacheFile.outputStream().use { output ->
-                        input.copyTo(output)
+                val uri = params.uri.toUri()
+                // Prefer opening a direct seekable file descriptor without copying the PDF to cacheDir;
+                // fallback to a temporary cache file only for streamed/non-seekable SAF providers.
+                var descriptor: ParcelFileDescriptor? = null
+                var renderer: PdfRenderer? = null
+                try {
+                    val directPfd = context.contentResolver.openFileDescriptor(uri, "r")
+                    if (directPfd != null) {
+                        renderer = PdfRenderer(directPfd)
+                        descriptor = directPfd
                     }
-                } ?: throw IllegalArgumentException("Could not open input stream for URI")
+                } catch (_: Exception) {
+                    descriptor?.close()
+                    descriptor = null
+                }
 
-                val descriptor = ParcelFileDescriptor.open(cacheFile, ParcelFileDescriptor.MODE_READ_ONLY)
+                if (renderer == null) {
+                    val cacheFile = File(context.cacheDir, "pdf_preview_${System.currentTimeMillis()}.pdf")
+                    tempFile = cacheFile
+                    try {
+                        context.contentResolver.openInputStream(uri)?.use { input ->
+                            cacheFile.outputStream().use { output ->
+                                input.copyTo(output)
+                            }
+                        } ?: throw IllegalArgumentException("Could not open input stream for URI")
+                        descriptor = ParcelFileDescriptor.open(cacheFile, ParcelFileDescriptor.MODE_READ_ONLY)
+                        renderer = PdfRenderer(descriptor)
+                    } catch (e: Exception) {
+                        cacheFile.delete()
+                        throw e
+                    }
+                }
+
                 pfd = descriptor
-
-                val renderer = PdfRenderer(descriptor)
                 pdfRenderer = renderer
                 totalPages = renderer.pageCount
 
@@ -158,24 +175,25 @@ fun PdfViewerScreen(
         isLoading = true
         withContext(Dispatchers.Default) {
             try {
-                val zeroBasedIndex = (currentPageNumber - 1).coerceIn(0, totalPages - 1)
-                val page = renderer.openPage(zeroBasedIndex)
-                try {
-                    // Render page at screen density for sharp text
-                    val density = context.resources.displayMetrics.density.coerceIn(1.5f, 3f)
-                    val width = (page.width * density).toInt().coerceAtLeast(1)
-                    val height = (page.height * density).toInt().coerceAtLeast(1)
+                val bitmap = synchronized(rendererLock) {
+                    if (pdfRenderer !== renderer) return@withContext
+                    val zeroBasedIndex = (currentPageNumber - 1).coerceIn(0, totalPages - 1)
+                    renderer.openPage(zeroBasedIndex).use { page ->
+                        // Render page at screen density for sharp text
+                        val density = context.resources.displayMetrics.density.coerceIn(1.5f, 3f)
+                        val width = (page.width * density).toInt().coerceAtLeast(1)
+                        val height = (page.height * density).toInt().coerceAtLeast(1)
 
-                    val bitmap = Bitmap.createBitmap(width, height, Bitmap.Config.ARGB_8888)
-                    val canvas = Canvas(bitmap)
-                    canvas.drawColor(Color.WHITE)
-                    page.render(bitmap, null, null, PdfRenderer.Page.RENDER_MODE_FOR_DISPLAY)
-
-                    renderedBitmap = bitmap
-                    errorMessage = null
-                } finally {
-                    page.close()
+                        val bmp = Bitmap.createBitmap(width, height, Bitmap.Config.ARGB_8888)
+                        val canvas = Canvas(bmp)
+                        canvas.drawColor(Color.WHITE)
+                        page.render(bmp, null, null, PdfRenderer.Page.RENDER_MODE_FOR_DISPLAY)
+                        bmp
+                    }
                 }
+
+                renderedBitmap = bitmap
+                errorMessage = null
             } catch (e: Exception) {
                 errorMessage = "Failed to render page: ${e.message}"
             } finally {
@@ -187,12 +205,16 @@ fun PdfViewerScreen(
     // Clean up PdfRenderer, file descriptors, and temporary cache files when exiting
     DisposableEffect(params.uri) {
         onDispose {
-            try {
-                pdfRenderer?.close()
-                pfd?.close()
-                tempFile?.delete()
-            } catch (_: Exception) {
-                // Ignore cleanup errors during teardown
+            synchronized(rendererLock) {
+                try {
+                    val r = pdfRenderer
+                    pdfRenderer = null
+                    r?.close()
+                    pfd?.close()
+                    tempFile?.delete()
+                } catch (_: Exception) {
+                    // Ignore cleanup errors during teardown
+                }
             }
         }
     }
@@ -353,4 +375,3 @@ fun PdfViewerScreen(
         }
     }
 }
-

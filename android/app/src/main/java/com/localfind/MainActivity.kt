@@ -1,7 +1,6 @@
 package com.localfind
 
 import android.content.Intent
-import android.net.Uri
 import android.os.Bundle
 import android.widget.Toast
 import androidx.activity.ComponentActivity
@@ -15,8 +14,6 @@ import androidx.compose.animation.core.FastOutSlowInEasing
 import androidx.compose.animation.core.tween
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
-import androidx.compose.animation.scaleIn
-import androidx.compose.animation.scaleOut
 import androidx.compose.animation.slideInHorizontally
 import androidx.compose.animation.slideInVertically
 import androidx.compose.animation.slideOutHorizontally
@@ -43,6 +40,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.tooling.preview.Preview
+import androidx.core.net.toUri
 import androidx.work.WorkInfo
 import androidx.work.WorkManager
 import com.localfind.data.AppSettings
@@ -55,29 +53,21 @@ import com.localfind.data.ImportedFile
 import com.localfind.data.IndexingStatus
 import com.localfind.data.ModelStatus
 import com.localfind.data.SettingsStore
-import com.localfind.index.Indexer
 import com.localfind.index.IndexingProgressState
 import com.localfind.index.IndexingResumeManager
 import com.localfind.index.IndexingWorker
 import com.localfind.search.SearchResult
-import com.localfind.ui.GalleryCategory
-import com.localfind.ui.GalleryScreen
-import com.localfind.ui.ImageViewerParams
-import com.localfind.ui.ImageViewerScreen
-import com.localfind.ui.MediaPlayerParams
-import com.localfind.ui.MediaPlayerScreen
-import com.localfind.ui.PdfViewerParams
-import com.localfind.ui.PdfViewerScreen
-import com.localfind.ui.SearchScreen
-import com.localfind.ui.SettingsScreen
-import com.localfind.ui.TextViewerParams
-import com.localfind.ui.ThumbnailHelper
-import com.localfind.ui.TextViewerScreen
+import com.localfind.ui.gallery.GalleryCategory
+import com.localfind.ui.gallery.GalleryScreen
+import com.localfind.ui.gallery.ThumbnailHelper
+import com.localfind.ui.search.SearchScreen
+import com.localfind.ui.settings.SettingsScreen
 import com.localfind.ui.theme.LocalFindTheme
+import com.localfind.ui.viewer.ViewerOverlayHost
+import com.localfind.ui.viewer.rememberViewerState
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
-
 
 /**
  * Main application activity for LocalFind.
@@ -103,8 +93,6 @@ class MainActivity : ComponentActivity() {
                 }
             }
 
-
-
             LocalFindTheme(darkTheme = currentSettings.darkMode) {
                 MainScreen(
                     settings = currentSettings,
@@ -127,8 +115,8 @@ class MainActivity : ComponentActivity() {
  * - Default view is the Google Photos-inspired [GalleryScreen] with 2-column visual tiles
  *   and the Option C unified bottom floating dock (`[ 🔍 Search... | + ]`).
  * - Tapping the bottom search pill transitions smoothly into the dedicated [SearchScreen].
- * - Tapping any media tile or search result transitions smoothly via scale+fade expansion
- *   into its builtin viewer ([ImageViewerScreen], [MediaPlayerScreen], [PdfViewerScreen], [TextViewerScreen]).
+ * - Tapping any media tile or search result transitions smoothly into its builtin viewer
+ *   via [ViewerOverlayHost].
  */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -182,22 +170,8 @@ fun MainScreen(
         }
     }
 
-    // Active full-screen viewers and persistent parameters for smooth exit transitions
-    var activePdfViewer by remember { mutableStateOf<PdfViewerParams?>(null) }
-    var displayedPdfViewer by remember { mutableStateOf<PdfViewerParams?>(null) }
-    if (activePdfViewer != null) displayedPdfViewer = activePdfViewer
-
-    var activeImageViewer by remember { mutableStateOf<ImageViewerParams?>(null) }
-    var displayedImageViewer by remember { mutableStateOf<ImageViewerParams?>(null) }
-    if (activeImageViewer != null) displayedImageViewer = activeImageViewer
-
-    var activeMediaPlayer by remember { mutableStateOf<MediaPlayerParams?>(null) }
-    var displayedMediaPlayer by remember { mutableStateOf<MediaPlayerParams?>(null) }
-    if (activeMediaPlayer != null) displayedMediaPlayer = activeMediaPlayer
-
-    var activeTextViewer by remember { mutableStateOf<TextViewerParams?>(null) }
-    var displayedTextViewer by remember { mutableStateOf<TextViewerParams?>(null) }
-    if (activeTextViewer != null) displayedTextViewer = activeTextViewer
+    // Active full-screen builtin viewers managed by ViewerState
+    val viewerState = rememberViewerState()
 
     var filePendingDeletion by remember { mutableStateOf<ImportedFile?>(null) }
     var missingFileToDelete by remember { mutableStateOf<ImportedFile?>(null) }
@@ -209,8 +183,7 @@ fun MainScreen(
     }
     BackHandler(
         enabled = currentFolderId != null && !isSearchOpen && !isSettingsOpen &&
-                activeImageViewer == null && activeMediaPlayer == null &&
-                activePdfViewer == null && activeTextViewer == null
+                !viewerState.isAnyViewerOpen
     ) {
         currentFolderId = currentFolder?.parentId
     }
@@ -235,7 +208,7 @@ fun MainScreen(
                 }
             }
             if (result is ModelStatus.Loaded) {
-                val store = FileStore(context)
+                val store = FileStore.getInstance(context)
                 if (store.getPendingFiles().isNotEmpty()) {
                     IndexingWorker.enqueue(context, replace = true)
                 }
@@ -250,7 +223,7 @@ fun MainScreen(
         withContext(Dispatchers.IO) {
             EngineManager.withStore(context) { store ->
                 try {
-                    indexedChunksCount = store.getAllRecordIds().size
+                    indexedChunksCount = store.count()
                 } catch (_: Exception) {
                     // Ignore if database is temporarily busy
                 }
@@ -260,7 +233,7 @@ fun MainScreen(
 
     suspend fun reloadFiles() {
         withContext(Dispatchers.IO) {
-            val store = FileStore(context)
+            val store = FileStore.getInstance(context)
             importedFiles = store.getAll()
             folders = store.getAllFolders()
         }
@@ -271,7 +244,7 @@ fun MainScreen(
     LaunchedEffect(Unit) {
         withContext(Dispatchers.IO) {
             EngineManager.ensureModelLoaded(context)
-            val store = FileStore(context)
+            val store = FileStore.getInstance(context)
             // Revert any files left in INDEXING status from an interrupted session back to PENDING
             val pending = store.getPendingFiles()
             for (f in pending) {
@@ -310,7 +283,7 @@ fun MainScreen(
 
     /**
      * Removes an imported file from the local library:
-     * 1. Releases persistable SAF URI read grant (if held).
+     * 1. Releases persistable SAF URI read grant (if held) and evicts cached thumbnail preview.
      * 2. Deletes the file metadata record from [FileStore].
      * 3. Deletes all associated embedding vectors from [EmbeddingStore].
      * 4. Updates library UI state and refreshes the total indexed chunks count.
@@ -321,17 +294,18 @@ fun MainScreen(
             withContext(Dispatchers.IO) {
                 // If file is actively indexing or queued, abort it immediately
                 IndexingWorker.cancelFile(context, file.uri)
+                ThumbnailHelper.evictPreview(file.uri)
 
                 try {
                     context.contentResolver.releasePersistableUriPermission(
-                        Uri.parse(file.uri),
+                        file.uri.toUri(),
                         Intent.FLAG_GRANT_READ_URI_PERMISSION
                     )
                 } catch (_: Exception) {
                     // Non-SAF URIs or revoked grants don't have persistable grants
                 }
 
-                val fileStore = FileStore(context)
+                val fileStore = FileStore.getInstance(context)
                 fileStore.delete(file.uri)
                 val updatedFiles = fileStore.getAll()
 
@@ -374,10 +348,7 @@ fun MainScreen(
         searchResults = emptyList()
         searchError = null
         // Close any active viewers first so the search screen becomes active
-        activePdfViewer = null
-        activeImageViewer = null
-        activeMediaPlayer = null
-        activeTextViewer = null
+        viewerState.closeAll()
         isSearchOpen = true
     }
 
@@ -430,155 +401,6 @@ fun MainScreen(
         }
     }
 
-    /**
-     * Opens a matched [SearchResult] at its exact offset/page/timestamp in the builtin viewer.
-     */
-    fun openSearchResult(result: SearchResult) {
-        if (result.fileUri.isBlank()) {
-            Toast.makeText(context, "No file URI associated with result", Toast.LENGTH_SHORT).show()
-            return
-        }
-
-        if (!FileAvailability.isFileAvailable(context, result.fileUri)) {
-            val matchedFile = importedFiles.firstOrNull { it.uri == result.fileUri }
-                ?: ImportedFile(
-                    uri = result.fileUri,
-                    displayName = result.fileName,
-                    size = 0L,
-                    mimeType = "*/*",
-                    addedAt = 0L
-                )
-            missingFileToDelete = matchedFile
-            return
-        }
-
-        val isPdf = result.fileType.equals("pdf", ignoreCase = true) ||
-                Indexer.isPdfNameOrMime(result.fileName, null)
-
-        if (isPdf) {
-            val targetPage = result.location.toInt().coerceAtLeast(1)
-            activePdfViewer = PdfViewerParams(
-                uri = result.fileUri,
-                fileName = result.fileName,
-                initialPage = targetPage
-            )
-            return
-        }
-
-        val isImage = result.fileType.equals("image", ignoreCase = true) ||
-                Indexer.isImageNameOrMime(result.fileName, null)
-
-        if (isImage) {
-            activeImageViewer = ImageViewerParams(
-                uri = result.fileUri,
-                fileName = result.fileName
-            )
-            return
-        }
-
-        val isPlayable = result.fileType.equals("audio", ignoreCase = true) ||
-                result.fileType.equals("video", ignoreCase = true) ||
-                Indexer.isAudioNameOrMime(result.fileName, null) ||
-                Indexer.isVideoNameOrMime(result.fileName, null)
-
-        if (isPlayable) {
-            activeMediaPlayer = MediaPlayerParams(
-                uri = result.fileUri,
-                fileName = result.fileName,
-                startMs = result.location.coerceAtLeast(0L)
-            )
-            return
-        }
-
-        val isText = result.fileType.equals("text", ignoreCase = true) ||
-                Indexer.isTextNameOrMime(result.fileName, null)
-
-        if (isText) {
-            activeTextViewer = TextViewerParams(
-                uri = result.fileUri,
-                fileName = result.fileName,
-                targetOffset = result.location.toInt().coerceAtLeast(0),
-                highlightSnippet = result.snippet
-            )
-            return
-        }
-
-        try {
-            val uri = Uri.parse(result.fileUri)
-            val intent = Intent(Intent.ACTION_VIEW).apply {
-                setDataAndType(uri, "*/*")
-                addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
-            }
-            context.startActivity(intent)
-        } catch (e: Exception) {
-            Toast.makeText(
-                context,
-                "Could not open ${result.fileName}: ${e.message}",
-                Toast.LENGTH_SHORT
-            ).show()
-        }
-    }
-
-    /**
-     * Opens an imported file from the Gallery grid in its corresponding builtin viewer.
-     */
-    fun openLibraryFile(file: ImportedFile) {
-        if (file.uri.isBlank()) {
-            Toast.makeText(context, "No file URI associated with file", Toast.LENGTH_SHORT).show()
-            return
-        }
-
-        if (!FileAvailability.isFileAvailable(context, file.uri)) {
-            missingFileToDelete = file
-            return
-        }
-
-        if (Indexer.isPdfNameOrMime(file.displayName, file.mimeType)) {
-            activePdfViewer = PdfViewerParams(
-                uri = file.uri,
-                fileName = file.displayName,
-                initialPage = 1
-            )
-            return
-        }
-
-        if (Indexer.isImageNameOrMime(file.displayName, file.mimeType)) {
-            activeImageViewer = ImageViewerParams(
-                uri = file.uri,
-                fileName = file.displayName
-            )
-            return
-        }
-
-        if (Indexer.isAudioNameOrMime(file.displayName, file.mimeType) ||
-            Indexer.isVideoNameOrMime(file.displayName, file.mimeType)
-        ) {
-            activeMediaPlayer = MediaPlayerParams(
-                uri = file.uri,
-                fileName = file.displayName,
-                startMs = 0L
-            )
-            return
-        }
-
-        if (Indexer.isTextNameOrMime(file.displayName, file.mimeType)) {
-            activeTextViewer = TextViewerParams(
-                uri = file.uri,
-                fileName = file.displayName,
-                targetOffset = 0,
-                highlightSnippet = null
-            )
-            return
-        }
-
-        // Only files with builtin viewers are opened in LocalFind
-        Toast.makeText(
-            context,
-            "No builtin viewer available for ${file.displayName}",
-            Toast.LENGTH_SHORT
-        ).show()
-    }
-
     // System file picker launcher using Storage Access Framework (SAF)
     val pickerLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.OpenMultipleDocuments()
@@ -586,7 +408,7 @@ fun MainScreen(
         if (uris.isNotEmpty()) {
             scope.launch {
                 val (supportedFiles, unsupportedCount) = withContext(Dispatchers.IO) {
-                    val store = FileStore(context)
+                    val store = FileStore.getInstance(context)
                     val supported = mutableListOf<ImportedFile>()
                     var unsupported = 0
 
@@ -609,7 +431,7 @@ fun MainScreen(
 
                 if (supportedFiles.isNotEmpty()) {
                     if (IndexingWorker.isPaused(context)) {
-                        val pendingCount = withContext(Dispatchers.IO) { FileStore(context).getPendingFiles().size }
+                        val pendingCount = withContext(Dispatchers.IO) { FileStore.getInstance(context).getPendingFiles().size }
                         IndexingProgressState.setPaused(true, "Indexing paused ($pendingCount pending)")
                     } else {
                         IndexingWorker.enqueue(context)
@@ -645,7 +467,7 @@ fun MainScreen(
                 reloadFiles()
                 if (result.importedFiles.isNotEmpty()) {
                     if (IndexingWorker.isPaused(context)) {
-                        val pendingCount = withContext(Dispatchers.IO) { FileStore(context).getPendingFiles().size }
+                        val pendingCount = withContext(Dispatchers.IO) { FileStore.getInstance(context).getPendingFiles().size }
                         IndexingProgressState.setPaused(true, "Indexing paused ($pendingCount pending)")
                     } else {
                         IndexingWorker.enqueue(context)
@@ -669,7 +491,7 @@ fun MainScreen(
 
     fun createFolder(name: String) {
         scope.launch(Dispatchers.IO) {
-            val store = FileStore(context)
+            val store = FileStore.getInstance(context)
             store.createFolder(name, currentFolderId)
             reloadFiles()
         }
@@ -677,7 +499,7 @@ fun MainScreen(
 
     fun renameFolder(folder: Folder, newName: String) {
         scope.launch(Dispatchers.IO) {
-            val store = FileStore(context)
+            val store = FileStore.getInstance(context)
             store.renameFolder(folder.id, newName)
             reloadFiles()
         }
@@ -687,9 +509,22 @@ fun MainScreen(
         scope.launch {
             status = "Deleting folder ${folder.name}..."
             val deletedUris = withContext(Dispatchers.IO) {
-                val store = FileStore(context)
+                val store = FileStore.getInstance(context)
                 val uris = store.deleteFolder(folder.id)
                 if (uris.isNotEmpty()) {
+                    for (uri in uris) {
+                        // Cancel any in-flight indexing and clear resume checkpoints
+                        IndexingWorker.cancelFile(context, uri)
+                        ThumbnailHelper.evictPreview(uri)
+                        try {
+                            context.contentResolver.releasePersistableUriPermission(
+                                uri.toUri(),
+                                Intent.FLAG_GRANT_READ_URI_PERMISSION
+                            )
+                        } catch (_: Exception) {
+                            // Non-SAF URIs or folder-tree child URIs may not hold individual grants
+                        }
+                    }
                     EngineManager.withStore(context) { vecStore ->
                         for (uri in uris) {
                             try {
@@ -699,6 +534,10 @@ fun MainScreen(
                     }
                 }
                 uris
+            }
+            if (deletedUris.isNotEmpty()) {
+                val deletedSet = deletedUris.toSet()
+                searchResults = searchResults.filter { it.fileUri !in deletedSet }
             }
             if (currentFolderId == folder.id) {
                 currentFolderId = folder.parentId
@@ -712,7 +551,7 @@ fun MainScreen(
 
     fun moveFileToFolder(file: ImportedFile, targetFolderId: String?) {
         scope.launch(Dispatchers.IO) {
-            val store = FileStore(context)
+            val store = FileStore.getInstance(context)
             store.updateFileFolder(file.uri, targetFolderId)
             reloadFiles()
         }
@@ -782,8 +621,7 @@ fun MainScreen(
     // 1. BASE SCREEN: GalleryScreen is always composed at the base of the Box. Its grid state
     //    and cached tiles are never destroyed, guaranteeing zero scroll reset and zero reload flicker.
     // 2. SEARCH & SETTINGS: Smooth slide/fade overlay screens on top of the gallery.
-    // 3. IMAGE & MEDIA POPUPS: Full-screen gallery-app style popups with scale + fade animations.
-    // 4. DOCUMENT VIEWERS: Document overlay viewers with smooth slide + fade animations.
+    // 3. BUILTIN VIEWERS: Hosted via ViewerOverlayHost with scale + fade / slide + fade animations.
     Box(modifier = Modifier.fillMaxSize()) {
         // 1. Gallery Base Screen
         GalleryScreen(
@@ -815,14 +653,16 @@ fun MainScreen(
             onSearchInFile = { file -> startSearchInFile(file) },
             onImportFiles = { pickerLauncher.launch(FileImporter.SUPPORTED_MIME_TYPES) },
             onOpenSettings = { isSettingsOpen = true },
-            onFileClick = { file -> openLibraryFile(file) },
+            onFileClick = { file ->
+                viewerState.openLibraryFile(context, file) { missingFileToDelete = it }
+            },
             onRequestDeleteFile = { file -> filePendingDeletion = file },
             onRetryIndexFile = { file ->
                 if (!FileAvailability.isFileAvailable(context, file.uri)) {
                     missingFileToDelete = file
                 } else {
                     scope.launch(Dispatchers.IO) {
-                        val store = FileStore(context)
+                        val store = FileStore.getInstance(context)
                         store.updateStatus(file.uri, IndexingStatus.PENDING)
                         importedFiles = store.getAll()
                         IndexingWorker.enqueue(context, replace = true)
@@ -910,10 +750,12 @@ fun MainScreen(
                 },
                 availableCategories = availableCategories,
                 listState = searchListState,
-                backHandlerEnabled = isSearchOpen && activeImageViewer == null &&
-                        activeMediaPlayer == null && activePdfViewer == null &&
-                        activeTextViewer == null,
-                onResultClick = { result -> openSearchResult(result) },
+                backHandlerEnabled = isSearchOpen && !viewerState.isAnyViewerOpen,
+                onResultClick = { result ->
+                    viewerState.openSearchResult(context, result, importedFiles) {
+                        missingFileToDelete = it
+                    }
+                },
                 targetFile = activeSearchFile,
                 onClearTargetFile = {
                     activeSearchFile = null
@@ -951,7 +793,7 @@ fun MainScreen(
                 onReindexAll = {
                     scope.launch(Dispatchers.IO) {
                         IndexingResumeManager.clearAll(context)
-                        val store = FileStore(context)
+                        val store = FileStore.getInstance(context)
                         store.markAllPending()
                         importedFiles = store.getAll()
                         IndexingWorker.enqueue(context, replace = true)
@@ -967,116 +809,12 @@ fun MainScreen(
             )
         }
 
-        // 4. Image Viewer: Gallery app style popup transition
-        AnimatedVisibility(
-            visible = activeImageViewer != null,
-            enter = fadeIn(animationSpec = tween(200)) + scaleIn(
-                initialScale = 0.90f,
-                animationSpec = tween(240, easing = FastOutSlowInEasing)
-            ),
-            exit = fadeOut(animationSpec = tween(180)) + scaleOut(
-                targetScale = 0.90f,
-                animationSpec = tween(200, easing = FastOutSlowInEasing)
-            )
-        ) {
-            displayedImageViewer?.let { params ->
-                ImageViewerScreen(
-                    params = params,
-                    onClose = { activeImageViewer = null },
-                    backHandlerEnabled = activeImageViewer != null
-                )
-            }
-        }
-
-        // 5. Media Player (Video & Audio): Gallery app style popup transition with smooth crossfade
-        AnimatedVisibility(
-            visible = activeMediaPlayer != null,
-            enter = fadeIn(animationSpec = tween(200)),
-            exit = fadeOut(animationSpec = tween(180))
-        ) {
-            displayedMediaPlayer?.let { params ->
-                MediaPlayerScreen(
-                    params = params,
-                    onClose = { activeMediaPlayer = null },
-                    backHandlerEnabled = activeMediaPlayer != null,
-                    onSearchInFile = {
-                        val matchedFile = importedFiles.firstOrNull { it.uri == params.uri }
-                            ?: ImportedFile(
-                                uri = params.uri,
-                                displayName = params.fileName,
-                                size = 0L,
-                                mimeType = "video/*",
-                                addedAt = 0L
-                            )
-                        startSearchInFile(matchedFile)
-                    }
-                )
-            }
-        }
-
-        // 6. PDF Viewer: Smooth overlay over current screen
-        AnimatedVisibility(
-            visible = activePdfViewer != null,
-            enter = fadeIn(animationSpec = tween(200)) + slideInVertically(
-                initialOffsetY = { (it * 0.06f).toInt() },
-                animationSpec = tween(240, easing = FastOutSlowInEasing)
-            ),
-            exit = fadeOut(animationSpec = tween(180)) + slideOutVertically(
-                targetOffsetY = { (it * 0.06f).toInt() },
-                animationSpec = tween(200, easing = FastOutSlowInEasing)
-            )
-        ) {
-            displayedPdfViewer?.let { params ->
-                PdfViewerScreen(
-                    params = params,
-                    onClose = { activePdfViewer = null },
-                    backHandlerEnabled = activePdfViewer != null,
-                    onSearchInFile = {
-                        val matchedFile = importedFiles.firstOrNull { it.uri == params.uri }
-                            ?: ImportedFile(
-                                uri = params.uri,
-                                displayName = params.fileName,
-                                size = 0L,
-                                mimeType = "application/pdf",
-                                addedAt = 0L
-                            )
-                        startSearchInFile(matchedFile)
-                    }
-                )
-            }
-        }
-
-        // 7. Text Viewer: Smooth overlay over current screen
-        AnimatedVisibility(
-            visible = activeTextViewer != null,
-            enter = fadeIn(animationSpec = tween(200)) + slideInVertically(
-                initialOffsetY = { (it * 0.06f).toInt() },
-                animationSpec = tween(240, easing = FastOutSlowInEasing)
-            ),
-            exit = fadeOut(animationSpec = tween(180)) + slideOutVertically(
-                targetOffsetY = { (it * 0.06f).toInt() },
-                animationSpec = tween(200, easing = FastOutSlowInEasing)
-            )
-        ) {
-            displayedTextViewer?.let { params ->
-                TextViewerScreen(
-                    params = params,
-                    onClose = { activeTextViewer = null },
-                    backHandlerEnabled = activeTextViewer != null,
-                    onSearchInFile = {
-                        val matchedFile = importedFiles.firstOrNull { it.uri == params.uri }
-                            ?: ImportedFile(
-                                uri = params.uri,
-                                displayName = params.fileName,
-                                size = 0L,
-                                mimeType = "text/plain",
-                                addedAt = 0L
-                            )
-                        startSearchInFile(matchedFile)
-                    }
-                )
-            }
-        }
+        // 4. Builtin Viewers (Image, Media Player, PDF, Text)
+        ViewerOverlayHost(
+            viewerState = viewerState,
+            importedFiles = importedFiles,
+            onSearchInFile = { file -> startSearchInFile(file) }
+        )
     }
 }
 

@@ -1,7 +1,8 @@
 package com.localfind.ui
 
 import com.localfind.data.ImportedFile
-import com.localfind.search.SearchResult
+import com.localfind.ui.gallery.GalleryCategory
+import com.localfind.ui.gallery.ThumbnailHelper
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
 import org.junit.Test
@@ -55,22 +56,6 @@ class ThumbnailHelperTest {
         assertEquals(1, ThumbnailHelper.filterFiles(files, GalleryCategory.PDFS).size)
         assertEquals(1, ThumbnailHelper.filterFiles(files, GalleryCategory.TEXT).size)
         assertEquals(1, ThumbnailHelper.filterFiles(files, GalleryCategory.AUDIO).size)
-    }
-
-    @Test
-    fun `filterSearchResults filters ranked results by modality category`() {
-        val results = listOf(
-            SearchResult("1", "uri://1", "beach.jpg", "image", "", 0L, 0.91f),
-            SearchResult("2", "uri://2", "paper.pdf", "pdf", "Abstract...", 3L, 0.85f),
-            SearchResult("3", "uri://3", "podcast.mp3", "audio", "Audio segment", 12000L, 0.78f)
-        )
-
-        assertEquals(3, ThumbnailHelper.filterSearchResults(results, GalleryCategory.ALL).size)
-        assertEquals(1, ThumbnailHelper.filterSearchResults(results, GalleryCategory.PHOTOS).size)
-        assertEquals(1, ThumbnailHelper.filterSearchResults(results, GalleryCategory.PDFS).size)
-        assertEquals(0, ThumbnailHelper.filterSearchResults(results, GalleryCategory.TEXT).size)
-        assertEquals(1, ThumbnailHelper.filterSearchResults(results, GalleryCategory.AUDIO).size)
-        assertTrue(ThumbnailHelper.filterSearchResults(results, GalleryCategory.VIDEOS).isEmpty())
     }
 
     @Test

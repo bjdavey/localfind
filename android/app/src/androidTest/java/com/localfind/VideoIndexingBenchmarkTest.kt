@@ -21,7 +21,7 @@ import com.localfind.index.audio.AudioDecoder
 import com.localfind.index.video.MAX_INPUT_TOKENS
 import com.localfind.index.video.VideoChunker
 import com.localfind.index.video.indexVideoFile
-import com.localfind.ui.SearchResultFormatter
+import com.localfind.ui.search.SearchResultFormatter
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.async
 import kotlinx.coroutines.runBlocking

@@ -1,4 +1,6 @@
-package com.localfind.index
+package com.localfind.index.video
+
+import com.localfind.index.audio.AUDIO_SAMPLE_RATE
 
 /** Video window length (ARCHITECTURE.md §5). Starting value, to be tuned later. */
 const val VIDEO_WINDOW_MS = 5_000L
@@ -87,4 +89,3 @@ object VideoChunker {
         return 1.0f - (diff / (sig1.size * 255.0f))
     }
 }
-

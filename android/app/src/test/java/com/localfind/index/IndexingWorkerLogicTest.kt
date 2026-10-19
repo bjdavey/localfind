@@ -118,22 +118,22 @@ class IndexingWorkerLogicTest {
     @Test
     fun indexingCancellationState_trackAndClear() {
         IndexingCancellationState.clearAll()
-        assertFalse(IndexingCancellationState.isFileCancelled("content://test/1"))
+        assertFalse(IndexingCancellationState.isCancelled("content://test/1"))
 
         IndexingCancellationState.cancelFile("content://test/1")
-        assertTrue(IndexingCancellationState.isFileCancelled("content://test/1"))
-        assertFalse(IndexingCancellationState.isFileCancelled("content://test/2"))
+        assertTrue(IndexingCancellationState.isCancelled("content://test/1"))
+        assertFalse(IndexingCancellationState.isCancelled("content://test/2"))
 
         IndexingCancellationState.cancelFile("content://test/2")
-        assertTrue(IndexingCancellationState.isFileCancelled("content://test/1"))
-        assertTrue(IndexingCancellationState.isFileCancelled("content://test/2"))
+        assertTrue(IndexingCancellationState.isCancelled("content://test/1"))
+        assertTrue(IndexingCancellationState.isCancelled("content://test/2"))
 
         IndexingCancellationState.clear("content://test/1")
-        assertFalse(IndexingCancellationState.isFileCancelled("content://test/1"))
-        assertTrue(IndexingCancellationState.isFileCancelled("content://test/2"))
+        assertFalse(IndexingCancellationState.isCancelled("content://test/1"))
+        assertTrue(IndexingCancellationState.isCancelled("content://test/2"))
 
         IndexingCancellationState.clearAll()
-        assertFalse(IndexingCancellationState.isFileCancelled("content://test/2"))
+        assertFalse(IndexingCancellationState.isCancelled("content://test/2"))
 
         // Test cancelAll and resetAllCancelled
         assertFalse(IndexingCancellationState.isAllCancelled())
@@ -168,7 +168,7 @@ class IndexingWorkerLogicTest {
 
         // Simulating cancellation of the active file
         IndexingCancellationState.cancelFile("content://test/stuck.pdf")
-        assertTrue(IndexingCancellationState.isFileCancelled("content://test/stuck.pdf"))
+        assertTrue(IndexingCancellationState.isCancelled("content://test/stuck.pdf"))
 
         if (IndexingProgressState.progress.value.currentUri == "content://test/stuck.pdf") {
             IndexingProgressState.reset()

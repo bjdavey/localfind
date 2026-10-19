@@ -1,4 +1,4 @@
-package com.localfind.index
+package com.localfind.index.audio
 
 import android.content.Context
 import android.media.MediaCodec
@@ -83,10 +83,24 @@ object AudioDecoder {
                         val shorts = out.order(ByteOrder.nativeOrder()).asShortBuffer()
                         val count = shorts.remaining()
                         if (count > 0) {
-                            val chunk = ShortArray(count)
-                            shorts.get(chunk)
-                            pcmChunks.add(chunk)
-                            totalShorts += count
+                            // Downmix multi-channel audio directly per output buffer so peak heap memory
+                            // stays bounded to 1x mono instead of 2x-6x multi-channel PCM.
+                            val monoChunk = if (channels <= 1) {
+                                ShortArray(count).also { shorts.get(it) }
+                            } else {
+                                val frames = count / channels
+                                ShortArray(frames) {
+                                    var sum = 0
+                                    for (c in 0 until channels) {
+                                        sum += shorts.get().toInt()
+                                    }
+                                    (sum / channels).toShort()
+                                }
+                            }
+                            if (monoChunk.isNotEmpty()) {
+                                pcmChunks.add(monoChunk)
+                                totalShorts += monoChunk.size
+                            }
                         }
                         codec.releaseOutputBuffer(outIdx, false)
                         if (info.flags and MediaCodec.BUFFER_FLAG_END_OF_STREAM != 0) outputDone = true
@@ -100,15 +114,14 @@ object AudioDecoder {
                 }
             }
 
-            val fullPcm = ShortArray(totalShorts)
+            val mono = ShortArray(totalShorts)
             var offset = 0
             for (chunk in pcmChunks) {
-                System.arraycopy(chunk, 0, fullPcm, offset, chunk.size)
+                chunk.copyInto(mono, destinationOffset = offset)
                 offset += chunk.size
             }
             pcmChunks.clear()
 
-            val mono = AudioChunker.downmixToMono(fullPcm, channels)
             return AudioChunker.resample(mono, sampleRate)
         } finally {
             try { codec?.stop() } catch (_: Exception) {}
@@ -117,4 +130,3 @@ object AudioDecoder {
         }
     }
 }
-

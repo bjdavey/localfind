@@ -1,5 +1,6 @@
 package com.localfind.ui
 
+import com.localfind.ui.search.SearchResultFormatter
 import org.junit.Assert.assertEquals
 import org.junit.Test
 

@@ -10,6 +10,7 @@ import android.content.pm.ServiceInfo
 import android.os.Build
 import android.util.Log
 import androidx.core.app.NotificationCompat
+import androidx.core.content.edit
 import androidx.work.CoroutineWorker
 import androidx.work.ExistingWorkPolicy
 import androidx.work.ForegroundInfo
@@ -25,163 +26,7 @@ import com.localfind.data.IndexingStatus
 import com.localfind.data.ModelStatus
 import com.localfind.data.SettingsStore
 import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.flow.MutableStateFlow
-import kotlinx.coroutines.flow.StateFlow
-import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.withContext
-
-/**
- * Snapshot representing live background indexing progress for UI observation.
- *
- * @property isIndexing True if a background indexing worker is currently executing.
- * @property currentUri URI of the file currently being extracted and embedded.
- * @property currentFileName Display name of the active file.
- * @property fileIndex 1-based index of the active file within the current pending queue.
- * @property totalFiles Total number of files pending in the active batch.
- * @property currentChunk 1-based index of the chunk/page/window currently being embedded.
- * @property totalChunks Total chunks/pages/windows for the active file.
- * @property progressFraction Floating ratio (0.0f..1.0f) representing current file completion.
- * @property message Human-readable status string for top banner progress displays.
- */
-data class IndexingProgress(
-    val isIndexing: Boolean = false,
-    val isPaused: Boolean = false,
-    val currentUri: String? = null,
-    val currentFileName: String? = null,
-    val fileIndex: Int = 0,
-    val totalFiles: Int = 0,
-    val currentChunk: Int = 0,
-    val totalChunks: Int = 0,
-    val progressFraction: Float = 0f,
-    val message: String = ""
-)
-
-/**
- * Observable in-memory state manager for background indexing progress.
- *
- * Bridges WorkManager background task execution to Jetpack Compose UI state,
- * allowing instant per-file and banner progress updates without database polling overhead.
- */
-object IndexingProgressState {
-    private val _progress = MutableStateFlow(IndexingProgress())
-    val progress: StateFlow<IndexingProgress> = _progress.asStateFlow()
-
-    fun update(
-        isIndexing: Boolean,
-        currentUri: String?,
-        currentFileName: String?,
-        fileIndex: Int,
-        totalFiles: Int,
-        currentChunk: Int,
-        totalChunks: Int,
-        progressFraction: Float,
-        message: String,
-        isPaused: Boolean = false
-    ) {
-        _progress.value = IndexingProgress(
-            isIndexing = isIndexing,
-            isPaused = isPaused,
-            currentUri = currentUri,
-            currentFileName = currentFileName,
-            fileIndex = fileIndex,
-            totalFiles = totalFiles,
-            currentChunk = currentChunk,
-            totalChunks = totalChunks,
-            progressFraction = progressFraction.coerceIn(0f, 1f),
-            message = message
-        )
-    }
-
-    /**
-     * Updates state to reflect that the indexing queue has been paused.
-     */
-    fun setPaused(isPaused: Boolean, message: String = "Indexing paused") {
-        val cur = _progress.value
-        _progress.value = cur.copy(
-            isIndexing = false,
-            isPaused = isPaused,
-            message = message
-        )
-    }
-
-    fun reset() {
-        _progress.value = IndexingProgress(isIndexing = false, isPaused = false, message = "Ready")
-    }
-}
-
-/**
- * In-memory thread-safe state tracking for explicitly cancelled file URIs, queue cancellations,
- * and queue pausing.
- *
- * Allows real-time cooperative cancellation or pausing of running or queued indexing tasks
- * so stuck files and queues can be aborted or paused immediately without waiting for chunk loops to complete.
- */
-object IndexingCancellationState {
-    private val cancelledUris = java.util.Collections.synchronizedSet(mutableSetOf<String>())
-    @Volatile
-    private var allCancelled: Boolean = false
-    @Volatile
-    private var isPaused: Boolean = false
-
-    /**
-     * Signals cooperative cancellation to all running and enqueued indexing tasks.
-     */
-    fun cancelAll() {
-        allCancelled = true
-        isPaused = false
-    }
-
-    /**
-     * Resets global cancellation state before launching a new indexing batch.
-     */
-    fun resetAllCancelled() {
-        allCancelled = false
-    }
-
-    /**
-     * Cancels indexing for a specific file URI.
-     */
-    fun cancelFile(uri: String) {
-        cancelledUris.add(uri)
-    }
-
-    /**
-     * Checks whether the specified file URI or the entire queue has been cancelled.
-     */
-    fun isCancelled(uri: String): Boolean {
-        return allCancelled || cancelledUris.contains(uri)
-    }
-
-    fun isFileCancelled(uri: String): Boolean = isCancelled(uri)
-
-    fun isAllCancelled(): Boolean = allCancelled
-
-    fun clear(uri: String) {
-        cancelledUris.remove(uri)
-    }
-
-    fun clearAll() {
-        allCancelled = false
-        cancelledUris.clear()
-        isPaused = false
-    }
-
-    /**
-     * Flags the queue as paused for cooperative abortion of active loops.
-     */
-    fun pause() {
-        isPaused = true
-    }
-
-    /**
-     * Unsets the paused flag when resuming or enqueueing new work.
-     */
-    fun resume() {
-        isPaused = false
-    }
-
-    fun isPaused(): Boolean = isPaused
-}
 
 /**
  * Android [WorkManager] [CoroutineWorker] for offline background file indexing.
@@ -214,7 +59,7 @@ class IndexingWorker(
         const val KEY_TOTAL_FILES = "key_total_files"
         const val KEY_PROGRESS_FRACTION = "key_progress_fraction"
 
-        const val PREFS_NAME = "localfind_indexing_prefs"
+        const val PREFS_NAME = IndexingResumeManager.PREFS_NAME
         const val KEY_IS_PAUSED = "key_is_indexing_paused"
 
         /**
@@ -231,7 +76,7 @@ class IndexingWorker(
          */
         fun setPausedPref(context: Context, paused: Boolean) {
             val prefs = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
-            prefs.edit().putBoolean(KEY_IS_PAUSED, paused).apply()
+            prefs.edit { putBoolean(KEY_IS_PAUSED, paused) }
         }
 
         /**
@@ -271,7 +116,7 @@ class IndexingWorker(
             IndexingCancellationState.pause()
             WorkManager.getInstance(context.applicationContext).cancelUniqueWork(WORK_NAME)
 
-            val fileStore = FileStore(context)
+            val fileStore = FileStore.getInstance(context)
             val pending = fileStore.getPendingFiles()
             for (f in pending) {
                 if (f.indexingStatus == IndexingStatus.INDEXING) {
@@ -300,7 +145,7 @@ class IndexingWorker(
             setPausedPref(context, false)
             IndexingCancellationState.resume()
             IndexingCancellationState.resetAllCancelled()
-            val fileStore = FileStore(context)
+            val fileStore = FileStore.getInstance(context)
             val pending = fileStore.getPendingFiles()
             if (pending.isEmpty()) {
                 IndexingProgressState.reset()
@@ -335,7 +180,7 @@ class IndexingWorker(
             IndexingProgressState.reset()
             val notificationManager = context.getSystemService(Context.NOTIFICATION_SERVICE) as? NotificationManager
             notificationManager?.cancel(NOTIFICATION_ID)
-            val fileStore = FileStore(context)
+            val fileStore = FileStore.getInstance(context)
             val pending = fileStore.getPendingFiles()
             for (f in pending) {
                 fileStore.updateStatus(f.uri, IndexingStatus.FAILED, 0)
@@ -358,7 +203,7 @@ class IndexingWorker(
         fun cancelFile(context: Context, uri: String) {
             IndexingCancellationState.cancelFile(uri)
             IndexingResumeManager.clearResumeChunk(context, uri)
-            val fileStore = FileStore(context)
+            val fileStore = FileStore.getInstance(context)
             fileStore.updateStatus(uri, IndexingStatus.FAILED, 0)
             try {
                 val store = EngineManager.getStore(context)
@@ -551,7 +396,7 @@ class IndexingWorker(
     }
 
     override suspend fun doWork(): Result = withContext(Dispatchers.IO) {
-        val fileStore = FileStore(context)
+        val fileStore = FileStore.getInstance(context)
         val settingsStore = SettingsStore(context)
         val settings = settingsStore.load()
 

@@ -1,5 +1,8 @@
 package com.localfind.index
 
+import com.localfind.index.audio.AUDIO_SAMPLE_RATE
+import com.localfind.index.audio.AudioChunker
+import com.localfind.index.audio.AudioWindow
 import org.junit.Assert.assertArrayEquals
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue

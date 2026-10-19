@@ -25,7 +25,7 @@ The text query uses the same model, so a text query can match an image, an audio
 | Area | Choice |
 | :--- | :--- |
 | Language / UI | Kotlin, Jetpack Compose, single Activity |
-| Min / target SDK | 28 / latest |
+| Min / target SDK | 31 / 37 |
 | Embedding model | EmbeddingGemma 2, **740M multimodal** (text + image + audio) |
 | Inference | MediaPipe Tasks on Android (`UniversalEmbedder`, LiteRT under the hood) |
 | Hardware Acceleration | Automatic GPU vision acceleration (OpenCL/Vulkan) with graceful CPU fallback (XNNPack) |
@@ -34,7 +34,7 @@ The text query uses the same model, so a text query can match an image, an audio
 | PDF text | PdfBox-Android |
 | PDF viewing | Android `PdfRenderer` |
 | Image / thumbnails | Coil (`AsyncImage`), `ImageDecoder` |
-| Audio / video | Media3 (ExoPlayer, Transformer, UI `PlayerView`), `MediaMetadataRetriever`, `MediaExtractor` / `MediaCodec` / `MediaMuxer` (fMP4 remuxing) |
+| Audio / video | Media3 (ExoPlayer, UI `PlayerView`), `MediaMetadataRetriever`, `MediaExtractor` / `MediaCodec` |
 | Concurrency | Kotlin coroutines, AndroidX WorkManager |
 
 ## 3. Model Delivery
@@ -45,7 +45,7 @@ The text query uses the same model, so a text query can match an image, an audio
 
 ## 4. File Access: Link, Don't Copy
 
-- Files are picked with the system picker (`ACTION_OPEN_DOCUMENT`, multi-select).
+- Files are picked with the system picker (`ACTION_OPEN_DOCUMENT`, multi-select) or folder picker (`ACTION_OPEN_DOCUMENT_TREE`).
 - The app calls `takePersistableUriPermission` and stores **only the URI** plus index data.
 - No storage permission is needed, and files are not duplicated.
 - If a file is moved or deleted, it is shown as **missing** in the Library, and the user can remove it.
@@ -60,11 +60,10 @@ Each file is split into **chunks**. Each chunk has one embedding and one **locat
 | PDF | Text of one page (long pages are split) | Page number |
 | Image | Whole image | - |
 | Audio | Fixed time window (e.g. 10 s) | Start time (ms) |
-| Video | Sliding window (sampled frames + 16 kHz audio) | Start time (ms) |
+| Video | Sliding window (sampled frames + optional 16 kHz audio) | Start time (ms) |
 
-- Window sizes and frame intervals are starting values. They will be tuned later.
-- Video indexing uses sliding time windows with interleaved frames and 16 kHz audio, plus fMP4 normalization via `MediaMuxer` for seekability.
-- Indexing runs in a background WorkManager worker (`IndexingWorker`), surviving app process death and automatically resuming unindexed files when reopened.
+- Video indexing uses sliding time windows with hardware-downsampled sync keyframes (`256 px`), luminance-based visual redundancy skipping (`85%` similarity threshold), adaptive thermal pacing (`PowerManager`), and optional concurrent 16 kHz audio decoding.
+- Indexing runs in a background WorkManager worker (`IndexingWorker`), surviving app process death and automatically resuming unindexed files from the last completed chunk (`IndexingResumeManager`).
 - Progress is tracked per file with live percentage and spinner indicators on gallery tiles and in the top indexing banner.
 
 ## 6. Data Model (SqliteVectorStore)
@@ -86,7 +85,7 @@ Data is stored locally using MediaPipe's `SqliteVectorStore` (`RetrievalRecord`)
 ## 7. Search
 
 1. Embed the query text using `Embedder`.
-2. Query `SqliteVectorStore.search(queryEmbedding, topK)` to find nearest neighbors via cosine similarity.
+2. Query `SqliteVectorStore.search(queryEmbedding, topK)` to find nearest neighbors via cosine similarity (supporting optional `fileId` or modality `type` pre-filtering).
 3. Filter results that meet or exceed the similarity threshold (default `0.60`).
 4. Return the top-K chunks sorted by descending similarity score.
 
@@ -112,7 +111,9 @@ All variables are persisted locally using native Android `SharedPreferences` ([S
 | Indexing | Audio Window Duration | `10` s | Duration of each fixed audio chunk |
 | Indexing | Video Window Duration | `5` s | Duration of each video sliding window |
 | Indexing | Video Frames / Window | `2` frames | Sampled JPEG frames per video window |
-| Indexing | Max Image Dimension | `512` px | Maximum dimension for image and frame decoding |
+| Indexing | Video Include Audio | `false` | Whether to decode and embed audio tracks alongside video keyframes |
+| Indexing | Video Skip Similar Chunks | `true` | Skip redundant consecutive video windows (`>= 85%` luminance similarity) |
+| Indexing | Max Image Dimension | `512` px | Maximum dimension for image decoding (video frames use `256` px hardware downsampling) |
 
 ## 10. Offline Guarantee
 
@@ -121,13 +122,29 @@ All variables are persisted locally using native Android `SharedPreferences` ([S
 
 ## 11. Project Layout
 
-Single Gradle module, organized by package:
+Single Gradle module, organized by feature and modality subpackages:
 
 ```text
 android/app/src/main/java/.../localfind/
-├── ui/        # Compose screens: Library, Search, Viewers
-├── index/     # Chunk extraction per file type + Indexer
-├── embed/     # MediaPipe embedder wrapper
-├── search/    # Search operations
-└── data/      # SqliteVectorStore / VectorStore wrapper
+├── MainActivity.kt
+├── ui/
+│   ├── gallery/   # GalleryScreen, GalleryTiles, GalleryDialogs, ThumbnailHelper
+│   ├── search/    # SearchScreen, SearchResultCard, SearchResultFormatter
+│   ├── viewer/    # ViewerOverlayHost, Image/Media/Pdf/TextViewerScreen, TextViewerHelper
+│   ├── settings/  # SettingsScreen
+│   └── theme/     # Color, Theme, Type
+├── index/
+│   ├── Indexer.kt, IndexingWorker.kt, IndexingState.kt, IndexingResumeManager.kt, IndexingActionReceiver.kt
+│   ├── document/  # DocumentIndexer, TextChunker, PdfChunker
+│   ├── image/     # ImageIndexer
+│   ├── audio/     # AudioIndexer, AudioChunker, AudioDecoder
+│   └── video/     # VideoIndexer, VideoChunker
+├── embed/         # MediaPipe UniversalEmbedder wrapper (Embedder, VectorMath)
+└── data/          # FileStore (SQLite), FileImporter (SAF), EmbeddingStore (SqliteVectorStore), EngineManager, AppSettings
 ```
+
+## 12. Technical Invariants
+
+- **Single Model Instance:** Never bypass `EngineManager`. The ~485MB `EmbeddingGemma 2` model must only be loaded once to prevent Out-Of-Memory (OOM) crashes on mobile devices.
+- **Background Threading:** Never perform file extraction, PDF parsing, audio decoding, embedding, or database writes on the Android Main (UI) thread; always use dispatcher.
+

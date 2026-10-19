@@ -1,4 +1,4 @@
-package com.localfind.ui
+package com.localfind.ui.viewer
 
 /**
  * Represents a single text line within a document with its 0-based character offsets.
@@ -36,7 +36,7 @@ object TextViewerHelper {
         val length = text.length
 
         while (start < length) {
-            var newlineIndex = text.indexOf('\n', start)
+            val newlineIndex = text.indexOf('\n', start)
             val lineEnd: Int
             val nextStart: Int
 
@@ -161,4 +161,3 @@ object TextViewerHelper {
         return if (localStart < localEnd) localStart until localEnd else null
     }
 }
-

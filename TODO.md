@@ -46,7 +46,7 @@
 - [x] GPU Support
 - [x] Create folders and recursive folder import (DocumentFile / tree URI)
 - [x] Enhance the indexing sync manager and support resume during a file indexing
-- Clean source code
+- [x] Clean source code
 
 
 ## Milestone 5: First release

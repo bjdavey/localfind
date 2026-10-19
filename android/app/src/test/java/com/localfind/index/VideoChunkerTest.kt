@@ -1,5 +1,8 @@
 package com.localfind.index
 
+import com.localfind.index.video.MAX_INPUT_TOKENS
+import com.localfind.index.video.VideoChunker
+import com.localfind.index.video.VideoWindow
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
 import org.junit.Test

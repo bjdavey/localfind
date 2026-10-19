@@ -1,4 +1,7 @@
-package com.localfind.index
+package com.localfind.index.document
+
+import com.localfind.data.DEFAULT_TEXT_CHUNK_OVERLAP
+import com.localfind.data.DEFAULT_TEXT_CHUNK_SIZE
 
 /**
  * Represents a text passage extracted from a document for embedding and indexing.
@@ -28,8 +31,6 @@ data class TextChunk(
  *   leading trimmed whitespace.
  */
 object TextChunker {
-    private const val DEFAULT_TARGET_CHUNK_SIZE = 500
-    private const val DEFAULT_OVERLAP_SIZE = 100
 
     /**
      * Splits document text into a list of [TextChunk] instances.
@@ -41,8 +42,8 @@ object TextChunker {
      */
     fun chunk(
         content: String,
-        targetChunkSize: Int = DEFAULT_TARGET_CHUNK_SIZE,
-        overlapSize: Int = DEFAULT_OVERLAP_SIZE
+        targetChunkSize: Int = DEFAULT_TEXT_CHUNK_SIZE,
+        overlapSize: Int = DEFAULT_TEXT_CHUNK_OVERLAP
     ): List<TextChunk> {
         val trimmed = content.trim()
         if (trimmed.isEmpty()) return emptyList()

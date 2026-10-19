@@ -1,6 +1,5 @@
-package com.localfind.ui
+package com.localfind.ui.viewer
 
-import android.net.Uri
 import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.background
 import androidx.compose.foundation.gestures.detectTapGestures
@@ -37,6 +36,7 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import androidx.core.net.toUri
 import coil.compose.AsyncImage
 import coil.compose.AsyncImagePainter
 import coil.request.ImageRequest
@@ -175,7 +175,7 @@ fun ImageViewerScreen(
         ) {
             AsyncImage(
                 model = ImageRequest.Builder(context)
-                    .data(Uri.parse(params.uri))
+                    .data(params.uri.toUri())
                     .crossfade(150)
                     .build(),
                 contentDescription = params.fileName.ifEmpty { "Matched image" },

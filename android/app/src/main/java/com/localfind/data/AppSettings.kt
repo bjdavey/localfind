@@ -2,6 +2,7 @@ package com.localfind.data
 
 import android.content.Context
 import android.content.SharedPreferences
+import androidx.core.content.edit
 
 /** Default dark mode state (false = light mode, true = dark mode). */
 const val DEFAULT_DARK_MODE = false
@@ -145,20 +146,20 @@ class SettingsStore(private val prefs: SharedPreferences) {
      */
     fun save(settings: AppSettings) {
         val valid = settings.sanitized()
-        prefs.edit()
-            .putBoolean(KEY_DARK_MODE, valid.darkMode)
-            .putFloat(KEY_SIMILARITY_THRESHOLD, valid.similarityThreshold)
-            .putInt(KEY_TOP_K, valid.topK)
-            .putInt(KEY_TEXT_CHUNK_SIZE, valid.textChunkSize)
-            .putInt(KEY_TEXT_CHUNK_OVERLAP, valid.textChunkOverlap)
-            .putInt(KEY_AUDIO_WINDOW_SECONDS, valid.audioWindowSeconds)
-            .putInt(KEY_VIDEO_WINDOW_SECONDS, valid.videoWindowSeconds)
-            .putInt(KEY_VIDEO_FRAMES_PER_WINDOW, valid.videoFramesPerWindow)
-            .putInt(KEY_MAX_IMAGE_DIMENSION, valid.maxImageDimension)
-            .putBoolean(KEY_VIDEO_INCLUDE_AUDIO, valid.videoIncludeAudio)
-            .putBoolean(KEY_VIDEO_SKIP_SIMILAR, valid.videoSkipSimilarChunks)
-            .putFloat(KEY_VIDEO_SIMILARITY_THRESHOLD, valid.videoSimilarityThreshold)
-            .apply()
+        prefs.edit {
+            putBoolean(KEY_DARK_MODE, valid.darkMode)
+            putFloat(KEY_SIMILARITY_THRESHOLD, valid.similarityThreshold)
+            putInt(KEY_TOP_K, valid.topK)
+            putInt(KEY_TEXT_CHUNK_SIZE, valid.textChunkSize)
+            putInt(KEY_TEXT_CHUNK_OVERLAP, valid.textChunkOverlap)
+            putInt(KEY_AUDIO_WINDOW_SECONDS, valid.audioWindowSeconds)
+            putInt(KEY_VIDEO_WINDOW_SECONDS, valid.videoWindowSeconds)
+            putInt(KEY_VIDEO_FRAMES_PER_WINDOW, valid.videoFramesPerWindow)
+            putInt(KEY_MAX_IMAGE_DIMENSION, valid.maxImageDimension)
+            putBoolean(KEY_VIDEO_INCLUDE_AUDIO, valid.videoIncludeAudio)
+            putBoolean(KEY_VIDEO_SKIP_SIMILAR, valid.videoSkipSimilarChunks)
+            putFloat(KEY_VIDEO_SIMILARITY_THRESHOLD, valid.videoSimilarityThreshold)
+        }
     }
 
     /**
@@ -168,7 +169,7 @@ class SettingsStore(private val prefs: SharedPreferences) {
      * @return Fresh instance of [AppSettings] initialized with defaults.
      */
     fun reset(defaultDarkMode: Boolean = false): AppSettings {
-        prefs.edit().clear().apply()
+        prefs.edit { clear() }
         return load(defaultDarkMode)
     }
 

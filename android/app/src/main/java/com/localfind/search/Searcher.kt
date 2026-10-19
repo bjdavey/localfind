@@ -1,12 +1,10 @@
 package com.localfind.search
 
 import com.google.mediapipe.tasks.core.TextPart
+import com.localfind.data.DEFAULT_TOP_K
 import com.localfind.data.EmbeddingStore
 import com.localfind.embed.Embedder
 import kotlin.math.sqrt
-
-/** Default maximum number of top nearest-neighbor search results returned. */
-const val DEFAULT_TOP_K = 10
 
 /**
  * Domain model representing a ranked search result item.

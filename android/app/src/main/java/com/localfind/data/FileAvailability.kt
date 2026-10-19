@@ -1,8 +1,7 @@
 package com.localfind.data
 
 import android.content.Context
-import android.net.Uri
-import android.provider.OpenableColumns
+import androidx.core.net.toUri
 import java.io.File
 
 /**
@@ -40,7 +39,7 @@ object FileAvailability {
         }
 
         val uri = try {
-            Uri.parse(uriString)
+            uriString.toUri()
         } catch (_: Exception) {
             return false
         }
@@ -50,32 +49,14 @@ object FileAvailability {
                 val path = uri.path ?: uriString.removePrefix("file://")
                 isLocalFileAvailable(path)
             } else {
-                // 1. First test querying metadata (checks if document still exists in DocumentsProvider)
-                var existsInProvider = false
-                try {
-                    context.contentResolver.query(
-                        uri,
-                        arrayOf(OpenableColumns.DISPLAY_NAME),
-                        null,
-                        null,
-                        null
-                    )?.use { cursor ->
-                        if (cursor.moveToFirst()) {
-                            existsInProvider = true
-                        }
-                    }
-                } catch (_: Exception) {
-                    existsInProvider = false
-                }
-
-                // 2. Verify we can open a descriptor or stream.
-                // This catches cases where the provider row is stale or file was unlinked/deleted.
+                // Verify we can open a descriptor or stream directly via ContentResolver.
+                // This catches cases where the provider row is stale or the underlying file was deleted.
                 try {
                     context.contentResolver.openAssetFileDescriptor(uri, "r")?.use {
                         return true
                     }
                 } catch (_: Exception) {
-                    // Try openInputStream as fallback
+                    // Try openInputStream as fallback for virtual/streamed documents
                 }
 
                 try {

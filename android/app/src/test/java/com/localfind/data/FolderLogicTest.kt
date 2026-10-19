@@ -1,7 +1,7 @@
 package com.localfind.data
 
-import com.localfind.ui.GalleryCategory
-import com.localfind.ui.ThumbnailHelper
+import com.localfind.ui.gallery.GalleryCategory
+import com.localfind.ui.gallery.ThumbnailHelper
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNull
 import org.junit.Test

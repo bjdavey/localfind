@@ -1,13 +1,11 @@
-package com.localfind.ui
+package com.localfind.ui.viewer
 
-import android.net.Uri
 import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxSize
-import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material3.Button
 import androidx.compose.material3.ExperimentalMaterial3Api
@@ -33,10 +31,12 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.viewinterop.AndroidView
+import androidx.core.net.toUri
 import androidx.media3.common.MediaItem
 import androidx.media3.exoplayer.ExoPlayer
 import androidx.media3.ui.PlayerView
 import com.localfind.index.Indexer
+import com.localfind.ui.search.SearchResultFormatter
 
 /**
  * Parameters used to open the in-app audio/video player.
@@ -79,7 +79,7 @@ fun MediaPlayerScreen(
                     playerError = "Playback failed: Original file not found or inaccessible."
                 }
             })
-            setMediaItem(MediaItem.fromUri(Uri.parse(params.uri)), params.startMs)
+            setMediaItem(MediaItem.fromUri(params.uri.toUri()), params.startMs)
             prepare()
             playWhenReady = true
         }
@@ -211,4 +211,3 @@ fun MediaPlayerScreen(
         }
     }
 }
-

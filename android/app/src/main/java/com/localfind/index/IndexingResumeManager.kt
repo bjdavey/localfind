@@ -1,6 +1,7 @@
 package com.localfind.index
 
 import android.content.Context
+import androidx.core.content.edit
 
 /**
  * Pure business logic for validating and calculating indexing resume points.
@@ -99,10 +100,10 @@ object IndexingResumeManager {
      */
     fun setResumeChunk(context: Context, uri: String, chunkIndex: Int, fileSize: Long) {
         val prefs = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
-        prefs.edit()
-            .putInt(KEY_RESUME_CHUNK_PREFIX + uri, chunkIndex)
-            .putLong(KEY_RESUME_SIZE_PREFIX + uri, fileSize)
-            .apply()
+        prefs.edit {
+            putInt(KEY_RESUME_CHUNK_PREFIX + uri, chunkIndex)
+            putLong(KEY_RESUME_SIZE_PREFIX + uri, fileSize)
+        }
     }
 
     /**
@@ -111,10 +112,10 @@ object IndexingResumeManager {
      */
     fun clearResumeChunk(context: Context, uri: String) {
         val prefs = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
-        prefs.edit()
-            .remove(KEY_RESUME_CHUNK_PREFIX + uri)
-            .remove(KEY_RESUME_SIZE_PREFIX + uri)
-            .apply()
+        prefs.edit {
+            remove(KEY_RESUME_CHUNK_PREFIX + uri)
+            remove(KEY_RESUME_SIZE_PREFIX + uri)
+        }
     }
 
     /**
@@ -123,13 +124,13 @@ object IndexingResumeManager {
      */
     fun clearAll(context: Context) {
         val prefs = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
-        val editor = prefs.edit()
-        for (key in prefs.all.keys) {
-            if (key.startsWith(KEY_RESUME_CHUNK_PREFIX) || key.startsWith(KEY_RESUME_SIZE_PREFIX)) {
-                editor.remove(key)
+        prefs.edit {
+            for (key in prefs.all.keys) {
+                if (key.startsWith(KEY_RESUME_CHUNK_PREFIX) || key.startsWith(KEY_RESUME_SIZE_PREFIX)) {
+                    remove(key)
+                }
             }
         }
-        editor.apply()
     }
 }
 

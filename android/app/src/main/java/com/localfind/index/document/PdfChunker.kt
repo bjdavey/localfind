@@ -1,11 +1,14 @@
-package com.localfind.index
+package com.localfind.index.document
+
+import com.localfind.data.DEFAULT_TEXT_CHUNK_OVERLAP
+import com.localfind.data.DEFAULT_TEXT_CHUNK_SIZE
 
 /**
  * Represents a chunk of text extracted from a specific page of a PDF document.
  *
  * @property text The passage text to be embedded and indexed.
  * @property pageNumber 1-based page number where this text appears in the source PDF.
- *                      Used in Search results and to navigate directly in [com.localfind.ui.PdfViewerScreen].
+ *                      Used in Search results and to navigate directly in [com.localfind.ui.viewer.PdfViewerScreen].
  */
 data class PdfChunk(
     val text: String,
@@ -100,8 +103,8 @@ object PdfChunker {
     fun chunkPage(
         pageText: String,
         pageNumber: Int,
-        targetChunkSize: Int = 500,
-        overlapSize: Int = 100
+        targetChunkSize: Int = DEFAULT_TEXT_CHUNK_SIZE,
+        overlapSize: Int = DEFAULT_TEXT_CHUNK_OVERLAP
     ): List<PdfChunk> {
         val trimmed = pageText.trim()
         if (isKindaEmpty(trimmed)) return emptyList()
@@ -115,4 +118,3 @@ object PdfChunker {
         }
     }
 }
-

@@ -11,26 +11,34 @@ Instructions for AI assistants working on this repository. Read this before ever
 - If two solutions work, pick the one that is easier to read and delete.
 - When unsure, ask instead of adding complexity.
 
-## 2. One TODO Item at a Time
+## 2. File Size & Clean Modularity
+
+- **Avoid monolithic files:** Keep files focused and ideally under ~400–500 LOC.
+- Do not add arbitrary abstractions or design patterns to achieve this, but extract self-contained UI components and separate distinct concerns rather than dumping everything into same file
+
+## 3. One TODO Item at a Time
 
 - **Do NOT attempt to implement the entire system.** Work only on a single item from [TODO.md](TODO.md).
 - Implement only the current item, nothing more. Do not start the next item.
 - New ideas go into the **Backlog** section of [TODO.md](TODO.md), not into code.
 
-## 3. Workflow per TODO Item
+## 4. Workflow per TODO Item
 
 1. **Implement:** Write only what is needed for the current item.
 2. **Unit test:** If it contains pure business/math logic, add a simple Unit test, no heavy mocks.
-3. **Verify:** Run tests locally (for example ./gradlew test) then verify on device/emulator to verify end-to-end.
+3. **Verify:**
+   - Run unit tests: `.\gradlew test` (or targeted: `.\gradlew testDebugUnitTest --tests com.localfind...`)
+   - Verify build: `.\gradlew assembleDebug`
+   - Verify on device/emulator to verify end-to-end.
 4. **Complete:** Mark `[x]` in [TODO.md](TODO.md) and stop.
 
-## 4. Ask Before Acting
+## 5. Ask Before Acting
 
 - Ask the user before making architecture or tech-stack decisions.
 - Ask before adding any new dependency.
 - Ask when requirements are unclear.
 
-## 5. Project Rules
+## 6. Project Rules & Technical Invariants
 
 - **100% offline.** No network calls, no cloud APIs, no telemetry, no network permissions.
 - **Explain with comments:** Put comments and notes in all code and tests as much as possible to explain the logic, intent, architectural context, and non-obvious details.

@@ -1,4 +1,4 @@
-package com.localfind.ui
+package com.localfind.ui.search
 
 import java.util.Locale
 
@@ -78,4 +78,3 @@ object SearchResultFormatter {
         return trimmed.take(maxLength).trimEnd() + "…"
     }
 }
-

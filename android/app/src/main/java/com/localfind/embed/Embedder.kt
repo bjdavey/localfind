@@ -228,20 +228,22 @@ class Embedder(
 
             val source = candidateSources.firstOrNull { it.exists() && it.canRead() && it.length() > 0L }
             if (source != null) {
+                val tempFile = File(context.filesDir, "$MODEL_FILE_NAME.tmp")
                 try {
                     Log.i(TAG, "Found model at ${source.absolutePath} (${source.length()} bytes). Copying to internal storage ${target.absolutePath}...")
-                    val tempFile = File(context.filesDir, "$MODEL_FILE_NAME.tmp")
                     source.inputStream().use { input ->
                         tempFile.outputStream().use { output ->
-                            input.copyTo(output)
+                            input.copyTo(output, bufferSize = 64 * 1024)
                         }
                     }
                     if (tempFile.renameTo(target)) {
                         Log.i(TAG, "Successfully copied model to ${target.absolutePath} (${target.length()} bytes)")
                     } else {
-                        Log.w(TAG, "Failed to rename temp file to ${target.name}")
+                        Log.w(TAG, "Failed to rename temp file to ${target.name}; deleting partial temp file")
+                        tempFile.delete()
                     }
                 } catch (e: Exception) {
+                    tempFile.delete()
                     Log.e(TAG, "Error copying model from ${source.absolutePath} to ${target.absolutePath}", e)
                 }
             }

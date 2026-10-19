@@ -1,10 +1,7 @@
-package com.localfind.ui
+package com.localfind.ui.search
 
-import android.net.Uri
 import androidx.activity.compose.BackHandler
-import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
-import androidx.compose.foundation.clickable
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -22,17 +19,13 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBars
 import androidx.compose.foundation.layout.width
-import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyListState
-import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material3.Button
-import androidx.compose.material3.Card
-import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.FilterChipDefaults
@@ -46,47 +39,28 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
-import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
-import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.res.painterResource
-import com.localfind.R
-import androidx.compose.ui.draw.clip
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
-import androidx.compose.ui.graphics.Brush
-import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.asImageBitmap
-import androidx.compose.ui.layout.ContentScale
-import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalFocusManager
-import androidx.compose.ui.text.font.FontFamily
+import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import coil.compose.AsyncImage
-import coil.request.ImageRequest
+import com.localfind.R
 import com.localfind.data.ImportedFile
-import com.localfind.index.Indexer
 import com.localfind.search.SearchResult
-import com.localfind.ui.theme.BadgeAudio
-import com.localfind.ui.theme.BadgeImage
-import com.localfind.ui.theme.BadgePdf
-import com.localfind.ui.theme.BadgeText
-import com.localfind.ui.theme.BadgeVideo
-import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.withContext
+import com.localfind.ui.gallery.GalleryCategory
 
 /**
  * Dedicated Full-Screen Semantic Search View.
  *
- * Opened when the user taps the bottom floating search bar in [GalleryScreen]
+ * Opened when the user taps the bottom floating search bar in [com.localfind.ui.gallery.GalleryScreen]
  * or triggers a search inside a specific file from file details / viewers.
  *
  * Features:
@@ -94,8 +68,7 @@ import kotlinx.coroutines.withContext
  * - Optional scoped search banner when searching within a specific [targetFile].
  * - Modality filter chips (`All`, `Photos`, `Videos`, `Docs`, `Audio`) to filter ranked hits.
  * - Interactive example suggestion pills when idle.
- * - Ranked result cards with visual thumbnail previews, similarity percentage badge, location offset,
- *   and text snippet preview.
+ * - Ranked result cards via [SearchResultsList] and [SearchResultCard].
  */
 @Composable
 fun SearchScreen(
@@ -489,304 +462,6 @@ fun SearchScreen(
                             textAlign = TextAlign.Center
                         )
                     }
-                }
-            }
-        }
-    }
-}
-
-/**
- * Scrollable list displaying ranked [SearchResult] cards.
- */
-@Composable
-fun SearchResultsList(
-    results: List<SearchResult>,
-    onResultClick: (SearchResult) -> Unit,
-    listState: LazyListState = rememberLazyListState(),
-    modifier: Modifier = Modifier
-) {
-    LazyColumn(
-        state = listState,
-        modifier = modifier,
-        contentPadding = PaddingValues(horizontal = 16.dp, vertical = 8.dp),
-        verticalArrangement = Arrangement.spacedBy(12.dp)
-    ) {
-        items(
-            items = results,
-            key = { it.chunkId }
-        ) { result ->
-            SearchResultCard(
-                result = result,
-                onClick = { onResultClick(result) }
-            )
-        }
-    }
-}
-
-/**
- * Rich visual result card showing:
- * - Left: 76dp square visual thumbnail (Image, Video frame, PDF page 1, Text preview, or Audio cover).
- * - Right: File name, similarity score badge (`88% match`), file type + location badge (`Page 4`, `01:20`),
- *   and matched snippet text.
- */
-@Composable
-fun SearchResultCard(
-    result: SearchResult,
-    onClick: () -> Unit,
-    modifier: Modifier = Modifier
-) {
-    val context = LocalContext.current
-    val category = remember(result.fileType, result.fileName) {
-        ThumbnailHelper.categorizeSearchResult(result)
-    }
-    val isPdf = remember(result.fileType, result.fileName) {
-        result.fileType.equals("pdf", ignoreCase = true) ||
-                Indexer.isPdfNameOrMime(result.fileName, null)
-    }
-
-    var previewData by remember(result.fileUri) {
-        mutableStateOf(
-            if (result.fileUri.isNotBlank()) ThumbnailHelper.getCachedPreview(result.fileUri) else null
-        )
-    }
-
-    LaunchedEffect(result.fileUri) {
-        if (previewData == null && result.fileUri.isNotBlank() && category != GalleryCategory.PHOTOS) {
-            previewData = withContext(Dispatchers.IO) {
-                ThumbnailHelper.loadPreviewBlocking(
-                    context = context,
-                    uriString = result.fileUri,
-                    fileName = result.fileName,
-                    mimeType = null
-                )
-            }
-        }
-    }
-
-    Card(
-        modifier = modifier
-            .fillMaxWidth()
-            .clip(RoundedCornerShape(16.dp))
-            .clickable(onClick = onClick),
-        shape = RoundedCornerShape(16.dp),
-        colors = CardDefaults.cardColors(
-            containerColor = MaterialTheme.colorScheme.surfaceVariant
-        ),
-        elevation = CardDefaults.cardElevation(defaultElevation = 2.dp)
-    ) {
-        Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(12.dp),
-            horizontalArrangement = Arrangement.spacedBy(12.dp),
-            verticalAlignment = Alignment.Top
-        ) {
-            // Left: Square Thumbnail Preview
-            Box(
-                modifier = Modifier
-                    .size(78.dp)
-                    .clip(RoundedCornerShape(12.dp))
-                    .background(MaterialTheme.colorScheme.surface),
-                contentAlignment = Alignment.Center
-            ) {
-                when (category) {
-                    GalleryCategory.PHOTOS -> {
-                        if (result.fileUri.isNotBlank()) {
-                            AsyncImage(
-                                model = ImageRequest.Builder(context)
-                                    .data(Uri.parse(result.fileUri))
-                                    .crossfade(true)
-                                    .build(),
-                                contentDescription = result.fileName,
-                                contentScale = ContentScale.Crop,
-                                modifier = Modifier.fillMaxSize()
-                            )
-                        } else {
-                            Text("🖼", fontSize = 28.sp)
-                        }
-                    }
-
-                    GalleryCategory.VIDEOS -> {
-                        val bmp = previewData?.bitmap
-                        if (bmp != null) {
-                            Image(
-                                bitmap = bmp.asImageBitmap(),
-                                contentDescription = result.fileName,
-                                contentScale = ContentScale.Crop,
-                                modifier = Modifier.fillMaxSize()
-                            )
-                        }
-                        Box(
-                            modifier = Modifier
-                                .size(28.dp)
-                                .clip(RoundedCornerShape(14.dp))
-                                .background(Color.Black.copy(alpha = 0.6f)),
-                            contentAlignment = Alignment.Center
-                        ) {
-                            Text("▶", color = Color.White, fontSize = 12.sp)
-                        }
-                    }
-
-                    GalleryCategory.PDFS -> {
-                        val bmp = previewData?.bitmap
-                        if (bmp != null) {
-                            Image(
-                                bitmap = bmp.asImageBitmap(),
-                                contentDescription = result.fileName,
-                                contentScale = ContentScale.Crop,
-                                modifier = Modifier.fillMaxSize()
-                            )
-                        } else {
-                            Box(
-                                modifier = Modifier
-                                    .fillMaxSize()
-                                    .background(Color(0xFFFAFAFA))
-                                    .padding(6.dp)
-                            ) {
-                                Text(
-                                    text = result.snippet.ifBlank { result.fileName },
-                                    style = MaterialTheme.typography.bodySmall.copy(
-                                        fontFamily = FontFamily.Monospace,
-                                        fontSize = 8.sp,
-                                        lineHeight = 10.sp
-                                    ),
-                                    color = Color(0xFF212121),
-                                    maxLines = 6,
-                                    overflow = TextOverflow.Ellipsis
-                                )
-                            }
-                        }
-                    }
-
-                    GalleryCategory.TEXT -> {
-                        Box(
-                            modifier = Modifier
-                                .fillMaxSize()
-                                .background(Color(0xFFFAFAFA))
-                                .padding(6.dp)
-                        ) {
-                            Text(
-                                text = result.snippet.ifBlank { previewData?.textSnippet ?: result.fileName },
-                                style = MaterialTheme.typography.bodySmall.copy(
-                                    fontFamily = FontFamily.Monospace,
-                                    fontSize = 8.sp,
-                                    lineHeight = 10.sp
-                                ),
-                                color = Color(0xFF212121),
-                                maxLines = 6,
-                                overflow = TextOverflow.Ellipsis
-                            )
-                        }
-                    }
-
-                    GalleryCategory.AUDIO -> {
-                        val bmp = previewData?.bitmap
-                        if (bmp != null) {
-                            Image(
-                                bitmap = bmp.asImageBitmap(),
-                                contentDescription = result.fileName,
-                                contentScale = ContentScale.Crop,
-                                modifier = Modifier.fillMaxSize()
-                            )
-                        } else {
-                            Box(
-                                modifier = Modifier
-                                    .fillMaxSize()
-                                    .background(
-                                        Brush.linearGradient(
-                                            listOf(Color(0xFF4A148C), Color(0xFF7B1FA2))
-                                        )
-                                    ),
-                                contentAlignment = Alignment.Center
-                            ) {
-                                Text("♫", color = Color.White, fontSize = 26.sp)
-                            }
-                        }
-                    }
-
-                    GalleryCategory.ALL -> {}
-                }
-            }
-
-            // Right: Metadata & Snippet
-            Column(
-                modifier = Modifier.weight(1f),
-                verticalArrangement = Arrangement.spacedBy(5.dp)
-            ) {
-                // Header: File Name + Match Score Badge
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.SpaceBetween,
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    Text(
-                        text = result.fileName.ifEmpty { "Unknown Document" },
-                        style = MaterialTheme.typography.titleSmall,
-                        fontWeight = FontWeight.Bold,
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis,
-                        modifier = Modifier.weight(1f)
-                    )
-
-                    Spacer(modifier = Modifier.width(6.dp))
-
-                    Surface(
-                        shape = RoundedCornerShape(8.dp),
-                        color = MaterialTheme.colorScheme.primaryContainer
-                    ) {
-                        Text(
-                            text = SearchResultFormatter.formatScore(result.score),
-                            style = MaterialTheme.typography.labelSmall,
-                            fontWeight = FontWeight.Bold,
-                            color = MaterialTheme.colorScheme.onPrimaryContainer,
-                            modifier = Modifier.padding(horizontal = 7.dp, vertical = 2.dp)
-                        )
-                    }
-                }
-
-                // Sub-header: Type Badge + Location Offset
-                val typeBadgeColor = when (category) {
-                    GalleryCategory.PHOTOS -> BadgeImage
-                    GalleryCategory.VIDEOS -> BadgeVideo
-                    GalleryCategory.PDFS -> BadgePdf
-                    GalleryCategory.TEXT -> BadgeText
-                    GalleryCategory.AUDIO -> BadgeAudio
-                    GalleryCategory.ALL -> BadgeImage
-                }
-
-                Row(
-                    horizontalArrangement = Arrangement.spacedBy(8.dp),
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    Surface(
-                        shape = RoundedCornerShape(4.dp),
-                        color = typeBadgeColor.copy(alpha = 0.2f)
-                    ) {
-                        Text(
-                            text = result.fileType.uppercase(),
-                            style = MaterialTheme.typography.labelSmall,
-                            fontWeight = FontWeight.Bold,
-                            color = typeBadgeColor,
-                            modifier = Modifier.padding(horizontal = 6.dp, vertical = 1.dp)
-                        )
-                    }
-
-                    Text(
-                        text = SearchResultFormatter.formatLocation(result.fileType, result.location),
-                        style = MaterialTheme.typography.labelMedium,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant
-                    )
-                }
-
-                // Snippet Box
-                if (result.snippet.isNotBlank()) {
-                    Text(
-                        text = SearchResultFormatter.formatSnippet(result.snippet, maxLength = 180),
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurface,
-                        maxLines = 3,
-                        overflow = TextOverflow.Ellipsis
-                    )
                 }
             }
         }

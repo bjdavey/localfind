@@ -47,15 +47,17 @@ sealed interface ModelStatus {
  *   Loading multiple instances simultaneously risks Out Of Memory (OOM) crashes on low-to-mid range devices.
  *   [EngineManager] ensures only a single instance is instantiated and kept warm in memory.
  * - Thread Safety: MediaPipe / LiteRT native C++ inference and SQLite operations are safely synchronized
- *   across UI threads, background Coroutines, and WorkManager tasks via [engineMutex].
- * - Non-Blocking Search vs Background Indexing: By structuring operations through [withLock],
- *   UI search queries and background WorkManager file indexing coordinate cooperatively.
+ *   across UI threads, background Coroutines, and WorkManager tasks.
+ * - Non-Blocking Search vs Background Indexing: Inference calls in [Embedder] and SQLite operations
+ *   in [EmbeddingStore] synchronize individually so UI searches and background indexing coordinate cooperatively.
  * - 100% Offline: Operates strictly with on-device model assets and local SQLite databases.
  */
 object EngineManager {
     private const val TAG = "EngineManager"
     private val engineMutex = Mutex()
+    @Volatile
     private var embedder: Embedder? = null
+    @Volatile
     private var store: EmbeddingStore? = null
 
     private val _modelStatus = MutableStateFlow<ModelStatus>(ModelStatus.Loading)
@@ -89,11 +91,10 @@ object EngineManager {
         }
 
         try {
+            // Delegate through getEmbedder so coroutine and synchronous callers share the same monitor lock,
+            // preventing concurrent initialization of two ~485MB native Embedder instances.
             engineMutex.withLock {
-                if (embedder == null) {
-                    Log.i(TAG, "Initializing Embedder with ${modelFile.absolutePath}...")
-                    embedder = Embedder(context.applicationContext)
-                }
+                getEmbedder(context.applicationContext)
             }
             val loaded = ModelStatus.Loaded(modelFile.absolutePath, modelFile.length())
             _modelStatus.value = loaded
@@ -127,6 +128,7 @@ object EngineManager {
     fun getEmbedder(context: Context): Embedder {
         return embedder ?: synchronized(this) {
             embedder ?: Embedder(context.applicationContext).also {
+                Log.i(TAG, "Initialized singleton Embedder instance.")
                 embedder = it
                 val f = File(context.filesDir, MODEL_FILE_NAME)
                 if (f.exists()) {
@@ -145,18 +147,6 @@ object EngineManager {
     ): T {
         val st = getStore(context)
         return block(st)
-    }
-
-    /**
-     * Executes a suspending block with access to the shared [Embedder] and [EmbeddingStore].
-     */
-    suspend fun <T> withLock(
-        context: Context,
-        block: suspend (embedder: Embedder, store: EmbeddingStore) -> T
-    ): T {
-        val emb = getEmbedder(context)
-        val st = getStore(context)
-        return block(emb, st)
     }
 
     /**
