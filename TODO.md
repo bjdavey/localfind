@@ -44,9 +44,10 @@
 - [x] Pause, resume, and cancel indexing queue
 - [x] Find tricks, try and test to make video indexing faster, like avoiding thermal throttling or skip smiliar chunks
 - [x] GPU Support
-- Create folders and recursive folder import (DocumentFile / tree URI)
-- Clean source code
+- [x] Create folders and recursive folder import (DocumentFile / tree URI)
 - Enhance the indexing sync manager and support resume during a file indexing
+- Clean source code
+
 
 ## Milestone 5: First release
 - Simplify UI for non-tech people and keep advanced mode option in settings

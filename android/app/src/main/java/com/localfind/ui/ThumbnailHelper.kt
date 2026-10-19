@@ -8,6 +8,7 @@ import android.graphics.pdf.PdfRenderer
 import android.media.MediaMetadataRetriever
 import android.net.Uri
 import android.util.LruCache
+import com.localfind.data.Folder
 import com.localfind.data.ImportedFile
 import com.localfind.index.Indexer
 import com.localfind.search.SearchResult
@@ -105,6 +106,32 @@ object ThumbnailHelper {
     fun filterFiles(files: List<ImportedFile>, category: GalleryCategory): List<ImportedFile> {
         if (category == GalleryCategory.ALL) return files
         return files.filter { categorizeFile(it.displayName, it.mimeType) == category }
+    }
+
+    /**
+     * Filters a list of [ImportedFile] items located in the given [folderId]
+     * (or root level if `folderId == null`), and optionally filters by [GalleryCategory].
+     */
+    fun filterFilesByFolder(
+        files: List<ImportedFile>,
+        folderId: String?,
+        category: GalleryCategory = GalleryCategory.ALL
+    ): List<ImportedFile> {
+        val folderFiles = files.filter { it.folderId == folderId }
+        return filterFiles(folderFiles, category)
+    }
+
+    /**
+     * Calculates the total direct items (files + subfolders) inside a folder.
+     */
+    fun getFolderItemCount(
+        files: List<ImportedFile>,
+        folders: List<Folder>,
+        folderId: String
+    ): Int {
+        val fileCount = files.count { it.folderId == folderId }
+        val subfolderCount = folders.count { it.parentId == folderId }
+        return fileCount + subfolderCount
     }
 
     /**

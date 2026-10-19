@@ -49,6 +49,7 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
@@ -77,6 +78,7 @@ import androidx.compose.ui.unit.sp
 import coil.compose.AsyncImage
 import coil.request.ImageRequest
 import com.localfind.R
+import com.localfind.data.Folder
 import com.localfind.data.ImportedFile
 import com.localfind.data.IndexingStatus
 import com.localfind.data.ModelStatus
@@ -109,6 +111,14 @@ fun GalleryScreen(
     statusMessage: String,
     indexingProgress: IndexingProgress = IndexingProgress(),
     modelStatus: ModelStatus = ModelStatus.Loading,
+    folders: List<Folder> = emptyList(),
+    currentFolderId: String? = null,
+    onNavigateFolder: (String?) -> Unit = {},
+    onCreateFolder: (String) -> Unit = {},
+    onRenameFolder: (Folder, String) -> Unit = { _, _ -> },
+    onDeleteFolder: (Folder) -> Unit = {},
+    onImportFolder: () -> Unit = {},
+    onMoveFileToFolder: (ImportedFile, String?) -> Unit = { _, _ -> },
     onRetryLoadModel: () -> Unit = {},
     onOpenSearch: () -> Unit,
     onSearchInFile: ((ImportedFile) -> Unit)? = null,
@@ -126,6 +136,34 @@ fun GalleryScreen(
 ) {
     var selectedCategory by remember { mutableStateOf(GalleryCategory.ALL) }
     var inspectedFile by remember { mutableStateOf<ImportedFile?>(null) }
+    var showImportMenu by remember { mutableStateOf(false) }
+    var showCreateFolderDialog by remember { mutableStateOf(false) }
+    var inspectedFolder by remember { mutableStateOf<Folder?>(null) }
+    var folderToRename by remember { mutableStateOf<Folder?>(null) }
+    var folderToDelete by remember { mutableStateOf<Folder?>(null) }
+    var fileToMove by remember { mutableStateOf<ImportedFile?>(null) }
+
+    // Folder and navigation state
+    val currentFolder = remember(folders, currentFolderId) {
+        folders.firstOrNull { it.id == currentFolderId }
+    }
+    val currentSubfolders = remember(folders, currentFolderId) {
+        folders.filter { it.parentId == currentFolderId }
+    }
+    val currentFolderFiles = remember(importedFiles, currentFolderId, selectedCategory) {
+        ThumbnailHelper.filterFilesByFolder(importedFiles, currentFolderId, selectedCategory)
+    }
+
+    // Breadcrumb path resolution (Root -> Subfolder -> Current)
+    val breadcrumbs = remember(folders, currentFolderId) {
+        val chain = mutableListOf<Folder>()
+        var curr = folders.firstOrNull { it.id == currentFolderId }
+        while (curr != null) {
+            chain.add(0, curr)
+            curr = folders.firstOrNull { it.id == curr.parentId }
+        }
+        chain
+    }
 
     // Only show categories that have imported files in the library (plus ALL).
     // Hides filter chips for categories with 0 files in the app.
@@ -137,10 +175,6 @@ fun GalleryScreen(
         if (selectedCategory !in availableCategories) {
             selectedCategory = GalleryCategory.ALL
         }
-    }
-
-    val filteredFiles = remember(importedFiles, selectedCategory) {
-        ThumbnailHelper.filterFiles(importedFiles, selectedCategory)
     }
 
     // File Details & Quick Actions Modal when long-pressing or tapping info on a tile
@@ -162,6 +196,11 @@ fun GalleryScreen(
                     searchFn(target)
                 }
             },
+            onMoveToFolder = {
+                val target = file
+                inspectedFile = null
+                fileToMove = target
+            },
             onDelete = {
                 val target = file
                 inspectedFile = null
@@ -180,6 +219,94 @@ fun GalleryScreen(
                     inspectedFile = null
                     cancelFn(target)
                 }
+            }
+        )
+    }
+
+    // Move file between folders dialog
+    fileToMove?.let { file ->
+        MoveFileDialog(
+            file = file,
+            folders = folders,
+            onMove = { targetFolderId ->
+                val target = file
+                fileToMove = null
+                onMoveFileToFolder(target, targetFolderId)
+            },
+            onDismiss = { fileToMove = null }
+        )
+    }
+
+    // Folder actions menu (Rename / Delete)
+    inspectedFolder?.let { folder ->
+        FolderActionsDialog(
+            folder = folder,
+            onDismiss = { inspectedFolder = null },
+            onRename = {
+                val target = folder
+                inspectedFolder = null
+                folderToRename = target
+            },
+            onDelete = {
+                val target = folder
+                inspectedFolder = null
+                folderToDelete = target
+            }
+        )
+    }
+
+    // Rename folder dialog
+    folderToRename?.let { folder ->
+        RenameFolderDialog(
+            folder = folder,
+            onDismiss = { folderToRename = null },
+            onConfirm = { newName ->
+                val target = folder
+                folderToRename = null
+                onRenameFolder(target, newName)
+            }
+        )
+    }
+
+    // Delete folder confirmation dialog
+    folderToDelete?.let { folder ->
+        DeleteFolderDialog(
+            folder = folder,
+            onDismiss = { folderToDelete = null },
+            onConfirm = {
+                val target = folder
+                folderToDelete = null
+                onDeleteFolder(target)
+            }
+        )
+    }
+
+    // Create new folder dialog
+    if (showCreateFolderDialog) {
+        CreateFolderDialog(
+            onDismiss = { showCreateFolderDialog = false },
+            onConfirm = { folderName ->
+                showCreateFolderDialog = false
+                onCreateFolder(folderName)
+            }
+        )
+    }
+
+    // Import options modal (Import Files / Import Folder / New Folder)
+    if (showImportMenu) {
+        ImportOptionsMenu(
+            onDismiss = { showImportMenu = false },
+            onImportFiles = {
+                showImportMenu = false
+                onImportFiles()
+            },
+            onImportFolder = {
+                showImportMenu = false
+                onImportFolder()
+            },
+            onCreateFolder = {
+                showImportMenu = false
+                showCreateFolderDialog = true
             }
         )
     }
@@ -495,17 +622,110 @@ fun GalleryScreen(
             }
 
             // =====================================================================
-            // 4. GALLERY GRID OR EMPTY STATE
+            // 4. BREADCRUMBS & FOLDER NAVIGATION BAR (Visible when inside a folder)
             // =====================================================================
-            if (importedFiles.isEmpty()) {
+            if (currentFolder != null) {
+                Surface(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 16.dp, vertical = 6.dp),
+                    shape = RoundedCornerShape(12.dp),
+                    color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.85f)
+                ) {
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(horizontal = 12.dp, vertical = 8.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        IconButton(
+                            onClick = { onNavigateFolder(currentFolder.parentId) },
+                            modifier = Modifier.size(36.dp)
+                        ) {
+                            Text(
+                                text = "←",
+                                style = MaterialTheme.typography.titleMedium,
+                                fontWeight = FontWeight.Bold
+                            )
+                        }
+                        Spacer(modifier = Modifier.width(6.dp))
+                        Column(modifier = Modifier.weight(1f)) {
+                            Text(
+                                text = currentFolder.name,
+                                style = MaterialTheme.typography.titleSmall,
+                                fontWeight = FontWeight.Bold,
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis
+                            )
+                            val breadcrumbString = "Library > " + breadcrumbs.joinToString(" > ") { it.name }
+                            Text(
+                                text = breadcrumbString,
+                                style = MaterialTheme.typography.labelSmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis
+                            )
+                        }
+                        IconButton(
+                            onClick = { inspectedFolder = currentFolder },
+                            modifier = Modifier.size(36.dp)
+                        ) {
+                            Text(
+                                text = "⋮",
+                                style = MaterialTheme.typography.titleMedium,
+                                fontWeight = FontWeight.Bold
+                            )
+                        }
+                    }
+                }
+            }
+
+            // =====================================================================
+            // 5. GALLERY GRID OR EMPTY STATE
+            // =====================================================================
+            val isRootEmpty = currentFolderId == null && importedFiles.isEmpty() && folders.isEmpty()
+            val isCurrentFolderEmpty = currentSubfolders.isEmpty() && currentFolderFiles.isEmpty()
+
+            if (isRootEmpty) {
                 EmptyGalleryState(
                     onImportFiles = onImportFiles,
+                    onImportFolder = onImportFolder,
+                    onCreateFolder = { showCreateFolderDialog = true },
                     isIndexing = isIndexing,
                     modifier = Modifier
                         .weight(1f)
                         .fillMaxWidth()
                 )
-            } else if (filteredFiles.isEmpty()) {
+            } else if (isCurrentFolderEmpty && selectedCategory == GalleryCategory.ALL) {
+                Box(
+                    modifier = Modifier
+                        .weight(1f)
+                        .fillMaxWidth()
+                        .padding(32.dp),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Column(
+                        horizontalAlignment = Alignment.CenterHorizontally,
+                        verticalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        Text(
+                            text = "📁",
+                            fontSize = 40.sp
+                        )
+                        Text(
+                            text = "This folder is empty",
+                            style = MaterialTheme.typography.titleMedium,
+                            fontWeight = FontWeight.SemiBold
+                        )
+                        Text(
+                            text = "Tap the + button in the bottom dock to import files, import a folder, or create a subfolder.",
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            textAlign = TextAlign.Center
+                        )
+                    }
+                }
+            } else if (currentFolderFiles.isEmpty() && selectedCategory != GalleryCategory.ALL) {
                 Box(
                     modifier = Modifier
                         .weight(1f)
@@ -522,12 +742,12 @@ fun GalleryScreen(
                             fontSize = 40.sp
                         )
                         Text(
-                            text = "No ${selectedCategory.label.lowercase()} in your library yet",
+                            text = "No ${selectedCategory.label.lowercase()} here",
                             style = MaterialTheme.typography.titleMedium,
                             fontWeight = FontWeight.SemiBold
                         )
                         Text(
-                            text = "Tap the + button in the bottom bar to import files.",
+                            text = "No matching files found in this category.",
                             style = MaterialTheme.typography.bodyMedium,
                             color = MaterialTheme.colorScheme.onSurfaceVariant,
                             textAlign = TextAlign.Center
@@ -551,8 +771,27 @@ fun GalleryScreen(
                     horizontalArrangement = Arrangement.spacedBy(10.dp),
                     verticalArrangement = Arrangement.spacedBy(10.dp)
                 ) {
+                    // 1. Render Subfolders (shown only when category is ALL)
+                    if (selectedCategory == GalleryCategory.ALL && currentSubfolders.isNotEmpty()) {
+                        items(
+                            items = currentSubfolders,
+                            key = { "folder_${it.id}" }
+                        ) { folder ->
+                            val itemCount = remember(importedFiles, folders, folder.id) {
+                                ThumbnailHelper.getFolderItemCount(importedFiles, folders, folder.id)
+                            }
+                            FolderGalleryTile(
+                                folder = folder,
+                                itemCount = itemCount,
+                                onClick = { onNavigateFolder(folder.id) },
+                                onLongClick = { inspectedFolder = folder }
+                            )
+                        }
+                    }
+
+                    // 2. Render Media Files
                     items(
-                        items = filteredFiles,
+                        items = currentFolderFiles,
                         key = { it.uri }
                     ) { file ->
                         val isActivelyIndexing = file.indexingStatus == IndexingStatus.INDEXING ||
@@ -576,11 +815,11 @@ fun GalleryScreen(
         }
 
         // =====================================================================
-        // 5. OPTION C UNIFIED BOTTOM FLOATING DOCK (Search Pill + Import Button)
+        // 6. OPTION C UNIFIED BOTTOM FLOATING DOCK (Search Pill + Import Action Menu)
         // =====================================================================
         FloatingSearchAndImportDock(
             onSearchClick = onOpenSearch,
-            onImportClick = onImportFiles,
+            onImportClick = { showImportMenu = true },
             isIndexing = isIndexing,
             modifier = Modifier
                 .align(Alignment.BottomCenter)
@@ -1181,6 +1420,8 @@ private fun AudioWaveformPlaceholder() {
 @Composable
 private fun EmptyGalleryState(
     onImportFiles: () -> Unit,
+    onImportFolder: () -> Unit,
+    onCreateFolder: () -> Unit,
     isIndexing: Boolean,
     modifier: Modifier = Modifier
 ) {
@@ -1215,15 +1456,40 @@ private fun EmptyGalleryState(
                     textAlign = TextAlign.Center
                 )
                 Spacer(modifier = Modifier.height(4.dp))
-                Button(
-                    onClick = onImportFiles,
-                    shape = RoundedCornerShape(20.dp)
+                Row(
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    verticalAlignment = Alignment.CenterVertically
                 ) {
-                    Text(
-                        text = "+  Import Files",
-                        modifier = Modifier.padding(horizontal = 8.dp, vertical = 2.dp),
-                        fontWeight = FontWeight.SemiBold
-                    )
+                    Button(
+                        onClick = onImportFiles,
+                        shape = RoundedCornerShape(20.dp)
+                    ) {
+                        Text(
+                            text = "+ Files",
+                            modifier = Modifier.padding(horizontal = 4.dp, vertical = 2.dp),
+                            fontWeight = FontWeight.SemiBold
+                        )
+                    }
+                    FilledTonalButton(
+                        onClick = onImportFolder,
+                        shape = RoundedCornerShape(20.dp)
+                    ) {
+                        Text(
+                            text = "📁 Folder",
+                            modifier = Modifier.padding(horizontal = 4.dp, vertical = 2.dp),
+                            fontWeight = FontWeight.SemiBold
+                        )
+                    }
+                    FilledTonalButton(
+                        onClick = onCreateFolder,
+                        shape = RoundedCornerShape(20.dp)
+                    ) {
+                        Text(
+                            text = "+ New",
+                            modifier = Modifier.padding(horizontal = 4.dp, vertical = 2.dp),
+                            fontWeight = FontWeight.SemiBold
+                        )
+                    }
                 }
             }
         }
@@ -1231,7 +1497,7 @@ private fun EmptyGalleryState(
 }
 
 /**
- * Dialog displaying file metadata and providing quick actions ("Open", "Search in File", "Remove from Library").
+ * Dialog displaying file metadata and providing quick actions ("Open", "Search in File", "Move", "Remove from Library").
  */
 @Composable
 private fun FileDetailsDialog(
@@ -1241,6 +1507,7 @@ private fun FileDetailsDialog(
     onDismiss: () -> Unit,
     onOpen: () -> Unit,
     onSearchInFile: (() -> Unit)? = null,
+    onMoveToFolder: (() -> Unit)? = null,
     onDelete: () -> Unit,
     onRetry: (() -> Unit)? = null,
     onCancelSync: (() -> Unit)? = null
@@ -1307,13 +1574,18 @@ private fun FileDetailsDialog(
                         Text("Cancel Sync", color = MaterialTheme.colorScheme.error)
                     }
                 }
+                if (onMoveToFolder != null) {
+                    FilledTonalButton(onClick = onMoveToFolder) {
+                        Text("📁 Move")
+                    }
+                }
                 if (file.indexingStatus == IndexingStatus.INDEXED && onSearchInFile != null) {
                     FilledTonalButton(onClick = onSearchInFile) {
-                        Text("🔍 Search in File")
+                        Text("🔍 Search")
                     }
                 }
                 Button(onClick = onOpen) {
-                    Text("Open File")
+                    Text("Open")
                 }
             }
         },
@@ -1331,3 +1603,457 @@ private fun FileDetailsDialog(
         }
     )
 }
+
+/**
+ * Individual square card in the 2-column gallery grid representing a folder.
+ */
+@OptIn(ExperimentalFoundationApi::class)
+@Composable
+fun FolderGalleryTile(
+    folder: Folder,
+    itemCount: Int,
+    onClick: () -> Unit,
+    onLongClick: () -> Unit,
+    modifier: Modifier = Modifier
+) {
+    Surface(
+        modifier = modifier
+            .fillMaxWidth()
+            .aspectRatio(1f)
+            .clip(RoundedCornerShape(16.dp))
+            .combinedClickable(
+                onClick = onClick,
+                onLongClick = onLongClick
+            ),
+        shape = RoundedCornerShape(16.dp),
+        color = MaterialTheme.colorScheme.surfaceVariant,
+        tonalElevation = 3.dp
+    ) {
+        Box(modifier = Modifier.fillMaxSize()) {
+            Box(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .background(
+                        Brush.verticalGradient(
+                            listOf(
+                                MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.40f),
+                                MaterialTheme.colorScheme.surfaceVariant
+                            )
+                        )
+                    )
+            )
+
+            // Top-right quick actions 3-dot button
+            Surface(
+                modifier = Modifier
+                    .align(Alignment.TopEnd)
+                    .padding(8.dp)
+                    .size(28.dp)
+                    .clip(CircleShape)
+                    .clickable(onClick = onLongClick),
+                shape = CircleShape,
+                color = MaterialTheme.colorScheme.surface.copy(alpha = 0.85f)
+            ) {
+                Box(contentAlignment = Alignment.Center) {
+                    Text(
+                        text = "⋮",
+                        fontWeight = FontWeight.Bold,
+                        fontSize = 14.sp,
+                        color = MaterialTheme.colorScheme.onSurface
+                    )
+                }
+            }
+
+            // Folder Icon & Details
+            Column(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .padding(14.dp),
+                horizontalAlignment = Alignment.CenterHorizontally,
+                verticalArrangement = Arrangement.Center
+            ) {
+                Text(
+                    text = "📁",
+                    fontSize = 42.sp
+                )
+                Spacer(modifier = Modifier.height(8.dp))
+                Text(
+                    text = folder.name,
+                    style = MaterialTheme.typography.titleMedium,
+                    fontWeight = FontWeight.Bold,
+                    color = MaterialTheme.colorScheme.onSurface,
+                    textAlign = TextAlign.Center,
+                    maxLines = 2,
+                    overflow = TextOverflow.Ellipsis
+                )
+                Spacer(modifier = Modifier.height(2.dp))
+                Text(
+                    text = if (itemCount == 1) "1 item" else "$itemCount items",
+                    style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+            }
+        }
+    }
+}
+
+/**
+ * Options modal for a folder (Rename, Delete).
+ */
+@Composable
+private fun FolderActionsDialog(
+    folder: Folder,
+    onDismiss: () -> Unit,
+    onRename: () -> Unit,
+    onDelete: () -> Unit
+) {
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = {
+            Text(
+                text = "📁 ${folder.name}",
+                fontWeight = FontWeight.Bold,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis
+            )
+        },
+        text = {
+            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                Surface(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .clip(RoundedCornerShape(10.dp))
+                        .clickable(onClick = onRename),
+                    color = MaterialTheme.colorScheme.surfaceVariant
+                ) {
+                    Text(
+                        text = "✏️  Rename Folder",
+                        modifier = Modifier.padding(14.dp),
+                        style = MaterialTheme.typography.bodyMedium,
+                        fontWeight = FontWeight.Medium
+                    )
+                }
+                Surface(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .clip(RoundedCornerShape(10.dp))
+                        .clickable(onClick = onDelete),
+                    color = MaterialTheme.colorScheme.errorContainer.copy(alpha = 0.5f)
+                ) {
+                    Text(
+                        text = "🗑️  Delete Folder",
+                        modifier = Modifier.padding(14.dp),
+                        style = MaterialTheme.typography.bodyMedium,
+                        fontWeight = FontWeight.Medium,
+                        color = MaterialTheme.colorScheme.error
+                    )
+                }
+            }
+        },
+        confirmButton = {},
+        dismissButton = {
+            TextButton(onClick = onDismiss) {
+                Text("Close")
+            }
+        }
+    )
+}
+
+/**
+ * Dialog to rename an existing folder.
+ */
+@Composable
+private fun RenameFolderDialog(
+    folder: Folder,
+    onDismiss: () -> Unit,
+    onConfirm: (String) -> Unit
+) {
+    var name by remember { mutableStateOf(folder.name) }
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text("Rename Folder") },
+        text = {
+            OutlinedTextField(
+                value = name,
+                onValueChange = { name = it },
+                label = { Text("Folder Name") },
+                singleLine = true,
+                modifier = Modifier.fillMaxWidth()
+            )
+        },
+        confirmButton = {
+            Button(
+                onClick = {
+                    val trimmed = name.trim()
+                    if (trimmed.isNotEmpty()) onConfirm(trimmed)
+                },
+                enabled = name.trim().isNotEmpty()
+            ) {
+                Text("Save")
+            }
+        },
+        dismissButton = {
+            TextButton(onClick = onDismiss) {
+                Text("Cancel")
+            }
+        }
+    )
+}
+
+/**
+ * Dialog to confirm folder deletion.
+ */
+@Composable
+private fun DeleteFolderDialog(
+    folder: Folder,
+    onDismiss: () -> Unit,
+    onConfirm: () -> Unit
+) {
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text("Delete \"${folder.name}\"?") },
+        text = {
+            Text(
+                "This will remove the folder and all files inside it from LocalFind. Original files on your device are not deleted."
+            )
+        },
+        confirmButton = {
+            Button(
+                onClick = onConfirm,
+                colors = androidx.compose.material3.ButtonDefaults.buttonColors(
+                    containerColor = MaterialTheme.colorScheme.error
+                )
+            ) {
+                Text("Delete")
+            }
+        },
+        dismissButton = {
+            TextButton(onClick = onDismiss) {
+                Text("Cancel")
+            }
+        }
+    )
+}
+
+/**
+ * Dialog to create a new folder.
+ */
+@Composable
+private fun CreateFolderDialog(
+    onDismiss: () -> Unit,
+    onConfirm: (String) -> Unit
+) {
+    var folderName by remember { mutableStateOf("") }
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text("New Folder") },
+        text = {
+            OutlinedTextField(
+                value = folderName,
+                onValueChange = { folderName = it },
+                label = { Text("Folder Name") },
+                singleLine = true,
+                modifier = Modifier.fillMaxWidth()
+            )
+        },
+        confirmButton = {
+            Button(
+                onClick = {
+                    val trimmed = folderName.trim()
+                    if (trimmed.isNotEmpty()) onConfirm(trimmed)
+                },
+                enabled = folderName.trim().isNotEmpty()
+            ) {
+                Text("Create")
+            }
+        },
+        dismissButton = {
+            TextButton(onClick = onDismiss) {
+                Text("Cancel")
+            }
+        }
+    )
+}
+
+/**
+ * Action menu presented when tapping the `+` button in the unified bottom floating dock.
+ */
+@Composable
+private fun ImportOptionsMenu(
+    onDismiss: () -> Unit,
+    onImportFiles: () -> Unit,
+    onImportFolder: () -> Unit,
+    onCreateFolder: () -> Unit
+) {
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text("Add to Library") },
+        text = {
+            Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                Surface(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .clip(RoundedCornerShape(12.dp))
+                        .clickable(onClick = onImportFiles),
+                    color = MaterialTheme.colorScheme.surfaceVariant
+                ) {
+                    Row(
+                        modifier = Modifier.padding(14.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(12.dp)
+                    ) {
+                        Text("📄", fontSize = 24.sp)
+                        Column {
+                            Text("Import Files", fontWeight = FontWeight.Bold)
+                            Text(
+                                "Pick individual documents, photos, audio, or video",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                        }
+                    }
+                }
+
+                Surface(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .clip(RoundedCornerShape(12.dp))
+                        .clickable(onClick = onImportFolder),
+                    color = MaterialTheme.colorScheme.surfaceVariant
+                ) {
+                    Row(
+                        modifier = Modifier.padding(14.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(12.dp)
+                    ) {
+                        Text("📁", fontSize = 24.sp)
+                        Column {
+                            Text("Import Folder", fontWeight = FontWeight.Bold)
+                            Text(
+                                "Scan and import all supported files recursively",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                        }
+                    }
+                }
+
+                Surface(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .clip(RoundedCornerShape(12.dp))
+                        .clickable(onClick = onCreateFolder),
+                    color = MaterialTheme.colorScheme.surfaceVariant
+                ) {
+                    Row(
+                        modifier = Modifier.padding(14.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(12.dp)
+                    ) {
+                        Text("➕", fontSize = 24.sp)
+                        Column {
+                            Text("New Folder", fontWeight = FontWeight.Bold)
+                            Text(
+                                "Create a folder here to organize your files",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                        }
+                    }
+                }
+            }
+        },
+        confirmButton = {},
+        dismissButton = {
+            TextButton(onClick = onDismiss) {
+                Text("Cancel")
+            }
+        }
+    )
+}
+
+/**
+ * Dialog enabling users to move an imported file into a different folder or back to root.
+ */
+@Composable
+private fun MoveFileDialog(
+    file: ImportedFile,
+    folders: List<Folder>,
+    onMove: (String?) -> Unit,
+    onDismiss: () -> Unit
+) {
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = {
+            Text(
+                text = "Move \"${file.displayName}\"",
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis
+            )
+        },
+        text = {
+            Column(
+                modifier = Modifier.fillMaxWidth(),
+                verticalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                Text(
+                    text = "Select destination folder:",
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+
+                // Root library option (if currently in a folder)
+                if (file.folderId != null) {
+                    Surface(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clip(RoundedCornerShape(10.dp))
+                            .clickable { onMove(null) },
+                        color = MaterialTheme.colorScheme.surfaceVariant
+                    ) {
+                        Text(
+                            text = "🏠  Library Root",
+                            modifier = Modifier.padding(12.dp),
+                            style = MaterialTheme.typography.bodyMedium,
+                            fontWeight = FontWeight.Medium
+                        )
+                    }
+                }
+
+                val availableFolders = folders.filter { it.id != file.folderId }
+                if (availableFolders.isEmpty()) {
+                    Text(
+                        text = "No other folders created yet.",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        modifier = Modifier.padding(vertical = 4.dp)
+                    )
+                } else {
+                    availableFolders.forEach { folder ->
+                        Surface(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .clip(RoundedCornerShape(10.dp))
+                                .clickable { onMove(folder.id) },
+                            color = MaterialTheme.colorScheme.surfaceVariant
+                        ) {
+                            Text(
+                                text = "📁  ${folder.name}",
+                                modifier = Modifier.padding(12.dp),
+                                style = MaterialTheme.typography.bodyMedium,
+                                fontWeight = FontWeight.Medium
+                            )
+                        }
+                    }
+                }
+            }
+        },
+        confirmButton = {},
+        dismissButton = {
+            TextButton(onClick = onDismiss) {
+                Text("Cancel")
+            }
+        }
+    )
+}
+

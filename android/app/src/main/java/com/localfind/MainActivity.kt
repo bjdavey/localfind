@@ -5,6 +5,7 @@ import android.net.Uri
 import android.os.Bundle
 import android.widget.Toast
 import androidx.activity.ComponentActivity
+import androidx.activity.compose.BackHandler
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
@@ -49,6 +50,7 @@ import com.localfind.data.EngineManager
 import com.localfind.data.FileAvailability
 import com.localfind.data.FileImporter
 import com.localfind.data.FileStore
+import com.localfind.data.Folder
 import com.localfind.data.ImportedFile
 import com.localfind.data.IndexingStatus
 import com.localfind.data.ModelStatus
@@ -153,6 +155,8 @@ fun MainScreen(
     // UI state
     var status by remember { mutableStateOf("Ready") }
     var importedFiles by remember { mutableStateOf<List<ImportedFile>>(emptyList()) }
+    var folders by remember { mutableStateOf<List<Folder>>(emptyList()) }
+    var currentFolderId by remember { mutableStateOf<String?>(null) }
     var indexedChunksCount by remember { mutableIntStateOf(0) }
 
     // Navigation & Search state
@@ -197,6 +201,18 @@ fun MainScreen(
     var filePendingDeletion by remember { mutableStateOf<ImportedFile?>(null) }
     var missingFileToDelete by remember { mutableStateOf<ImportedFile?>(null) }
     var isSettingsOpen by remember { mutableStateOf(false) }
+
+    // Folder back navigation support
+    val currentFolder = remember(folders, currentFolderId) {
+        folders.firstOrNull { it.id == currentFolderId }
+    }
+    BackHandler(
+        enabled = currentFolderId != null && !isSearchOpen && !isSettingsOpen &&
+                activeImageViewer == null && activeMediaPlayer == null &&
+                activePdfViewer == null && activeTextViewer == null
+    ) {
+        currentFolderId = currentFolder?.parentId
+    }
 
     // Hoisted scroll states to guarantee scroll position is never lost when opening/closing files or search
     val galleryGridState = rememberLazyGridState()
@@ -245,6 +261,7 @@ fun MainScreen(
         withContext(Dispatchers.IO) {
             val store = FileStore(context)
             importedFiles = store.getAll()
+            folders = store.getAllFolders()
         }
         refreshIndexCount()
     }
@@ -262,6 +279,7 @@ fun MainScreen(
                 }
             }
             importedFiles = store.getAll()
+            folders = store.getAllFolders()
             // If the app was closed/killed while indexing was in-flight, resume immediately via WorkManager unless paused
             val pendingCount = store.getPendingFiles().size
             if (pendingCount > 0) {
@@ -571,7 +589,7 @@ fun MainScreen(
                     var unsupported = 0
 
                     for (uri in uris) {
-                        val imported = FileImporter.importUri(context.contentResolver, uri)
+                        val imported = FileImporter.importUri(context.contentResolver, uri, folderId = currentFolderId)
                         if (imported != null) {
                             supported.add(imported.copy(indexingStatus = IndexingStatus.PENDING))
                         } else {
@@ -609,6 +627,92 @@ fun MainScreen(
                     Toast.makeText(context, msg, Toast.LENGTH_LONG).show()
                 }
             }
+        }
+    }
+
+    // System folder picker launcher using Storage Access Framework (SAF OpenDocumentTree)
+    val folderPickerLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.OpenDocumentTree()
+    ) { treeUri ->
+        if (treeUri != null) {
+            scope.launch {
+                status = "Importing folder..."
+                val result = withContext(Dispatchers.IO) {
+                    FileImporter.importTreeUri(context, treeUri, parentFolderId = currentFolderId)
+                }
+                reloadFiles()
+                if (result.importedFiles.isNotEmpty()) {
+                    if (IndexingWorker.isPaused(context)) {
+                        val pendingCount = withContext(Dispatchers.IO) { FileStore(context).getPendingFiles().size }
+                        IndexingProgressState.setPaused(true, "Indexing paused ($pendingCount pending)")
+                    } else {
+                        IndexingWorker.enqueue(context)
+                    }
+                    val folderName = result.createdFolders.firstOrNull()?.name ?: "folder"
+                    val msg = "Imported ${result.importedFiles.size} file(s) into \"$folderName\"" +
+                            if (result.skippedUnsupportedCount > 0) " (${result.skippedUnsupportedCount} unsupported skipped)" else ""
+                    status = msg
+                    Toast.makeText(context, msg, Toast.LENGTH_LONG).show()
+                } else if (result.createdFolders.isNotEmpty()) {
+                    val folderName = result.createdFolders.first().name
+                    val msg = if (result.skippedUnsupportedCount > 0)
+                        "Created folder \"$folderName\" (${result.skippedUnsupportedCount} unsupported file(s) skipped)"
+                    else "Created empty folder \"$folderName\""
+                    status = msg
+                    Toast.makeText(context, msg, Toast.LENGTH_LONG).show()
+                }
+            }
+        }
+    }
+
+    fun createFolder(name: String) {
+        scope.launch(Dispatchers.IO) {
+            val store = FileStore(context)
+            store.createFolder(name, currentFolderId)
+            reloadFiles()
+        }
+    }
+
+    fun renameFolder(folder: Folder, newName: String) {
+        scope.launch(Dispatchers.IO) {
+            val store = FileStore(context)
+            store.renameFolder(folder.id, newName)
+            reloadFiles()
+        }
+    }
+
+    fun deleteFolder(folder: Folder) {
+        scope.launch {
+            status = "Deleting folder ${folder.name}..."
+            val deletedUris = withContext(Dispatchers.IO) {
+                val store = FileStore(context)
+                val uris = store.deleteFolder(folder.id)
+                if (uris.isNotEmpty()) {
+                    EngineManager.withStore(context) { vecStore ->
+                        for (uri in uris) {
+                            try {
+                                vecStore.deleteByFileUri(uri)
+                            } catch (_: Exception) {}
+                        }
+                    }
+                }
+                uris
+            }
+            if (currentFolderId == folder.id) {
+                currentFolderId = folder.parentId
+            }
+            reloadFiles()
+            val msg = "Removed folder and ${deletedUris.size} file(s)"
+            status = msg
+            Toast.makeText(context, msg, Toast.LENGTH_SHORT).show()
+        }
+    }
+
+    fun moveFileToFolder(file: ImportedFile, targetFolderId: String?) {
+        scope.launch(Dispatchers.IO) {
+            val store = FileStore(context)
+            store.updateFileFolder(file.uri, targetFolderId)
+            reloadFiles()
         }
     }
 
@@ -691,6 +795,14 @@ fun MainScreen(
             },
             indexingProgress = indexingProgress,
             modelStatus = modelStatus,
+            folders = folders,
+            currentFolderId = currentFolderId,
+            onNavigateFolder = { currentFolderId = it },
+            onCreateFolder = { createFolder(it) },
+            onRenameFolder = { folder, newName -> renameFolder(folder, newName) },
+            onDeleteFolder = { folder -> deleteFolder(folder) },
+            onImportFolder = { folderPickerLauncher.launch(null) },
+            onMoveFileToFolder = { file, targetFolderId -> moveFileToFolder(file, targetFolderId) },
             gridState = galleryGridState,
             onRetryLoadModel = { retryLoadModel() },
             onOpenSearch = {
