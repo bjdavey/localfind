@@ -70,5 +70,21 @@ object VideoChunker {
         val to = (endMs * sampleRate / 1000).toInt().coerceIn(from, totalSamples)
         return from until to
     }
+
+    /**
+     * Computes the normalized visual similarity (0.0 .. 1.0) between two 256-element
+     * luminance signatures using Mean Absolute Difference (MAD).
+     *
+     * Returns 1.0f for identical visual signatures, and drops towards 0.0f as
+     * frame content diverges. Pure JVM function with no Android dependencies.
+     */
+    fun signatureSimilarity(sig1: IntArray, sig2: IntArray): Float {
+        if (sig1.size != sig2.size || sig1.isEmpty()) return 0f
+        var diff = 0
+        for (i in sig1.indices) {
+            diff += kotlin.math.abs(sig1[i] - sig2[i])
+        }
+        return 1.0f - (diff / (sig1.size * 255.0f))
+    }
 }
 

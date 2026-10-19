@@ -27,6 +27,9 @@ class AppSettingsTest {
         assertEquals(5, settings.videoWindowSeconds)
         assertEquals(2, settings.videoFramesPerWindow)
         assertEquals(512, settings.maxImageDimension)
+        assertEquals(false, settings.videoIncludeAudio) // Vision-only default
+        assertEquals(true, settings.videoSkipSimilarChunks)
+        assertEquals(0.85f, settings.videoSimilarityThreshold, 0.0001f)
     }
 
     @Test
@@ -57,7 +60,10 @@ class AppSettingsTest {
             audioWindowSeconds = -10,
             videoWindowSeconds = 120,
             videoFramesPerWindow = 0,
-            maxImageDimension = 50
+            maxImageDimension = 50,
+            videoIncludeAudio = true,
+            videoSkipSimilarChunks = false,
+            videoSimilarityThreshold = 0.2f
         )
 
         val clean = outOfBounds.sanitized()
@@ -72,6 +78,9 @@ class AppSettingsTest {
         assertEquals(60, clean.videoWindowSeconds)
         assertEquals(1, clean.videoFramesPerWindow)
         assertEquals(128, clean.maxImageDimension)
+        assertEquals(true, clean.videoIncludeAudio)
+        assertEquals(false, clean.videoSkipSimilarChunks)
+        assertEquals(0.5f, clean.videoSimilarityThreshold, 0.0001f)
     }
 
     @Test
@@ -84,6 +93,9 @@ class AppSettingsTest {
         assertEquals(false, initial.darkMode)
         assertEquals(DEFAULT_SIMILARITY_THRESHOLD, initial.similarityThreshold, 0.0001f)
         assertEquals(DEFAULT_TOP_K, initial.topK)
+        assertEquals(false, initial.videoIncludeAudio)
+        assertEquals(true, initial.videoSkipSimilarChunks)
+        assertEquals(0.85f, initial.videoSimilarityThreshold, 0.0001f)
 
         // 2. Save modified settings
         val modified = AppSettings(
@@ -95,7 +107,10 @@ class AppSettingsTest {
             audioWindowSeconds = 15,
             videoWindowSeconds = 8,
             videoFramesPerWindow = 3,
-            maxImageDimension = 768
+            maxImageDimension = 768,
+            videoIncludeAudio = true,
+            videoSkipSimilarChunks = false,
+            videoSimilarityThreshold = 0.9f
         )
         store.save(modified)
 
@@ -109,6 +124,9 @@ class AppSettingsTest {
         assertEquals(8, reloaded.videoWindowSeconds)
         assertEquals(3, reloaded.videoFramesPerWindow)
         assertEquals(768, reloaded.maxImageDimension)
+        assertEquals(true, reloaded.videoIncludeAudio)
+        assertEquals(false, reloaded.videoSkipSimilarChunks)
+        assertEquals(0.9f, reloaded.videoSimilarityThreshold, 0.0001f)
 
         // 3. Reset settings to default
         val reset = store.reset()
@@ -116,6 +134,9 @@ class AppSettingsTest {
         assertEquals(DEFAULT_SIMILARITY_THRESHOLD, reset.similarityThreshold, 0.0001f)
         assertEquals(DEFAULT_TOP_K, reset.topK)
         assertEquals(DEFAULT_TEXT_CHUNK_SIZE, reset.textChunkSize)
+        assertEquals(false, reset.videoIncludeAudio)
+        assertEquals(true, reset.videoSkipSimilarChunks)
+        assertEquals(0.85f, reset.videoSimilarityThreshold, 0.0001f)
 
         val afterReset = store.load()
         assertEquals(false, afterReset.darkMode)

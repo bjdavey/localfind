@@ -66,5 +66,33 @@ class VideoChunkerTest {
         assertEquals(96_000, r.last + 1)
         assertTrue(VideoChunker.sampleRange(0, 1_000, 0).isEmpty())
     }
+
+    @Test
+    fun signatureSimilarity_identicalSignaturesReturnOne() {
+        val sigA = IntArray(256) { 128 }
+        val sigB = IntArray(256) { 128 }
+        assertEquals(1.0f, VideoChunker.signatureSimilarity(sigA, sigB), 0.0001f)
+    }
+
+    @Test
+    fun signatureSimilarity_oppositeSignaturesReturnZero() {
+        val sigWhite = IntArray(256) { 255 }
+        val sigBlack = IntArray(256) { 0 }
+        assertEquals(0.0f, VideoChunker.signatureSimilarity(sigWhite, sigBlack), 0.0001f)
+    }
+
+    @Test
+    fun signatureSimilarity_slightDifferencesYieldHighSimilarity() {
+        val sigA = IntArray(256) { 100 }
+        val sigB = IntArray(256) { if (it < 20) 120 else 100 } // minor variance in 20/256 pixels
+        val sim = VideoChunker.signatureSimilarity(sigA, sigB)
+        assertTrue(sim > 0.95f)
+    }
+
+    @Test
+    fun signatureSimilarity_mismatchedOrEmptySignaturesReturnZero() {
+        assertEquals(0.0f, VideoChunker.signatureSimilarity(IntArray(0), IntArray(0)), 0.0001f)
+        assertEquals(0.0f, VideoChunker.signatureSimilarity(IntArray(256), IntArray(100)), 0.0001f)
+    }
 }
 

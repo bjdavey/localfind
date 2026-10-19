@@ -308,6 +308,26 @@ fun SettingsScreen(
                 )
             }
 
+            SettingSwitchRow(
+                title = "Video audio track",
+                subtitle = if (settings.videoIncludeAudio) "Audio + Vision (overlapped)" else "Vision-only (fastest)",
+                description = "Decode and embed audio tracks concurrently with video frames. Vision-only is significantly faster and saves battery.",
+                checked = settings.videoIncludeAudio,
+                onCheckedChange = { isChecked ->
+                    onSettingsChange(settings.copy(videoIncludeAudio = isChecked))
+                }
+            )
+
+            SettingSwitchRow(
+                title = "Skip similar video scenes",
+                subtitle = if (settings.videoSkipSimilarChunks) "Enabled (≥85%)" else "Disabled",
+                description = "Skip redundant consecutive video windows with identical visual content to accelerate indexing and prevent duplicate search results.",
+                checked = settings.videoSkipSimilarChunks,
+                onCheckedChange = { isChecked ->
+                    onSettingsChange(settings.copy(videoSkipSimilarChunks = isChecked))
+                }
+            )
+
             SettingsSectionDivider()
 
             // =================================================================

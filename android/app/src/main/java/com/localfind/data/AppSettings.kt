@@ -65,6 +65,15 @@ const val DEFAULT_VIDEO_FRAMES_PER_WINDOW = 2
 /** Default maximum width or height in pixels for decoding images and video frames. */
 const val DEFAULT_MAX_IMAGE_DIMENSION = 512
 
+/** Default whether to decode and embed audio tracks in video files (false = vision-only fastest). */
+const val DEFAULT_VIDEO_INCLUDE_AUDIO = false
+
+/** Default whether to skip visually redundant consecutive video windows. */
+const val DEFAULT_VIDEO_SKIP_SIMILAR = true
+
+/** Default visual similarity threshold (0.0 .. 1.0) above which consecutive scenes are skipped. */
+const val DEFAULT_VIDEO_SIMILARITY_THRESHOLD = 0.85f
+
 /**
  * Configuration model holding all tunable variables for searching and indexing in LocalFind.
  *
@@ -81,6 +90,9 @@ const val DEFAULT_MAX_IMAGE_DIMENSION = 512
  * @property videoWindowSeconds Duration of each video window sliding across the media.
  * @property videoFramesPerWindow Number of visual frames extracted and embedded per video window.
  * @property maxImageDimension Maximum dimension (width/height px) for subsampling image/video inputs.
+ * @property videoIncludeAudio Whether to decode and embed audio tracks in videos alongside visual keyframes.
+ * @property videoSkipSimilarChunks Whether to skip consecutive video windows with visually redundant content.
+ * @property videoSimilarityThreshold Similarity cutoff (0.5 .. 1.0) for detecting redundant video windows.
  */
 data class AppSettings(
     val darkMode: Boolean = DEFAULT_DARK_MODE,
@@ -92,7 +104,10 @@ data class AppSettings(
     val audioWindowSeconds: Int = DEFAULT_AUDIO_WINDOW_SECONDS,
     val videoWindowSeconds: Int = DEFAULT_VIDEO_WINDOW_SECONDS,
     val videoFramesPerWindow: Int = DEFAULT_VIDEO_FRAMES_PER_WINDOW,
-    val maxImageDimension: Int = DEFAULT_MAX_IMAGE_DIMENSION
+    val maxImageDimension: Int = DEFAULT_MAX_IMAGE_DIMENSION,
+    val videoIncludeAudio: Boolean = DEFAULT_VIDEO_INCLUDE_AUDIO,
+    val videoSkipSimilarChunks: Boolean = DEFAULT_VIDEO_SKIP_SIMILAR,
+    val videoSimilarityThreshold: Float = DEFAULT_VIDEO_SIMILARITY_THRESHOLD
 ) {
     /**
      * Returns a copy of [AppSettings] with all values clamped to valid and safe ranges.
@@ -109,7 +124,10 @@ data class AppSettings(
             audioWindowSeconds = audioWindowSeconds.coerceIn(1, 60),
             videoWindowSeconds = videoWindowSeconds.coerceIn(1, 60),
             videoFramesPerWindow = videoFramesPerWindow.coerceIn(1, 10),
-            maxImageDimension = maxImageDimension.coerceIn(128, 2048)
+            maxImageDimension = maxImageDimension.coerceIn(128, 2048),
+            videoIncludeAudio = videoIncludeAudio,
+            videoSkipSimilarChunks = videoSkipSimilarChunks,
+            videoSimilarityThreshold = videoSimilarityThreshold.coerceIn(0.5f, 1.0f)
         )
     }
 }
@@ -195,7 +213,10 @@ class SettingsStore(private val prefs: SharedPreferences) {
             audioWindowSeconds = prefs.getInt(KEY_AUDIO_WINDOW_SECONDS, DEFAULT_AUDIO_WINDOW_SECONDS),
             videoWindowSeconds = prefs.getInt(KEY_VIDEO_WINDOW_SECONDS, DEFAULT_VIDEO_WINDOW_SECONDS),
             videoFramesPerWindow = prefs.getInt(KEY_VIDEO_FRAMES_PER_WINDOW, DEFAULT_VIDEO_FRAMES_PER_WINDOW),
-            maxImageDimension = prefs.getInt(KEY_MAX_IMAGE_DIMENSION, DEFAULT_MAX_IMAGE_DIMENSION)
+            maxImageDimension = prefs.getInt(KEY_MAX_IMAGE_DIMENSION, DEFAULT_MAX_IMAGE_DIMENSION),
+            videoIncludeAudio = prefs.getBoolean(KEY_VIDEO_INCLUDE_AUDIO, DEFAULT_VIDEO_INCLUDE_AUDIO),
+            videoSkipSimilarChunks = prefs.getBoolean(KEY_VIDEO_SKIP_SIMILAR, DEFAULT_VIDEO_SKIP_SIMILAR),
+            videoSimilarityThreshold = prefs.getFloat(KEY_VIDEO_SIMILARITY_THRESHOLD, DEFAULT_VIDEO_SIMILARITY_THRESHOLD)
         ).sanitized()
     }
 
@@ -215,6 +236,9 @@ class SettingsStore(private val prefs: SharedPreferences) {
             .putInt(KEY_VIDEO_WINDOW_SECONDS, valid.videoWindowSeconds)
             .putInt(KEY_VIDEO_FRAMES_PER_WINDOW, valid.videoFramesPerWindow)
             .putInt(KEY_MAX_IMAGE_DIMENSION, valid.maxImageDimension)
+            .putBoolean(KEY_VIDEO_INCLUDE_AUDIO, valid.videoIncludeAudio)
+            .putBoolean(KEY_VIDEO_SKIP_SIMILAR, valid.videoSkipSimilarChunks)
+            .putFloat(KEY_VIDEO_SIMILARITY_THRESHOLD, valid.videoSimilarityThreshold)
             .apply()
     }
 
@@ -250,6 +274,9 @@ class SettingsStore(private val prefs: SharedPreferences) {
         const val KEY_VIDEO_WINDOW_SECONDS = "video_window_seconds"
         const val KEY_VIDEO_FRAMES_PER_WINDOW = "video_frames_per_window"
         const val KEY_MAX_IMAGE_DIMENSION = "max_image_dimension"
+        const val KEY_VIDEO_INCLUDE_AUDIO = "video_include_audio"
+        const val KEY_VIDEO_SKIP_SIMILAR = "video_skip_similar"
+        const val KEY_VIDEO_SIMILARITY_THRESHOLD = "video_similarity_threshold"
     }
 }
 

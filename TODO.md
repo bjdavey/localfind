@@ -42,13 +42,28 @@
 ## Milestone 4: First alpha
 - [x] Don't index kinda empty pages pdf
 - [x] Pause, resume, and cancel indexing queue
-- Find tricks, try and test to make video indexing faster
-- Optimize long video indexing like avoiding thermal throttling
+- [x] Find tricks, try and test to make video indexing faster, like avoiding thermal throttling or skip smiliar chunks
 - GPU Support
 - Create folders and recursive folder import (DocumentFile / tree URI)
-- Support GIF
 - Set good dataset for testing
-- e2e test with edge cases
+- Clean source code
+- Enhance the indexing sync manager
+- E2E test with edge cases
+
+## Milestone 5: First release
+- Simplify UI for non-tech people and keep advanced mode option in settings
+- Search by image (visual similarity query)
+- Support GIF
+- Better PDF viewer
+- Support import by share from other apps
+- Top bar should hide on scrolling
+- Support landscape orientation in file viewer
+- Support to open the origin file in phone gallery or its own app
+- Multi select
+- Button to retry All for failed or in queue 
+- Good test samples
+- Final E2E test
+- Publish
 
 ## Bugs / Issues
 - [x] Can not cancel stuck sync file
@@ -58,17 +73,12 @@
 - [x] Fix stuck indexing after canceled
 - [x] Opening image/video should be smoth transition like a gallery app, perhaps just popup without opening it in a new view?
 - [x] Fix flicker when opening a file or a search result and not to scroll back to start when closing it
-- [ ] Better PDF viewer
+- [ ] Stuck after PDF indexing 
 
 
 ## Backlog
 
 ### Core
-- Simplify UI for non-tech people and keep advanced mode option in settings
-- Support import by share from other apps
-- Top bar should hide on scrolling
-- Support landscape orientation in file viewer
-- Support to open the origin file in phone gallery or its own app
 - Import from URL without saving the file (streaming keyframe indexing)
 - Export / Backup index and "Clear Database" reset
 - Allow other media files format
@@ -76,7 +86,6 @@
 ### Search Experience
 - Hybrid search (Vector + SQLite FTS5 keyword search)
 - Recent searches history
-- Search by image (visual similarity query)
 
 ### Indexing & Performance
 - Real NPU & GPU support: Dynamic SoC-specific NPU runtime & model delivery: detect device chipset (Qualcomm SM8650/SM8550, MediaTek, Google Tensor) and dynamically download only the matching pre-compiled model and vendor .so runtime split (like Google AI Edge Gallery)
