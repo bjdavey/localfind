@@ -9,9 +9,11 @@ import android.os.PowerManager
 import android.util.Log
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.platform.app.InstrumentationRegistry
+import com.google.mediapipe.tasks.core.BaseOptions
 import com.google.mediapipe.tasks.core.ImagePart
 import com.google.mediapipe.tasks.core.Part
 import com.google.mediapipe.tasks.core.TextPart
+import com.google.mediapipe.tasks.retrieval.universalembedder.UniversalEmbedderOptions
 import com.localfind.data.AppSettings
 import com.localfind.data.EmbeddingStore
 import com.localfind.data.ImportedFile
@@ -794,6 +796,74 @@ class VideoIndexingBenchmarkTest {
                         Log.i(tag, "  #${idx + 1}: ${res.fileName} @ ${SearchResultFormatter.formatTimeMs(res.location)} (Score: ${res.score})")
                     }
                     assertTrue("Search for '$query' should return results", searchResults.isNotEmpty())
+                }
+
+                store.deleteByMetadata(mapOf("fileId" to girlsDoorImportedFile.uri))
+            }
+        }
+    }
+
+    /**
+     * Test 10: GPU Acceleration Evaluation on Girls_Door.mp4.
+     *
+     * Evaluates MediaPipe GPU delegate hardware acceleration on device:
+     * 1. Direct Embedder initialization with default GPU vision acceleration
+     * 2. Multimodal inference execution (text, image, video window)
+     * 3. End-to-end Indexer video indexing benchmark comparison against CPU baseline
+     * 4. Semantic search query verification on GPU embeddings
+     */
+    @Test
+    fun test10_girlsDoor_gpuSupport() {
+        Log.i(tag, "=== [TEST 10] EVALUATING GPU SUPPORT ON GIRLS_DOOR.MP4 ===")
+        assertTrue("Girls_Door.mp4 must exist", ::girlsDoorImportedFile.isInitialized && girlsDoorFile.exists())
+
+        Log.i(tag, "Step 1: Attempting to initialize Embedder with default GPU vision acceleration...")
+        val gpuEmbedder: Embedder
+        try {
+            gpuEmbedder = Embedder(context)
+            assertTrue("Embedder should have GPU vision acceleration active", gpuEmbedder.isGpuVisionEnabled)
+            Log.i(tag, "Step 1 SUCCESS: Embedder initialized with GPU vision active!")
+        } catch (t: Throwable) {
+            Log.e(tag, "Step 1 FAILED: Cannot initialize GPU embedder: ${t.javaClass.name}: ${t.message}", t)
+            throw t
+        }
+
+        gpuEmbedder.use { embedder ->
+            // Step 2: Warm-up text embedding
+            Log.i(tag, "Step 2: Testing text embedding on GPU...")
+            val textT0 = System.currentTimeMillis()
+            val textVec = embedder.embedText("girls opening door entrance")
+            val textMs = System.currentTimeMillis() - textT0
+            Log.i(tag, "Step 2 SUCCESS: Text embedding on GPU took ${textMs}ms (dim=${textVec.size})")
+
+            // Step 3: Run full video indexing using GPU embedder
+            Log.i(tag, "Step 3: Indexing Girls_Door.mp4 using GPU embedder...")
+            val settings = AppSettings(videoIncludeAudio = false, videoSkipSimilarChunks = true)
+            EmbeddingStore.create(context).use { store ->
+                store.deleteByMetadata(mapOf("fileId" to girlsDoorImportedFile.uri))
+
+                val indexer = Indexer(context, embedder, store, settings)
+                val t0 = System.currentTimeMillis()
+                val result = indexer.indexVideoFile(girlsDoorImportedFile)
+                val durationMs = System.currentTimeMillis() - t0
+
+                Log.i(tag, "--> [TEST 10 GPU RESULT] Indexing result: success=${result.isSuccess}, chunks=${result.chunksCount}, error=${result.errorMessage}")
+                Log.i(tag, "--> [TEST 10 GPU TIMING] Total Duration: ${durationMs}ms (${durationMs / 1000.0}s)")
+
+                assertTrue("GPU video indexing should succeed: ${result.errorMessage}", result.isSuccess)
+                assertTrue("GPU video indexing should produce at least 1 chunk", result.chunksCount > 0)
+
+                // Step 4: Semantic search verification
+                Log.i(tag, "Step 4: Running semantic search verification on GPU embeddings...")
+                val searcher = com.localfind.search.Searcher(store, embedder)
+                val queries = listOf("girls opening door", "door entrance hallway")
+                for (query in queries) {
+                    val searchResults = searcher.search(query, topK = 5, metadataFilter = mapOf("type" to "video"))
+                    Log.i(tag, "Search for '$query': ${searchResults.size} matches")
+                    for ((idx, res) in searchResults.withIndex()) {
+                        Log.i(tag, "  #${idx + 1}: ${res.fileName} @ ${SearchResultFormatter.formatTimeMs(res.location)} (Score: ${res.score})")
+                    }
+                    assertTrue("Search for '$query' on GPU embeddings should return results", searchResults.isNotEmpty())
                 }
 
                 store.deleteByMetadata(mapOf("fileId" to girlsDoorImportedFile.uri))

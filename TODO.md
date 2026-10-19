@@ -43,9 +43,8 @@
 - [x] Don't index kinda empty pages pdf
 - [x] Pause, resume, and cancel indexing queue
 - [x] Find tricks, try and test to make video indexing faster, like avoiding thermal throttling or skip smiliar chunks
-- GPU Support
+- [x] GPU Support
 - Create folders and recursive folder import (DocumentFile / tree URI)
-- Set good dataset for testing
 - Clean source code
 - Enhance the indexing sync manager
 - E2E test with edge cases
@@ -58,7 +57,7 @@
 - Support import by share from other apps
 - Top bar should hide on scrolling
 - Support landscape orientation in file viewer
-- Support to open the origin file in phone gallery or its own app
+- Show file details and open in phone gallery or its own app
 - Multi select
 - Button to retry All for failed or in queue 
 - Good test samples
@@ -74,6 +73,7 @@
 - [x] Opening image/video should be smoth transition like a gallery app, perhaps just popup without opening it in a new view?
 - [x] Fix flicker when opening a file or a search result and not to scroll back to start when closing it
 - [ ] Stuck after PDF indexing 
+- [ ] Check if original file is deleted
 
 
 ## Backlog
@@ -88,7 +88,7 @@
 - Recent searches history
 
 ### Indexing & Performance
-- Real NPU & GPU support: Dynamic SoC-specific NPU runtime & model delivery: detect device chipset (Qualcomm SM8650/SM8550, MediaTek, Google Tensor) and dynamically download only the matching pre-compiled model and vendor .so runtime split (like Google AI Edge Gallery)
+- Real NPU support: Dynamic SoC-specific NPU runtime & model delivery: detect device chipset (Qualcomm SM8650/SM8550, MediaTek, Google Tensor) and dynamically download only the matching pre-compiled model and vendor .so runtime split (like Google AI Edge Gallery)
 - Battery / thermal-friendly indexing (pause on low battery / charging-only option)
 - Vector quantization (FP16 / INT8 embeddings)
 - PDF OCR (ML Kit / on-device OCR for scanned documents)
