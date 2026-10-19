@@ -173,18 +173,31 @@ class Indexer(
         if (chunks.isEmpty()) {
             // If the document is empty or whitespace-only, remove any old chunks and return
             embeddingStore.deleteByMetadata(mapOf("fileId" to file.uri))
+            IndexingResumeManager.clearResumeChunk(context, file.uri)
             onProgress?.invoke(1, 1)
             return IndexResult(file.uri, 0, true)
         }
 
-        // Delete existing chunks for this file before re-indexing to prevent duplicate entries
-        embeddingStore.deleteByMetadata(mapOf("fileId" to file.uri))
+        val startChunk = IndexingResumeManager.getResumeChunk(context, file.uri, file.size, chunks.size)
+        if (IndexingResumeLogic.shouldDeleteExistingChunks(startChunk)) {
+            // Delete existing chunks for this file before fresh re-indexing to prevent duplicate entries
+            embeddingStore.deleteByMetadata(mapOf("fileId" to file.uri))
+        } else {
+            // Resuming: notify initial progress for already processed chunks
+            onProgress?.invoke(startChunk, chunks.size)
+        }
 
         val records = mutableListOf<RetrievalRecord>()
-        for ((index, chunk) in chunks.withIndex()) {
+        for (index in startChunk until chunks.size) {
             if (isCancelled()) {
-                return IndexResult(file.uri, 0, false, "Indexing cancelled")
+                if (records.isNotEmpty()) {
+                    embeddingStore.storeBatch(records)
+                    records.clear()
+                }
+                IndexingResumeManager.setResumeChunk(context, file.uri, index, file.size)
+                return IndexResult(file.uri, index, false, "Indexing cancelled")
             }
+            val chunk = chunks[index]
             onProgress?.invoke(index + 1, chunks.size)
             // Unique ID per chunk: "<fileUri>_<chunkIndex>"
             val chunkId = "${file.uri}_$index"
@@ -209,15 +222,27 @@ class Indexer(
                     metadata
                 )
             )
+
+            // Commit in 10-chunk batches to protect progress against sudden preemption
+            if (records.size >= 10) {
+                embeddingStore.storeBatch(records)
+                records.clear()
+                IndexingResumeManager.setResumeChunk(context, file.uri, index + 1, file.size)
+            }
+        }
+
+        if (records.isNotEmpty()) {
+            embeddingStore.storeBatch(records)
+            records.clear()
         }
 
         if (isCancelled()) {
-            return IndexResult(file.uri, 0, false, "Indexing cancelled")
+            return IndexResult(file.uri, chunks.size, false, "Indexing cancelled")
         }
 
-        // Store all chunk records in one atomic SQLite transaction
-        embeddingStore.storeBatch(records)
-        return IndexResult(file.uri, records.size, true)
+        // Successfully finished all chunks: clear checkpoint
+        IndexingResumeManager.clearResumeChunk(context, file.uri)
+        return IndexResult(file.uri, chunks.size, true)
     }
 
     /**
@@ -295,22 +320,35 @@ class Indexer(
             return IndexResult(file.uri, 0, false, "Indexing cancelled")
         }
 
-        // Delete existing chunks for this file before storing updated embeddings
-        embeddingStore.deleteByMetadata(mapOf("fileId" to file.uri))
+        val startChunk = IndexingResumeManager.getResumeChunk(context, file.uri, file.size, chunks.size)
+        if (IndexingResumeLogic.shouldDeleteExistingChunks(startChunk)) {
+            // Delete existing chunks for this file before fresh re-indexing
+            embeddingStore.deleteByMetadata(mapOf("fileId" to file.uri))
+        } else {
+            // Resuming: notify initial progress for already processed chunks
+            onProgress?.invoke(startChunk, chunks.size)
+        }
 
         if (chunks.isEmpty()) {
             // E.g. empty or scanned image-only PDF with no extractable text
+            IndexingResumeManager.clearResumeChunk(context, file.uri)
             onProgress?.invoke(1, 1)
             return IndexResult(file.uri, 0, true)
         }
 
         // Phase 2 (Embedding & Persistence): Provide live progress on every chunk
-        // and commit in batches of 100 to bound memory usage and prevent UI freeze
+        // and commit in batches of 10 to bound memory usage, protect progress, and allow resume
         val records = mutableListOf<RetrievalRecord>()
-        for ((index, chunk) in chunks.withIndex()) {
+        for (index in startChunk until chunks.size) {
             if (isCancelled()) {
-                return IndexResult(file.uri, 0, false, "Indexing cancelled")
+                if (records.isNotEmpty()) {
+                    embeddingStore.storeBatch(records)
+                    records.clear()
+                }
+                IndexingResumeManager.setResumeChunk(context, file.uri, index, file.size)
+                return IndexResult(file.uri, index, false, "Indexing cancelled")
             }
+            val chunk = chunks[index]
             onProgress?.invoke(index + 1, chunks.size)
             val chunkId = "${file.uri}_$index"
             val embedding = embedder.embedText(chunk.text)
@@ -331,21 +369,24 @@ class Indexer(
                 )
             )
 
-            // Commit in 100-chunk batches to keep memory small and save progressive chunks
-            if (records.size >= 100) {
+            // Commit in 10-chunk batches to keep memory small and save progressive chunks
+            if (records.size >= 10) {
                 embeddingStore.storeBatch(records)
                 records.clear()
+                IndexingResumeManager.setResumeChunk(context, file.uri, index + 1, file.size)
             }
-        }
-
-        if (isCancelled()) {
-            return IndexResult(file.uri, 0, false, "Indexing cancelled")
         }
 
         if (records.isNotEmpty()) {
             embeddingStore.storeBatch(records)
             records.clear()
         }
+
+        if (isCancelled()) {
+            return IndexResult(file.uri, chunks.size, false, "Indexing cancelled")
+        }
+
+        IndexingResumeManager.clearResumeChunk(context, file.uri)
         return IndexResult(file.uri, chunks.size, true)
     }
 
@@ -422,6 +463,7 @@ class Indexer(
         )
 
         embeddingStore.storeBatch(listOf(record))
+        IndexingResumeManager.clearResumeChunk(context, file.uri)
         return IndexResult(file.uri, 1, true)
     }
 
@@ -467,16 +509,32 @@ class Indexer(
             windowMs = settings.audioWindowSeconds * 1000L
         )
         if (windows.isEmpty()) {
+            IndexingResumeManager.clearResumeChunk(context, file.uri)
             onProgress?.invoke(1, 1)
             return IndexResult(file.uri, 0, true)
         }
 
+        val startChunk = IndexingResumeManager.getResumeChunk(context, file.uri, file.size, windows.size)
+        if (IndexingResumeLogic.shouldDeleteExistingChunks(startChunk)) {
+            // Fresh start: remove old chunks before writing new ones
+            embeddingStore.deleteByMetadata(mapOf("fileId" to file.uri))
+        } else {
+            // Resuming: notify initial progress for already processed windows
+            onProgress?.invoke(startChunk, windows.size)
+        }
+
         val records = mutableListOf<RetrievalRecord>()
         try {
-            for ((index, window) in windows.withIndex()) {
+            for (index in startChunk until windows.size) {
                 if (isCancelled()) {
-                    return IndexResult(file.uri, 0, false, "Indexing cancelled")
+                    if (records.isNotEmpty()) {
+                        embeddingStore.storeBatch(records)
+                        records.clear()
+                    }
+                    IndexingResumeManager.setResumeChunk(context, file.uri, index, file.size)
+                    return IndexResult(file.uri, index, false, "Indexing cancelled")
                 }
+                val window = windows[index]
                 onProgress?.invoke(index + 1, windows.size)
                 val embedding = embedder.embedAudio(pcm.copyOfRange(window.startSample, window.endSample))
                 val metadata = mapOf(
@@ -491,19 +549,34 @@ class Indexer(
                 records.add(
                     RetrievalRecord("${file.uri}_$index", listOf(TextPart(label)), embedding, metadata)
                 )
+
+                // Commit progressively in batches of 5 windows to protect intermediate progress
+                if (records.size >= 5) {
+                    embeddingStore.storeBatch(records)
+                    records.clear()
+                    IndexingResumeManager.setResumeChunk(context, file.uri, index + 1, file.size)
+                }
             }
         } catch (e: Exception) {
+            if (records.isNotEmpty()) {
+                embeddingStore.storeBatch(records)
+                records.clear()
+            }
             return IndexResult(file.uri, 0, false, "Audio embedding failed: ${e.message}")
         }
 
-        if (isCancelled()) {
-            return IndexResult(file.uri, 0, false, "Indexing cancelled")
+        if (records.isNotEmpty()) {
+            embeddingStore.storeBatch(records)
+            records.clear()
         }
 
-        // Replace old chunks only after embedding succeeded
-        embeddingStore.deleteByMetadata(mapOf("fileId" to file.uri))
-        if (records.isNotEmpty()) embeddingStore.storeBatch(records)
-        return IndexResult(file.uri, records.size, true)
+        if (isCancelled()) {
+            return IndexResult(file.uri, windows.size, false, "Indexing cancelled")
+        }
+
+        // Successfully finished all windows: clear checkpoint
+        IndexingResumeManager.clearResumeChunk(context, file.uri)
+        return IndexResult(file.uri, windows.size, true)
     }
 
     /**
@@ -615,6 +688,7 @@ class Indexer(
         val records = mutableListOf<RetrievalRecord>()
         val retriever = MediaMetadataRetriever()
         var previousSignature: IntArray? = null
+        var totalWindows = 0
 
         try {
             retriever.setDataSource(context, uri)
@@ -628,15 +702,30 @@ class Indexer(
             val videoWindowMs = settings.videoWindowSeconds * 1000L
             val videoStepMs = (videoWindowMs - 1000L).coerceAtLeast(1000L)
             val windows = VideoChunker.windows(durationMs, windowMs = videoWindowMs, stepMs = videoStepMs)
+            totalWindows = windows.size
             if (windows.isEmpty()) {
+                IndexingResumeManager.clearResumeChunk(context, file.uri)
                 onProgress?.invoke(1, 1)
                 return IndexResult(file.uri, 0, true)
             }
 
-            for ((index, window) in windows.withIndex()) {
+            val startChunk = IndexingResumeManager.getResumeChunk(context, file.uri, file.size, windows.size)
+            if (IndexingResumeLogic.shouldDeleteExistingChunks(startChunk)) {
+                embeddingStore.deleteByMetadata(mapOf("fileId" to file.uri))
+            } else {
+                onProgress?.invoke(startChunk, windows.size)
+            }
+
+            for (index in startChunk until windows.size) {
+                val window = windows[index]
                 if (isCancelled()) {
+                    if (records.isNotEmpty()) {
+                        embeddingStore.storeBatch(records)
+                        records.clear()
+                    }
+                    IndexingResumeManager.setResumeChunk(context, file.uri, index, file.size)
                     audioDeferred?.cancel()
-                    return IndexResult(file.uri, 0, false, "Indexing cancelled")
+                    return IndexResult(file.uri, index, false, "Indexing cancelled")
                 }
                 onProgress?.invoke(index + 1, windows.size)
 
@@ -647,7 +736,10 @@ class Indexer(
                 }
 
                 val frameTimes = VideoChunker.frameTimes(window, count = settings.videoFramesPerWindow)
-                if (frameTimes.isEmpty()) continue
+                if (frameTimes.isEmpty()) {
+                    IndexingResumeManager.setResumeChunk(context, file.uri, index + 1, file.size)
+                    continue
+                }
 
                 // 3. Probe ONLY Frame 1 directly to check if the scene has changed
                 val firstBmpRaw = retriever.getScaledFrameAtTime(
@@ -662,7 +754,10 @@ class Indexer(
                     targetH
                 ) ?: retriever.getFrameAtTime(frameTimes[0] * 1000)
 
-                if (firstBmpRaw == null) continue
+                if (firstBmpRaw == null) {
+                    IndexingResumeManager.setResumeChunk(context, file.uri, index + 1, file.size)
+                    continue
+                }
 
                 val firstBmp = if (firstBmpRaw.width != targetW || firstBmpRaw.height != targetH) {
                     Bitmap.createScaledBitmap(firstBmpRaw, targetW, targetH, true).also {
@@ -678,6 +773,7 @@ class Indexer(
                     val prev = previousSignature
                     if (prev != null && VideoChunker.signatureSimilarity(sig, prev) >= settings.videoSimilarityThreshold) {
                         firstBmp.recycle()
+                        IndexingResumeManager.setResumeChunk(context, file.uri, index + 1, file.size)
                         continue // Skip redundant scene: no frame 2 decode, no inference, no DB row
                     }
                     previousSignature = sig
@@ -701,7 +797,10 @@ class Indexer(
                     }
                     remainingJpegs.add(jpeg)
                 }
-                if (unreadable) continue
+                if (unreadable) {
+                    IndexingResumeManager.setResumeChunk(context, file.uri, index + 1, file.size)
+                    continue
+                }
 
                 val allJpegs = listOf(jpeg1) + remainingJpegs
                 val windowMs = window.endMs - window.startMs
@@ -732,8 +831,13 @@ class Indexer(
                 }
 
                 if (isCancelled()) {
+                    if (records.isNotEmpty()) {
+                        embeddingStore.storeBatch(records)
+                        records.clear()
+                    }
+                    IndexingResumeManager.setResumeChunk(context, file.uri, index, file.size)
                     audioDeferred?.cancel()
-                    return IndexResult(file.uri, 0, false, "Indexing cancelled")
+                    return IndexResult(file.uri, index, false, "Indexing cancelled")
                 }
 
                 val embedding = try {
@@ -762,22 +866,36 @@ class Indexer(
                 )
                 val text = "${file.displayName} @ ${SearchResultFormatter.formatTimeMs(window.startMs)}"
                 records.add(RetrievalRecord("${file.uri}_$index", listOf(TextPart(text)), embedding, metadata))
+
+                // Commit in batches of 3 windows to prevent loss of slow inferences
+                if (records.size >= 3) {
+                    embeddingStore.storeBatch(records)
+                    records.clear()
+                    IndexingResumeManager.setResumeChunk(context, file.uri, index + 1, file.size)
+                }
             }
         } catch (e: Exception) {
+            if (records.isNotEmpty()) {
+                embeddingStore.storeBatch(records)
+                records.clear()
+            }
             return IndexResult(file.uri, 0, false, "Video indexing failed: ${e.message}")
         } finally {
             audioDeferred?.cancel()
             retriever.release()
         }
 
-        if (isCancelled()) {
-            return IndexResult(file.uri, 0, false, "Indexing cancelled")
+        if (records.isNotEmpty()) {
+            embeddingStore.storeBatch(records)
+            records.clear()
         }
 
-        // Replace old chunks only after embedding succeeded
-        embeddingStore.deleteByMetadata(mapOf("fileId" to file.uri))
-        if (records.isNotEmpty()) embeddingStore.storeBatch(records)
-        return IndexResult(file.uri, records.size, true)
+        if (isCancelled()) {
+            return IndexResult(file.uri, totalWindows, false, "Indexing cancelled")
+        }
+
+        IndexingResumeManager.clearResumeChunk(context, file.uri)
+        return IndexResult(file.uri, totalWindows, true)
     }
 
     /**

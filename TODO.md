@@ -45,7 +45,7 @@
 - [x] Find tricks, try and test to make video indexing faster, like avoiding thermal throttling or skip smiliar chunks
 - [x] GPU Support
 - [x] Create folders and recursive folder import (DocumentFile / tree URI)
-- Enhance the indexing sync manager and support resume during a file indexing
+- [x] Enhance the indexing sync manager and support resume during a file indexing
 - Clean source code
 
 

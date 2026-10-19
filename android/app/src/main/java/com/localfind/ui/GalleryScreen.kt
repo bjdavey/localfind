@@ -1540,10 +1540,17 @@ private fun FileDetailsDialog(
                 )
                 val statusText = when (file.indexingStatus) {
                     IndexingStatus.INDEXED -> "Indexed (${file.chunksCount} chunks)"
-                    IndexingStatus.INDEXING -> "Indexing in background..."
+                    IndexingStatus.INDEXING ->
+                        if (file.chunksCount > 0) "Indexing (${file.chunksCount} chunks done)..."
+                        else "Indexing in background..."
                     IndexingStatus.PENDING ->
-                        if (isQueuePaused) "Indexing paused in queue"
-                        else "Waiting in background queue"
+                        if (isQueuePaused) {
+                            if (file.chunksCount > 0) "Paused (${file.chunksCount} chunks done)"
+                            else "Indexing paused in queue"
+                        } else {
+                            if (file.chunksCount > 0) "Waiting to resume (${file.chunksCount} chunks done)"
+                            else "Waiting in background queue"
+                        }
                     IndexingStatus.FAILED -> "Indexing failed / cancelled"
                 }
                 Text(

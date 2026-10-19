@@ -57,6 +57,7 @@ import com.localfind.data.ModelStatus
 import com.localfind.data.SettingsStore
 import com.localfind.index.Indexer
 import com.localfind.index.IndexingProgressState
+import com.localfind.index.IndexingResumeManager
 import com.localfind.index.IndexingWorker
 import com.localfind.search.SearchResult
 import com.localfind.ui.GalleryCategory
@@ -275,7 +276,8 @@ fun MainScreen(
             val pending = store.getPendingFiles()
             for (f in pending) {
                 if (f.indexingStatus == IndexingStatus.INDEXING) {
-                    store.updateStatus(f.uri, IndexingStatus.PENDING)
+                    val resumeChunk = IndexingResumeManager.getResumeChunk(context, f.uri, f.size)
+                    store.updateStatus(f.uri, IndexingStatus.PENDING, resumeChunk)
                 }
             }
             importedFiles = store.getAll()
@@ -948,6 +950,7 @@ fun MainScreen(
                 onResetDefaults = onResetDefaults,
                 onReindexAll = {
                     scope.launch(Dispatchers.IO) {
+                        IndexingResumeManager.clearAll(context)
                         val store = FileStore(context)
                         store.markAllPending()
                         importedFiles = store.getAll()
