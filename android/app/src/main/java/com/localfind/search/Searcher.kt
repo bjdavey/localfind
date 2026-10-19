@@ -67,14 +67,18 @@ class Searcher(
      * @param query User's natural language search query. Blank queries return an empty list.
      * @param topK Maximum number of results to retrieve (default: [DEFAULT_TOP_K]).
      * @param threshold Minimum cosine similarity score required for a result to be included (default: 0.0f).
-     * @param metadataFilter Optional metadata filter criteria (e.g. `mapOf("type" to "text")`).
-     * @return Ranked list of [SearchResult], sorted by descending similarity score.
+     * @param metadataFilter Optional metadata filter criteria (e.g. `mapOf("fileId" to uri)`).
+     * @param fileTypes Optional collection of file type values (`"text"`, `"pdf"`, `"image"`, `"audio"`, `"video"`).
+     *                  When specified, filtering is performed at query time inside SQLite ("Search after filter,
+     *                  not filter search results"), preventing unrelated modalities from consuming the topK budget.
+     * @return Ranked list of [SearchResult], sorted by descending similarity score (up to [topK]).
      */
     fun search(
         query: String,
         topK: Int = DEFAULT_TOP_K,
         threshold: Float = 0.0f,
-        metadataFilter: Map<String, String> = emptyMap()
+        metadataFilter: Map<String, String> = emptyMap(),
+        fileTypes: Collection<String>? = null
     ): List<SearchResult> {
         val trimmed = query.trim()
         if (trimmed.isEmpty() || topK <= 0) {
@@ -84,8 +88,22 @@ class Searcher(
         // 1. Generate 768-dimensional normalized embedding for query text
         val queryEmbedding = embedQuery(trimmed)
 
-        // 2. Query the SQLite vector store for nearest neighbors
-        val records = embeddingStore.search(queryEmbedding, topK, metadataFilter)
+        // 2. Query the SQLite vector store for nearest neighbors.
+        // Applies modality/file-type filter before nearest-neighbor retrieval ("search after filter"),
+        // preventing irrelevant modalities from consuming the top-K budget.
+        val records = if (fileTypes.isNullOrEmpty()) {
+            embeddingStore.search(queryEmbedding, topK, metadataFilter)
+        } else if (fileTypes.size == 1) {
+            embeddingStore.search(queryEmbedding, topK, metadataFilter + ("type" to fileTypes.first()))
+        } else {
+            // For categories spanning multiple formats (e.g. Docs spanning "pdf" and "text"),
+            // retrieve top candidates for each type and merge before ranking
+            fileTypes
+                .flatMap { type ->
+                    embeddingStore.search(queryEmbedding, topK, metadataFilter + ("type" to type))
+                }
+                .distinctBy { it.id }
+        }
 
         // 3. Map RetrievalRecord items to SearchResult objects
         val results = records.map { record ->
@@ -119,11 +137,12 @@ class Searcher(
             )
         }
 
-        // 4. Filter by minimum similarity threshold and order by descending score
+        // 4. Filter by minimum similarity threshold, order by descending score, and take topK
         // (Stable sort preserves the vector store's native ranking if scores are identical or 0)
         return results
             .filter { it.score >= threshold }
             .sortedByDescending { it.score }
+            .take(topK)
     }
 
     companion object {

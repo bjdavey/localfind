@@ -30,11 +30,11 @@ class ThumbnailHelperTest {
             ThumbnailHelper.categorizeFile("memo.m4a", "audio/mp4")
         )
         assertEquals(
-            GalleryCategory.DOCUMENTS,
+            GalleryCategory.PDFS,
             ThumbnailHelper.categorizeFile("contract.pdf", "application/pdf")
         )
         assertEquals(
-            GalleryCategory.DOCUMENTS,
+            GalleryCategory.TEXT,
             ThumbnailHelper.categorizeFile("notes.md", "text/markdown")
         )
     }
@@ -52,7 +52,8 @@ class ThumbnailHelperTest {
         assertEquals(5, ThumbnailHelper.filterFiles(files, GalleryCategory.ALL).size)
         assertEquals(1, ThumbnailHelper.filterFiles(files, GalleryCategory.PHOTOS).size)
         assertEquals(1, ThumbnailHelper.filterFiles(files, GalleryCategory.VIDEOS).size)
-        assertEquals(2, ThumbnailHelper.filterFiles(files, GalleryCategory.DOCUMENTS).size)
+        assertEquals(1, ThumbnailHelper.filterFiles(files, GalleryCategory.PDFS).size)
+        assertEquals(1, ThumbnailHelper.filterFiles(files, GalleryCategory.TEXT).size)
         assertEquals(1, ThumbnailHelper.filterFiles(files, GalleryCategory.AUDIO).size)
     }
 
@@ -66,7 +67,8 @@ class ThumbnailHelperTest {
 
         assertEquals(3, ThumbnailHelper.filterSearchResults(results, GalleryCategory.ALL).size)
         assertEquals(1, ThumbnailHelper.filterSearchResults(results, GalleryCategory.PHOTOS).size)
-        assertEquals(1, ThumbnailHelper.filterSearchResults(results, GalleryCategory.DOCUMENTS).size)
+        assertEquals(1, ThumbnailHelper.filterSearchResults(results, GalleryCategory.PDFS).size)
+        assertEquals(0, ThumbnailHelper.filterSearchResults(results, GalleryCategory.TEXT).size)
         assertEquals(1, ThumbnailHelper.filterSearchResults(results, GalleryCategory.AUDIO).size)
         assertTrue(ThumbnailHelper.filterSearchResults(results, GalleryCategory.VIDEOS).isEmpty())
     }
@@ -80,5 +82,53 @@ class ThumbnailHelperTest {
 
         val emptyPreview = ThumbnailHelper.formatFirstLinesPreview("   \n  \r\n ")
         assertEquals("(Empty document)", emptyPreview)
+    }
+
+    @Test
+    fun `galleryCategory defines correct chunk type mappings for search after filter`() {
+        // Validates that each modality category maps to the exact chunk "type" metadata values
+        // used by Indexer when storing vectors into SqliteVectorStore.
+        org.junit.Assert.assertNull(GalleryCategory.ALL.types)
+        assertEquals(listOf("image"), GalleryCategory.PHOTOS.types)
+        assertEquals(listOf("video"), GalleryCategory.VIDEOS.types)
+        assertEquals(listOf("pdf"), GalleryCategory.PDFS.types)
+        assertEquals(listOf("text"), GalleryCategory.TEXT.types)
+        assertEquals(listOf("audio"), GalleryCategory.AUDIO.types)
+    }
+
+    @Test
+    fun `getAvailableCategories returns only categories present in imported files plus ALL`() {
+        // Empty library returns only ALL
+        assertEquals(listOf(GalleryCategory.ALL), ThumbnailHelper.getAvailableCategories(emptyList()))
+
+        // Library with only photos returns ALL and PHOTOS (omits VIDEOS, PDFS, TEXT, AUDIO)
+        val photosOnly = listOf(ImportedFile("u1", "photo.jpg", "image/jpeg", 100L))
+        assertEquals(
+            listOf(GalleryCategory.ALL, GalleryCategory.PHOTOS),
+            ThumbnailHelper.getAvailableCategories(photosOnly)
+        )
+
+        // Library with photos and PDFs returns ALL, PHOTOS, and PDFS
+        val mixedFiles = listOf(
+            ImportedFile("u1", "photo.jpg", "image/jpeg", 100L),
+            ImportedFile("u2", "contract.pdf", "application/pdf", 200L)
+        )
+        assertEquals(
+            listOf(GalleryCategory.ALL, GalleryCategory.PHOTOS, GalleryCategory.PDFS),
+            ThumbnailHelper.getAvailableCategories(mixedFiles)
+        )
+
+        // Library with all file types returns all 6 categories
+        val allTypes = listOf(
+            ImportedFile("u1", "photo.jpg", "image/jpeg", 100L),
+            ImportedFile("u2", "video.mp4", "video/mp4", 100L),
+            ImportedFile("u3", "doc.pdf", "application/pdf", 100L),
+            ImportedFile("u4", "notes.txt", "text/plain", 100L),
+            ImportedFile("u5", "song.mp3", "audio/mpeg", 100L)
+        )
+        assertEquals(
+            GalleryCategory.entries.toList(),
+            ThumbnailHelper.getAvailableCategories(allTypes)
+        )
     }
 }

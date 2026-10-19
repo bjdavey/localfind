@@ -57,6 +57,7 @@ import com.localfind.index.Indexer
 import com.localfind.index.IndexingProgressState
 import com.localfind.index.IndexingWorker
 import com.localfind.search.SearchResult
+import com.localfind.ui.GalleryCategory
 import com.localfind.ui.GalleryScreen
 import com.localfind.ui.ImageViewerParams
 import com.localfind.ui.ImageViewerScreen
@@ -67,6 +68,7 @@ import com.localfind.ui.PdfViewerScreen
 import com.localfind.ui.SearchScreen
 import com.localfind.ui.SettingsScreen
 import com.localfind.ui.TextViewerParams
+import com.localfind.ui.ThumbnailHelper
 import com.localfind.ui.TextViewerScreen
 import com.localfind.ui.theme.LocalFindTheme
 import kotlinx.coroutines.Dispatchers
@@ -156,11 +158,24 @@ fun MainScreen(
     // Navigation & Search state
     var isSearchOpen by remember { mutableStateOf(false) }
     var searchQuery by remember { mutableStateOf("") }
+    var searchCategory by remember { mutableStateOf(GalleryCategory.ALL) }
     var activeSearchFile by remember { mutableStateOf<ImportedFile?>(null) }
     var isSearching by remember { mutableStateOf(false) }
     var hasSearched by remember { mutableStateOf(false) }
     var searchResults by remember { mutableStateOf<List<SearchResult>>(emptyList()) }
     var searchError by remember { mutableStateOf<String?>(null) }
+
+    // Modality categories with at least one imported file in the app (plus ALL).
+    // Hides filter chips for categories with 0 files in the app.
+    val availableCategories = remember(importedFiles) {
+        ThumbnailHelper.getAvailableCategories(importedFiles)
+    }
+
+    LaunchedEffect(availableCategories) {
+        if (searchCategory !in availableCategories) {
+            searchCategory = GalleryCategory.ALL
+        }
+    }
 
     // Active full-screen viewers and persistent parameters for smooth exit transitions
     var activePdfViewer by remember { mutableStateOf<PdfViewerParams?>(null) }
@@ -333,6 +348,7 @@ fun MainScreen(
             return
         }
         activeSearchFile = target
+        searchCategory = GalleryCategory.ALL
         searchQuery = ""
         hasSearched = false
         searchResults = emptyList()
@@ -347,9 +363,11 @@ fun MainScreen(
 
     /**
      * Executes a semantic search query against the local vector database.
-     * If [activeSearchFile] is set, restricts results to chunks originating from that document.
+     * Searches after filtering by modality [category] or scoped [activeSearchFile]
+     * ("Search after filter, not filter search results"), preventing unrelated modalities
+     * from consuming the top-K budget.
      */
-    fun performSearch(queryText: String) {
+    fun performSearch(queryText: String, category: GalleryCategory = searchCategory) {
         val trimmed = queryText.trim()
         if (trimmed.isBlank() || isSearching) return
         if (modelStatus is ModelStatus.Error) {
@@ -358,6 +376,7 @@ fun MainScreen(
             return
         }
         val fileFilter = activeSearchFile?.let { mapOf("fileId" to it.uri) } ?: emptyMap()
+        val categoryTypes = if (activeSearchFile != null) null else category.types
         scope.launch {
             isSearching = true
             searchError = null
@@ -368,7 +387,8 @@ fun MainScreen(
                             query = trimmed,
                             topK = settings.topK,
                             threshold = settings.similarityThreshold,
-                            metadataFilter = fileFilter
+                            metadataFilter = fileFilter,
+                            fileTypes = categoryTypes
                         )
                     }
                 }
@@ -675,6 +695,7 @@ fun MainScreen(
             onRetryLoadModel = { retryLoadModel() },
             onOpenSearch = {
                 activeSearchFile = null
+                searchCategory = GalleryCategory.ALL
                 isSearchOpen = true
             },
             onSearchInFile = { file -> startSearchInFile(file) },
@@ -749,12 +770,13 @@ fun MainScreen(
             SearchScreen(
                 query = searchQuery,
                 onQueryChange = { searchQuery = it },
-                onSearch = { performSearch(searchQuery) },
+                onSearch = { performSearch(searchQuery, searchCategory) },
                 onClear = {
                     searchQuery = ""
                     hasSearched = false
                     searchResults = emptyList()
                     searchError = null
+                    searchCategory = GalleryCategory.ALL
                     scope.launch {
                         try {
                             searchListState.scrollToItem(0)
@@ -765,6 +787,14 @@ fun MainScreen(
                 isSearching = isSearching,
                 hasSearched = hasSearched,
                 searchResults = searchResults,
+                selectedCategory = searchCategory,
+                onCategoryChange = { newCategory ->
+                    searchCategory = newCategory
+                    if (searchQuery.isNotBlank() && hasSearched) {
+                        performSearch(searchQuery, newCategory)
+                    }
+                },
+                availableCategories = availableCategories,
                 listState = searchListState,
                 backHandlerEnabled = isSearchOpen && activeImageViewer == null &&
                         activeMediaPlayer == null && activePdfViewer == null &&
@@ -773,8 +803,9 @@ fun MainScreen(
                 targetFile = activeSearchFile,
                 onClearTargetFile = {
                     activeSearchFile = null
+                    searchCategory = GalleryCategory.ALL
                     if (searchQuery.isNotBlank()) {
-                        performSearch(searchQuery)
+                        performSearch(searchQuery, GalleryCategory.ALL)
                     }
                 },
                 errorMessage = searchError ?: if (modelStatus is ModelStatus.Error) (modelStatus as ModelStatus.Error).message else null,
@@ -782,6 +813,7 @@ fun MainScreen(
                 onClose = {
                     isSearchOpen = false
                     activeSearchFile = null
+                    searchCategory = GalleryCategory.ALL
                 }
             )
         }

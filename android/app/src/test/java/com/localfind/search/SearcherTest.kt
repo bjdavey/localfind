@@ -8,6 +8,8 @@ import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
 import org.junit.Test
 import java.util.concurrent.ConcurrentHashMap
+import kotlin.math.cos
+import kotlin.math.sin
 
 /**
  * Unit tests for [Searcher] and [SearchResult].
@@ -415,6 +417,114 @@ class SearcherTest {
         assertTrue("No thread exceptions occurred during concurrent search and indexing", errors.isEmpty())
         assertTrue("At least 5 searches executed while indexing was active", searchSuccessCount.get() >= 5)
         assertTrue("Store contains all chunks after concurrent indexing", embeddingStore.getAllRecordIds().size >= 21)
+    }
+
+    @Test
+    fun searchAfterFilterFindsModalityMatchesThatGlobalSearchWouldCrowdOut() {
+        // Validates the architectural requirement: "Search after filter, not filter search results"
+        // Problem: When a global top-K search is performed, higher-scoring chunks from dominant modalities
+        // (e.g. 10 text documents) crowd out lower-scoring chunks from another modality (e.g. 3 images).
+        // If results were simply filtered in-memory post-search ("filter search results"), 0 images would be found.
+        // Solution: Query-time modality filtering ("search after filter") searches specifically for the
+        // requested fileType in SQLite, successfully returning the top matching images.
+        val fakeStore = FakeVectorStore()
+        val embeddingStore = EmbeddingStore(fakeStore)
+
+        // Seed 10 text chunks with high similarity (angles 0.05 rad to 0.5 rad -> scores ~0.998 to 0.877)
+        for (i in 1..10) {
+            val angle = 0.05 * i
+            val textRec = RetrievalRecord(
+                "text_$i",
+                listOf(TextPart("Text content passage $i")),
+                floatArrayOf(cos(angle).toFloat(), sin(angle).toFloat()),
+                mapOf("name" to "doc$i.txt", "type" to "text")
+            )
+            fakeStore.upsert(listOf(textRec))
+        }
+
+        // Seed 3 image chunks with lower similarity (angles 1.1 rad to 1.3 rad -> scores ~0.453 to 0.267)
+        for (i in 1..3) {
+            val angle = 1.0 + (0.1 * i)
+            val imgRec = RetrievalRecord(
+                "image_$i",
+                emptyList(),
+                floatArrayOf(cos(angle).toFloat(), sin(angle).toFloat()),
+                mapOf("name" to "photo$i.jpg", "type" to "image")
+            )
+            fakeStore.upsert(listOf(imgRec))
+        }
+
+        val searcher = Searcher(embeddingStore) { _ -> floatArrayOf(1.0f, 0.0f) }
+
+        // Global search with topK = 10 returns all 10 text chunks because their scores are higher (> 0.87 vs < 0.46)
+        val globalResults = searcher.search("sunset photo", topK = 10)
+        assertEquals(10, globalResults.size)
+        assertTrue(globalResults.all { it.fileType == "text" })
+
+        // In the old buggy "filter search results" pattern, filtering globalResults for images yielded 0 items
+        val oldPatternFilteredResults = globalResults.filter { it.fileType == "image" }
+        assertEquals(0, oldPatternFilteredResults.size)
+
+        // With the new "search after filter" pattern, search queries specifically for "image" in SQLite
+        val imageSearchResults = searcher.search("sunset photo", topK = 10, fileTypes = listOf("image"))
+        assertEquals(3, imageSearchResults.size)
+        assertTrue(imageSearchResults.all { it.fileType == "image" })
+        assertEquals("image_1", imageSearchResults[0].chunkId)
+        assertEquals("image_2", imageSearchResults[1].chunkId)
+        assertEquals("image_3", imageSearchResults[2].chunkId)
+    }
+
+    @Test
+    fun searchWithMultipleFileTypesRetrievesAndRanksAcrossCombinedTypes() {
+        // Validates multi-type modality categories (e.g. DOCUMENTS which covers both "pdf" and "text").
+        // Searcher queries candidates for each type in SQLite, merges them, and returns top-K ranked by score.
+        val fakeStore = FakeVectorStore()
+        val embeddingStore = EmbeddingStore(fakeStore)
+
+        // Query vector is along [1.0, 0.0]. Vectors have varying angles:
+        // aud1: angle 0.1 -> score cos(0.1) ~ 0.995 (highest score, but audio)
+        // pdf1: angle 0.2 -> score cos(0.2) ~ 0.980
+        // txt1: angle 0.4 -> score cos(0.4) ~ 0.921
+        // pdf2: angle 0.6 -> score cos(0.6) ~ 0.825
+        // txt2: angle 0.8 -> score cos(0.8) ~ 0.697
+        val aud1 = RetrievalRecord("aud_1", listOf(TextPart("Audio")), floatArrayOf(cos(0.1).toFloat(), sin(0.1).toFloat()), mapOf("name" to "a1.mp3", "type" to "audio"))
+        val pdf1 = RetrievalRecord("pdf_1", listOf(TextPart("PDF 1")), floatArrayOf(cos(0.2).toFloat(), sin(0.2).toFloat()), mapOf("name" to "p1.pdf", "type" to "pdf"))
+        val txt1 = RetrievalRecord("txt_1", listOf(TextPart("TXT 1")), floatArrayOf(cos(0.4).toFloat(), sin(0.4).toFloat()), mapOf("name" to "t1.txt", "type" to "text"))
+        val pdf2 = RetrievalRecord("pdf_2", listOf(TextPart("PDF 2")), floatArrayOf(cos(0.6).toFloat(), sin(0.6).toFloat()), mapOf("name" to "p2.pdf", "type" to "pdf"))
+        val txt2 = RetrievalRecord("txt_2", listOf(TextPart("TXT 2")), floatArrayOf(cos(0.8).toFloat(), sin(0.8).toFloat()), mapOf("name" to "t2.txt", "type" to "text"))
+
+        fakeStore.upsert(listOf(pdf1, pdf2, txt1, txt2, aud1))
+
+        val searcher = Searcher(embeddingStore) { floatArrayOf(1.0f, 0.0f) }
+
+        // Search for DOCUMENTS (types: "pdf", "text") with topK = 3
+        val docResults = searcher.search("contract", topK = 3, fileTypes = listOf("pdf", "text"))
+
+        // Must return top 3 between pdf and text, ranked by score (excluding audio even though audio score 0.995 is higher)
+        assertEquals(3, docResults.size)
+        assertEquals("pdf_1", docResults[0].chunkId) // score ~0.980
+        assertEquals("txt_1", docResults[1].chunkId) // score ~0.921
+        assertEquals("pdf_2", docResults[2].chunkId) // score ~0.825
+        assertTrue(docResults.none { it.fileType == "audio" })
+    }
+
+    @Test
+    fun searchWithEmptyOrNullFileTypesSearchesAllModalities() {
+        // Validates that null or empty fileTypes continues to search across all modalities (GalleryCategory.ALL)
+        val fakeStore = FakeVectorStore()
+        val embeddingStore = EmbeddingStore(fakeStore)
+
+        val img = RetrievalRecord("img_1", emptyList(), floatArrayOf(1f, 0f), mapOf("name" to "i.jpg", "type" to "image"))
+        val txt = RetrievalRecord("txt_1", emptyList(), floatArrayOf(1f, 0f), mapOf("name" to "t.txt", "type" to "text"))
+        fakeStore.upsert(listOf(img, txt))
+
+        val searcher = Searcher(embeddingStore) { floatArrayOf(1f, 0f) }
+
+        val nullFilterResults = searcher.search("test", fileTypes = null)
+        assertEquals(2, nullFilterResults.size)
+
+        val emptyFilterResults = searcher.search("test", fileTypes = emptyList())
+        assertEquals(2, emptyFilterResults.size)
     }
 }
 

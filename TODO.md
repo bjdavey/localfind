@@ -46,8 +46,7 @@
 - [x] GPU Support
 - Create folders and recursive folder import (DocumentFile / tree URI)
 - Clean source code
-- Enhance the indexing sync manager
-- E2E test with edge cases
+- Enhance the indexing sync manager and support resume during a file indexing
 
 ## Milestone 5: First release
 - Simplify UI for non-tech people and keep advanced mode option in settings
@@ -61,7 +60,7 @@
 - Multi select
 - Button to retry All for failed or in queue 
 - Good test samples
-- Final E2E test
+- Final E2E test with edge cases
 - Publish
 
 ## Bugs / Issues
@@ -74,7 +73,7 @@
 - [x] Fix flicker when opening a file or a search result and not to scroll back to start when closing it
 - [x] Stuck after PDF indexing 
 - [x] Check if original file is deleted when opening
-- Search after filter, not filter search results
+- [x] Search after filter, not filter search results
 
 
 ## Backlog

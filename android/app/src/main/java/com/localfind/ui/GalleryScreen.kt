@@ -127,6 +127,18 @@ fun GalleryScreen(
     var selectedCategory by remember { mutableStateOf(GalleryCategory.ALL) }
     var inspectedFile by remember { mutableStateOf<ImportedFile?>(null) }
 
+    // Only show categories that have imported files in the library (plus ALL).
+    // Hides filter chips for categories with 0 files in the app.
+    val availableCategories = remember(importedFiles) {
+        ThumbnailHelper.getAvailableCategories(importedFiles)
+    }
+
+    LaunchedEffect(availableCategories) {
+        if (selectedCategory !in availableCategories) {
+            selectedCategory = GalleryCategory.ALL
+        }
+    }
+
     val filteredFiles = remember(importedFiles, selectedCategory) {
         ThumbnailHelper.filterFiles(importedFiles, selectedCategory)
     }
@@ -447,36 +459,38 @@ fun GalleryScreen(
             }
 
             // =====================================================================
-            // 3. CATEGORY FILTER CHIPS ROW
+            // 3. CATEGORY FILTER CHIPS ROW (Hidden if library has no files or only 1 category)
             // =====================================================================
-            Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .horizontalScroll(rememberScrollState())
-                    .padding(horizontal = 16.dp, vertical = 6.dp),
-                horizontalArrangement = Arrangement.spacedBy(8.dp),
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                GalleryCategory.entries.forEach { category ->
-                    val count = remember(importedFiles, category) {
-                        ThumbnailHelper.filterFiles(importedFiles, category).size
-                    }
-                    val isSelected = selectedCategory == category
-                    FilterChip(
-                        selected = isSelected,
-                        onClick = { selectedCategory = category },
-                        label = {
-                            Text(
-                                text = if (count > 0) "${category.icon} ${category.label} ($count)" else "${category.icon} ${category.label}",
-                                fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Medium
+            if (importedFiles.isNotEmpty() && availableCategories.size > 1) {
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .horizontalScroll(rememberScrollState())
+                        .padding(horizontal = 16.dp, vertical = 6.dp),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    availableCategories.forEach { category ->
+                        val count = remember(importedFiles, category) {
+                            ThumbnailHelper.filterFiles(importedFiles, category).size
+                        }
+                        val isSelected = selectedCategory == category
+                        FilterChip(
+                            selected = isSelected,
+                            onClick = { selectedCategory = category },
+                            label = {
+                                Text(
+                                    text = if (count > 0) "${category.icon} ${category.label} ($count)" else "${category.icon} ${category.label}",
+                                    fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Medium
+                                )
+                            },
+                            shape = RoundedCornerShape(20.dp),
+                            colors = FilterChipDefaults.filterChipColors(
+                                selectedContainerColor = MaterialTheme.colorScheme.primaryContainer,
+                                selectedLabelColor = MaterialTheme.colorScheme.onPrimaryContainer
                             )
-                        },
-                        shape = RoundedCornerShape(20.dp),
-                        colors = FilterChipDefaults.filterChipColors(
-                            selectedContainerColor = MaterialTheme.colorScheme.primaryContainer,
-                            selectedLabelColor = MaterialTheme.colorScheme.onPrimaryContainer
                         )
-                    )
+                    }
                 }
             }
 
@@ -791,7 +805,7 @@ fun MediaGalleryTile(
                     }
                 }
 
-                GalleryCategory.DOCUMENTS -> {
+                GalleryCategory.PDFS, GalleryCategory.TEXT -> {
                     if (isPdf) {
                         // PDF Page 1 Thumbnail framed as a document sheet with top alignment
                         val bitmap = previewData?.bitmap
@@ -927,7 +941,8 @@ fun MediaGalleryTile(
             val badgeColor = when (category) {
                 GalleryCategory.PHOTOS -> BadgeImage
                 GalleryCategory.VIDEOS -> BadgeVideo
-                GalleryCategory.DOCUMENTS -> if (isPdf) BadgePdf else BadgeText
+                GalleryCategory.PDFS -> BadgePdf
+                GalleryCategory.TEXT -> BadgeText
                 GalleryCategory.AUDIO -> BadgeAudio
                 GalleryCategory.ALL -> BadgeImage
             }
@@ -935,7 +950,8 @@ fun MediaGalleryTile(
             val badgeLabel = when (category) {
                 GalleryCategory.PHOTOS -> "IMG"
                 GalleryCategory.VIDEOS -> previewData?.badgeText?.let { "▶ $it" } ?: "VIDEO"
-                GalleryCategory.DOCUMENTS -> previewData?.badgeText ?: if (isPdf) "PDF" else "TXT"
+                GalleryCategory.PDFS -> previewData?.badgeText ?: "PDF"
+                GalleryCategory.TEXT -> previewData?.badgeText ?: "TXT"
                 GalleryCategory.AUDIO -> previewData?.badgeText?.let { "♫ $it" } ?: "AUDIO"
                 GalleryCategory.ALL -> ""
             }

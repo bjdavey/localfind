@@ -21,12 +21,24 @@ import kotlin.math.roundToInt
  *
  * Allows users to quickly narrow down files or search hits by media modality.
  */
-enum class GalleryCategory(val label: String, val icon: String) {
-    ALL("All", "✦"),
-    PHOTOS("Photos", "🖼"),
-    VIDEOS("Videos", "🎬"),
-    DOCUMENTS("Docs", "📄"),
-    AUDIO("Audio", "🎵")
+enum class GalleryCategory(
+    val label: String,
+    val icon: String,
+    /**
+     * Chunk metadata "type" values associated with this category.
+     * Used by Searcher to restrict nearest-neighbor vector search directly in SQLite
+     * ("Search after filter, not filter search results"), preventing irrelevant modalities
+     * from consuming the top-K budget.
+     * Null means no modality restriction (matches all file types).
+     */
+    val types: List<String>? = null
+) {
+    ALL("All", "✦", null),
+    PHOTOS("Photos", "🖼", listOf("image")),
+    VIDEOS("Videos", "🎬", listOf("video")),
+    PDFS("PDFs", "📄", listOf("pdf")),
+    TEXT("Text", "📝", listOf("text")),
+    AUDIO("Audio", "🎵", listOf("audio"))
 }
 
 /**
@@ -67,9 +79,9 @@ object ThumbnailHelper {
             Indexer.isImageNameOrMime(fileName, mimeType) -> GalleryCategory.PHOTOS
             Indexer.isVideoNameOrMime(fileName, mimeType) -> GalleryCategory.VIDEOS
             Indexer.isAudioNameOrMime(fileName, mimeType) -> GalleryCategory.AUDIO
-            Indexer.isPdfNameOrMime(fileName, mimeType) ||
-                    Indexer.isTextNameOrMime(fileName, mimeType) -> GalleryCategory.DOCUMENTS
-            else -> GalleryCategory.DOCUMENTS
+            Indexer.isPdfNameOrMime(fileName, mimeType) -> GalleryCategory.PDFS
+            Indexer.isTextNameOrMime(fileName, mimeType) -> GalleryCategory.TEXT
+            else -> GalleryCategory.TEXT
         }
     }
 
@@ -81,7 +93,8 @@ object ThumbnailHelper {
             "image" -> GalleryCategory.PHOTOS
             "video" -> GalleryCategory.VIDEOS
             "audio" -> GalleryCategory.AUDIO
-            "pdf", "text" -> GalleryCategory.DOCUMENTS
+            "pdf" -> GalleryCategory.PDFS
+            "text" -> GalleryCategory.TEXT
             else -> categorizeFile(result.fileName, null)
         }
     }
@@ -92,6 +105,19 @@ object ThumbnailHelper {
     fun filterFiles(files: List<ImportedFile>, category: GalleryCategory): List<ImportedFile> {
         if (category == GalleryCategory.ALL) return files
         return files.filter { categorizeFile(it.displayName, it.mimeType) == category }
+    }
+
+    /**
+     * Returns the list of [GalleryCategory] entries that have at least one imported file
+     * in the library, always preserving [GalleryCategory.ALL] as the first option.
+     *
+     * Used to hide category filter chips for file types that do not exist in the app,
+     * reducing UI clutter and preventing searches in empty modalities.
+     */
+    fun getAvailableCategories(files: List<ImportedFile>): List<GalleryCategory> {
+        if (files.isEmpty()) return listOf(GalleryCategory.ALL)
+        val presentCategories = files.map { categorizeFile(it.displayName, it.mimeType) }.toSet()
+        return GalleryCategory.entries.filter { it == GalleryCategory.ALL || it in presentCategories }
     }
 
     /**

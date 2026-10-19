@@ -108,6 +108,9 @@ fun SearchScreen(
     searchResults: List<SearchResult>,
     onResultClick: (SearchResult) -> Unit,
     modifier: Modifier = Modifier,
+    selectedCategory: GalleryCategory = GalleryCategory.ALL,
+    onCategoryChange: (GalleryCategory) -> Unit = {},
+    availableCategories: List<GalleryCategory> = GalleryCategory.entries,
     targetFile: ImportedFile? = null,
     onClearTargetFile: (() -> Unit)? = null,
     errorMessage: String? = null,
@@ -118,7 +121,6 @@ fun SearchScreen(
 ) {
     val focusManager = LocalFocusManager.current
     val focusRequester = remember { FocusRequester() }
-    var selectedCategory by remember { mutableStateOf(GalleryCategory.ALL) }
 
     // Intercept system back button to return to the Gallery
     if (onClose != null) {
@@ -135,10 +137,6 @@ fun SearchScreen(
             } catch (_: Exception) {
             }
         }
-    }
-
-    val filteredResults = remember(searchResults, selectedCategory) {
-        ThumbnailHelper.filterSearchResults(searchResults, selectedCategory)
     }
 
     val statusBarPadding = WindowInsets.statusBars.asPaddingValues()
@@ -286,9 +284,9 @@ fun SearchScreen(
         }
 
         // =====================================================================
-        // 2. MODALITY FILTER CHIPS (Only shown when searching across all files)
+        // 2. MODALITY FILTER CHIPS (Only shown when searching across all files and categories exist)
         // =====================================================================
-        if (targetFile == null) {
+        if (targetFile == null && availableCategories.size > 1) {
             Row(
                 modifier = Modifier
                     .fillMaxWidth()
@@ -297,16 +295,19 @@ fun SearchScreen(
                 horizontalArrangement = Arrangement.spacedBy(8.dp),
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                GalleryCategory.entries.forEach { category ->
-                    val count = remember(searchResults, category) {
-                        ThumbnailHelper.filterSearchResults(searchResults, category).size
-                    }
+                availableCategories.forEach { category ->
                     val isSelected = selectedCategory == category
                     FilterChip(
                         selected = isSelected,
-                        onClick = { selectedCategory = category },
+                        enabled = !isSearching,
+                        onClick = {
+                            if (selectedCategory != category && !isSearching) {
+                                onCategoryChange(category)
+                            }
+                        },
                         label = {
-                            val suffix = if (hasSearched && searchResults.isNotEmpty()) " ($count)" else ""
+                            // Show result count on the active filter chip when results are present
+                            val suffix = if (isSelected && hasSearched && searchResults.isNotEmpty()) " (${searchResults.size})" else ""
                             Text(
                                 text = "${category.icon} ${category.label}$suffix",
                                 fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Medium
@@ -364,7 +365,7 @@ fun SearchScreen(
                 }
             }
 
-            hasSearched && filteredResults.isEmpty() -> {
+            hasSearched && searchResults.isEmpty() -> {
                 Box(
                     modifier = Modifier
                         .fillMaxSize()
@@ -381,7 +382,7 @@ fun SearchScreen(
                             fontSize = 42.sp
                         )
                         Text(
-                            text = if (searchResults.isEmpty()) {
+                            text = if (selectedCategory == GalleryCategory.ALL) {
                                 "No matching content found"
                             } else {
                                 "No matching ${selectedCategory.label.lowercase()} found"
@@ -399,16 +400,16 @@ fun SearchScreen(
                 }
             }
 
-            hasSearched && filteredResults.isNotEmpty() -> {
+            hasSearched && searchResults.isNotEmpty() -> {
                 Text(
-                    text = "Showing ${filteredResults.size} ranked match(es)",
+                    text = "Showing ${searchResults.size} ranked match(es)",
                     style = MaterialTheme.typography.labelLarge,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                     modifier = Modifier.padding(horizontal = 18.dp, vertical = 4.dp)
                 )
 
                 SearchResultsList(
-                    results = filteredResults,
+                    results = searchResults,
                     onResultClick = onResultClick,
                     listState = listState,
                     modifier = Modifier.weight(1f)
@@ -626,9 +627,9 @@ fun SearchResultCard(
                         }
                     }
 
-                    GalleryCategory.DOCUMENTS -> {
+                    GalleryCategory.PDFS -> {
                         val bmp = previewData?.bitmap
-                        if (isPdf && bmp != null) {
+                        if (bmp != null) {
                             Image(
                                 bitmap = bmp.asImageBitmap(),
                                 contentDescription = result.fileName,
@@ -643,7 +644,7 @@ fun SearchResultCard(
                                     .padding(6.dp)
                             ) {
                                 Text(
-                                    text = result.snippet.ifBlank { previewData?.textSnippet ?: result.fileName },
+                                    text = result.snippet.ifBlank { result.fileName },
                                     style = MaterialTheme.typography.bodySmall.copy(
                                         fontFamily = FontFamily.Monospace,
                                         fontSize = 8.sp,
@@ -654,6 +655,27 @@ fun SearchResultCard(
                                     overflow = TextOverflow.Ellipsis
                                 )
                             }
+                        }
+                    }
+
+                    GalleryCategory.TEXT -> {
+                        Box(
+                            modifier = Modifier
+                                .fillMaxSize()
+                                .background(Color(0xFFFAFAFA))
+                                .padding(6.dp)
+                        ) {
+                            Text(
+                                text = result.snippet.ifBlank { previewData?.textSnippet ?: result.fileName },
+                                style = MaterialTheme.typography.bodySmall.copy(
+                                    fontFamily = FontFamily.Monospace,
+                                    fontSize = 8.sp,
+                                    lineHeight = 10.sp
+                                ),
+                                color = Color(0xFF212121),
+                                maxLines = 6,
+                                overflow = TextOverflow.Ellipsis
+                            )
                         }
                     }
 
@@ -726,7 +748,8 @@ fun SearchResultCard(
                 val typeBadgeColor = when (category) {
                     GalleryCategory.PHOTOS -> BadgeImage
                     GalleryCategory.VIDEOS -> BadgeVideo
-                    GalleryCategory.DOCUMENTS -> if (isPdf) BadgePdf else BadgeText
+                    GalleryCategory.PDFS -> BadgePdf
+                    GalleryCategory.TEXT -> BadgeText
                     GalleryCategory.AUDIO -> BadgeAudio
                     GalleryCategory.ALL -> BadgeImage
                 }
