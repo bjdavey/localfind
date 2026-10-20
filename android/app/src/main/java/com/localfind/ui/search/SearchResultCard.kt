@@ -105,20 +105,26 @@ fun SearchResultCard(
         ThumbnailHelper.categorizeSearchResult(result)
     }
 
-    var previewData by remember(result.fileUri) {
+    // For video results, locate the thumbnail at the matched chunk's timestamp offset (+ 2s offset)
+    val videoTimeOffset = remember(category, result.location) {
+        if (category == GalleryCategory.VIDEOS) result.location else null
+    }
+
+    var previewData by remember(result.fileUri, videoTimeOffset) {
         mutableStateOf(
-            if (result.fileUri.isNotBlank()) ThumbnailHelper.getCachedPreview(result.fileUri) else null
+            if (result.fileUri.isNotBlank()) ThumbnailHelper.getCachedPreview(result.fileUri, videoTimeOffset) else null
         )
     }
 
-    LaunchedEffect(result.fileUri) {
+    LaunchedEffect(result.fileUri, videoTimeOffset) {
         if (previewData == null && result.fileUri.isNotBlank() && category != GalleryCategory.PHOTOS) {
             previewData = withContext(Dispatchers.IO) {
                 ThumbnailHelper.loadPreviewBlocking(
                     context = context,
                     uriString = result.fileUri,
                     fileName = result.fileName,
-                    mimeType = null
+                    mimeType = null,
+                    timeOffsetMs = videoTimeOffset
                 )
             }
         }

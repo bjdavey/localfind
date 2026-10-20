@@ -967,7 +967,7 @@ internal fun DeleteMultipleFilesDialog(
                 text = if (filesCount == 1) {
                     "Remove 1 selected file from LocalFind library and delete its indexed search embeddings?\n\nThe original file on your device will NOT be deleted."
                 } else {
-                    "Remove $filesCount selected files from LocalFind library and delete all their indexed search embeddings?\n\nThe original files on your device will NOT be deleted."
+                    "Remove $filesCount selected files from LocalFind library?\n\nThe original files on your device will NOT be deleted."
                 }
             )
         },

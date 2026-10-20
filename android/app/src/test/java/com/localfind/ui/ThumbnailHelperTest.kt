@@ -128,4 +128,48 @@ class ThumbnailHelperTest {
         assertEquals(com.localfind.R.drawable.ic_description, GalleryCategory.TEXT.iconResId)
         assertEquals(com.localfind.R.drawable.ic_audiotrack, GalleryCategory.AUDIO.iconResId)
     }
+
+    @Test
+    fun `computeVideoThumbnailTargetTimeMs applies 2s offset and avoids first second`() {
+        // Main gallery tile (baseTimeMs = 0L) with long video: extracts at 2000ms (2.0s), not at the start
+        val galleryTargetMs = ThumbnailHelper.computeVideoThumbnailTargetTimeMs(
+            baseTimeMs = 0L,
+            durationMs = 60_000L
+        )
+        assertEquals(2_000L, galleryTargetMs)
+
+        // Video search result at 15000ms: extracts at 17000ms (15000 + 2000ms)
+        val searchTargetMs = ThumbnailHelper.computeVideoThumbnailTargetTimeMs(
+            baseTimeMs = 15_000L,
+            durationMs = 60_000L
+        )
+        assertEquals(17_000L, searchTargetMs)
+    }
+
+    @Test
+    fun `computeVideoThumbnailTargetTimeMs clamps within video duration for short videos`() {
+        // Short video of 1500ms duration: does not seek past end of video
+        val shortTargetMs = ThumbnailHelper.computeVideoThumbnailTargetTimeMs(
+            baseTimeMs = 0L,
+            durationMs = 1_500L
+        )
+        assertEquals(1_400L, shortTargetMs)
+
+        // Video with 0 or unknown duration returns base + 2000ms without throwing
+        val unknownDurationTargetMs = ThumbnailHelper.computeVideoThumbnailTargetTimeMs(
+            baseTimeMs = 5_000L,
+            durationMs = 0L
+        )
+        assertEquals(7_000L, unknownDurationTargetMs)
+    }
+
+    @Test
+    fun `previewCacheKey differentiates timestamps for search results while keeping base uri for standard gallery tiles`() {
+        // Main gallery preview uses raw URI as key
+        assertEquals("content://video.mp4", ThumbnailHelper.previewCacheKey("content://video.mp4", null))
+
+        // Search results with moment timestamps use distinct URI@timestamp keys
+        assertEquals("content://video.mp4@0", ThumbnailHelper.previewCacheKey("content://video.mp4", 0L))
+        assertEquals("content://video.mp4@15000", ThumbnailHelper.previewCacheKey("content://video.mp4", 15_000L))
+    }
 }

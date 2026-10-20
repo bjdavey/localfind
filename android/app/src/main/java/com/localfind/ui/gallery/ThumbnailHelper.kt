@@ -85,8 +85,40 @@ object ThumbnailHelper {
     private const val THUMBNAIL_MAX_DIM = 360
     private const val TEXT_PREVIEW_MAX_CHARS = 320
 
+    /** Offset in milliseconds added to video thumbnail extraction to avoid black/fade-in frames. */
+    const val VIDEO_THUMBNAIL_OFFSET_MS = 2_000L
+
     // Thread-safe in-memory cache storing up to 80 file preview records
     private val previewCache = object : LruCache<String, FilePreviewData>(80) {}
+
+    /**
+     * Calculates the target seek time in milliseconds for video thumbnail extraction.
+     *
+     * @param baseTimeMs Starting timestamp (e.g. search chunk offset or 0L for gallery grid).
+     * @param durationMs Total video duration in milliseconds (if known, or 0L).
+     * @param offsetMs Additional offset to advance into the scene (defaults to [VIDEO_THUMBNAIL_OFFSET_MS] = 2000ms).
+     * @return Target timestamp clamped within the video duration boundaries.
+     */
+    fun computeVideoThumbnailTargetTimeMs(
+        baseTimeMs: Long,
+        durationMs: Long,
+        offsetMs: Long = VIDEO_THUMBNAIL_OFFSET_MS
+    ): Long {
+        val rawTarget = baseTimeMs.coerceAtLeast(0L) + offsetMs
+        return if (durationMs > 0L) {
+            rawTarget.coerceAtMost((durationMs - 100L).coerceAtLeast(0L))
+        } else {
+            rawTarget
+        }
+    }
+
+    /**
+     * Builds the cache key for preview data. For video search results with a specific timestamp,
+     * appends the time offset so multiple matches from the same video file have distinct previews.
+     */
+    fun previewCacheKey(uriString: String, timeOffsetMs: Long? = null): String {
+        return if (timeOffsetMs != null) "$uriString@$timeOffsetMs" else uriString
+    }
 
     /**
      * Determines the [GalleryCategory] for an [ImportedFile] based on its name and MIME type.
@@ -185,19 +217,28 @@ object ThumbnailHelper {
 
     /**
      * Retrieves cached [FilePreviewData] immediately if available, or `null` if not yet loaded.
+     *
+     * @param uri File URI string.
+     * @param timeOffsetMs Optional timestamp offset in ms for search results to fetch the specific moment preview.
      */
-    fun getCachedPreview(uri: String): FilePreviewData? {
+    fun getCachedPreview(uri: String, timeOffsetMs: Long? = null): FilePreviewData? {
+        val key = previewCacheKey(uri, timeOffsetMs)
         synchronized(previewCache) {
-            return previewCache.get(uri)
+            return previewCache.get(key)
         }
     }
 
     /**
      * Evicts a cached preview entry when a file or folder is removed from the library.
+     * Also clears all moment-specific previews for that URI.
      */
     fun evictPreview(uri: String) {
         synchronized(previewCache) {
             previewCache.remove(uri)
+            val keysToRemove = previewCache.snapshot().keys.filter { it == uri || it.startsWith("$uri@") }
+            for (key in keysToRemove) {
+                previewCache.remove(key)
+            }
         }
     }
 
@@ -205,7 +246,7 @@ object ThumbnailHelper {
      * Loads or generates the visual preview for a file on a background thread and stores it in cache.
      *
      * - **PDF**: Renders Page 1 onto a white bitmap via [PdfRenderer] and formats `"N p."` badge.
-     * - **Video**: Extracts a frame at 0.5s via [MediaMetadataRetriever] and formats `"mm:ss"` duration.
+     * - **Video**: Extracts a frame at target moment + 2s offset via [MediaMetadataRetriever] and formats `"mm:ss"` duration.
      * - **Audio**: Extracts embedded album cover art if present and formats `"mm:ss"` duration.
      * - **Text / Markdown**: Reads the first lines of text for the document sheet preview card.
      */
@@ -213,9 +254,13 @@ object ThumbnailHelper {
         context: Context,
         uriString: String,
         fileName: String,
-        mimeType: String?
+        mimeType: String?,
+        timeOffsetMs: Long? = null
     ): FilePreviewData {
-        getCachedPreview(uriString)?.let { return it }
+        val cacheKey = previewCacheKey(uriString, timeOffsetMs)
+        synchronized(previewCache) {
+            previewCache.get(cacheKey)?.let { return it }
+        }
 
         val uri = try {
             uriString.toUri()
@@ -225,14 +270,14 @@ object ThumbnailHelper {
 
         val generated = when {
             Indexer.isPdfNameOrMime(fileName, mimeType) -> loadPdfPreview(context, uri)
-            Indexer.isVideoNameOrMime(fileName, mimeType) -> loadVideoPreview(context, uri)
+            Indexer.isVideoNameOrMime(fileName, mimeType) -> loadVideoPreview(context, uri, timeOffsetMs)
             Indexer.isAudioNameOrMime(fileName, mimeType) -> loadAudioPreview(context, uri)
             Indexer.isTextNameOrMime(fileName, mimeType) -> loadTextPreview(context, uri, fileName)
             else -> FilePreviewData()
         }
 
         synchronized(previewCache) {
-            previewCache.put(uriString, generated)
+            previewCache.put(cacheKey, generated)
         }
         return generated
     }
@@ -274,8 +319,18 @@ object ThumbnailHelper {
 
     /**
      * Extracts a representative keyframe and duration from a video file using [MediaMetadataRetriever].
+     *
+     * @param context Application context.
+     * @param uri Video file URI.
+     * @param timeOffsetMs Base timestamp in milliseconds (e.g. search result match chunk, or null for gallery tile).
+     *                     Adds a 2-second offset ([VIDEO_THUMBNAIL_OFFSET_MS]) so thumbnails don't start from
+     *                     the first second (avoiding black/blank fade-ins) for both search results and gallery tiles.
      */
-    private fun loadVideoPreview(context: Context, uri: Uri): FilePreviewData {
+    private fun loadVideoPreview(
+        context: Context,
+        uri: Uri,
+        timeOffsetMs: Long? = null
+    ): FilePreviewData {
         val retriever = MediaMetadataRetriever()
         try {
             retriever.setDataSource(context, uri)
@@ -284,14 +339,22 @@ object ThumbnailHelper {
                 ?.toLongOrNull() ?: 0L
             val badge = if (durationMs > 0L) SearchResultFormatter.formatTimeMs(durationMs) else "VIDEO"
 
-            // Try extracting a hardware-downscaled frame at 500ms (avoids black fade-in at 0ms), fallback to any frame
+            // Compute target seek time with the 2-second offset, avoiding the first second and clamping within duration
+            val targetTimeMs = computeVideoThumbnailTargetTimeMs(
+                baseTimeMs = timeOffsetMs ?: 0L,
+                durationMs = durationMs
+            )
+            val targetTimeUs = targetTimeMs * 1000L
+
+            // Try extracting a hardware-downscaled frame at target time using closest keyframe (OPTION_CLOSEST_SYNC),
+            // fallback to software frameAtTime if hardware downscaling is unavailable
             val rawFrame = retriever.getScaledFrameAtTime(
-                500_000L,
+                targetTimeUs,
                 MediaMetadataRetriever.OPTION_CLOSEST_SYNC,
                 THUMBNAIL_MAX_DIM,
                 THUMBNAIL_MAX_DIM
             ) ?: retriever.getFrameAtTime(
-                500_000L,
+                targetTimeUs,
                 MediaMetadataRetriever.OPTION_CLOSEST_SYNC
             ) ?: retriever.frameAtTime
 

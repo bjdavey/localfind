@@ -307,14 +307,14 @@ fun MediaGalleryTile(
                             horizontalArrangement = Arrangement.spacedBy(6.dp),
                             verticalAlignment = Alignment.CenterVertically
                         ) {
-                            if (onPauseIndex != null) {
-                                StatusActionButton(
-                                    text = "Pause",
-                                    iconRes = R.drawable.ic_pause,
-                                    contentColor = Color.White,
-                                    onClick = onPauseIndex
-                                )
-                            }
+                            // if (onPauseIndex != null) {
+                            //     StatusActionButton(
+                            //         text = "Pause",
+                            //         iconRes = R.drawable.ic_pause,
+                            //         contentColor = Color.White,
+                            //         onClick = onPauseIndex
+                            //     )
+                            // }
                             if (onCancelIndex != null) {
                                 StatusActionButton(
                                     text = "Cancel",
@@ -357,15 +357,15 @@ fun MediaGalleryTile(
                                 horizontalArrangement = Arrangement.spacedBy(6.dp),
                                 verticalAlignment = Alignment.CenterVertically
                             ) {
-                                if (onResumeIndex != null) {
-                                    StatusActionButton(
-                                        text = "Resume",
-                                        iconRes = R.drawable.ic_play_arrow,
-                                        contentColor = Color.White,
-                                        backgroundColor = MaterialTheme.colorScheme.primary.copy(alpha = 0.85f),
-                                        onClick = onResumeIndex
-                                    )
-                                }
+                                // if (onResumeIndex != null) {
+                                //     StatusActionButton(
+                                //         text = "Resume",
+                                //         iconRes = R.drawable.ic_play_arrow,
+                                //         contentColor = Color.White,
+                                //         backgroundColor = MaterialTheme.colorScheme.primary.copy(alpha = 0.85f),
+                                //         onClick = onResumeIndex
+                                //     )
+                                // }
                                 if (onCancelIndex != null) {
                                     StatusActionButton(
                                         text = "Cancel",

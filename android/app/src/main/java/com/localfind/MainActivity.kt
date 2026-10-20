@@ -629,7 +629,7 @@ fun MainScreen(
             title = { Text("Remove file?") },
             text = {
                 Text(
-                    "Remove \"${file.displayName}\" from LocalFind library and delete all its indexed search embeddings?\n\n" +
+                    "Remove \"${file.displayName}\" from LocalFind library?\n\n" +
                             "The original file on your device will NOT be deleted."
                 )
             },
