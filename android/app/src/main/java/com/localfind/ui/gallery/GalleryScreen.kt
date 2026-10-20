@@ -321,7 +321,7 @@ fun GalleryScreen(
                     )
                     val fileCountLabel = if (importedFiles.size == 1) "1 file" else "${importedFiles.size} files"
                     Text(
-                        text = "$fileCountLabel • 100% offline",
+                        text = "$fileCountLabel",
                         style = MaterialTheme.typography.labelMedium,
                         color = MaterialTheme.colorScheme.onSurfaceVariant
                     )

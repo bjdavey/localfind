@@ -57,6 +57,7 @@ import com.localfind.index.IndexingProgressState
 import com.localfind.index.IndexingResumeManager
 import com.localfind.index.IndexingWorker
 import com.localfind.search.SearchResult
+import com.localfind.ui.ModelLoadingOverlay
 import com.localfind.ui.gallery.GalleryCategory
 import com.localfind.ui.gallery.GalleryScreen
 import com.localfind.ui.gallery.ThumbnailHelper
@@ -815,6 +816,11 @@ fun MainScreen(
             viewerState = viewerState,
             importedFiles = importedFiles,
             onSearchInFile = { file -> startSearchInFile(file) }
+        )
+
+        // 5. Model Loading Splash / Modal Progress Overlay (Blocks user interactions while LiteRT engine loads)
+        ModelLoadingOverlay(
+            isLoading = modelStatus is ModelStatus.Loading
         )
     }
 }

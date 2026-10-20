@@ -326,16 +326,14 @@ fun MediaGalleryTile(
                 GalleryCategory.PDFS -> R.drawable.ic_picture_as_pdf
                 GalleryCategory.TEXT -> R.drawable.ic_description
                 GalleryCategory.PHOTOS -> R.drawable.ic_image
-                GalleryCategory.ALL -> null
+                GalleryCategory.ALL -> R.drawable.ic_description
             }
 
-            val badgeLabel = when (category) {
-                GalleryCategory.PHOTOS -> "IMG"
-                GalleryCategory.VIDEOS -> previewData?.badgeText ?: "VIDEO"
-                GalleryCategory.PDFS -> previewData?.badgeText ?: "PDF"
-                GalleryCategory.TEXT -> previewData?.badgeText ?: "TXT"
-                GalleryCategory.AUDIO -> previewData?.badgeText ?: "AUDIO"
-                GalleryCategory.ALL -> ""
+            // Duration text specifically for video and audio (e.g. "02:45"), null for other file types
+            val durationText = if (category == GalleryCategory.VIDEOS || category == GalleryCategory.AUDIO) {
+                previewData?.badgeText?.takeIf { it != "VIDEO" && it != "AUDIO" && it.isNotBlank() }
+            } else {
+                null
             }
 
             Row(
@@ -349,30 +347,42 @@ fun MediaGalleryTile(
                     horizontalArrangement = Arrangement.spacedBy(4.dp),
                     verticalAlignment = Alignment.CenterVertically
                 ) {
-                    // Modality / Duration / Page Count Pill
+                    // Modality Badge (Duration for video/audio, icon-only for others)
                     Surface(
                         shape = RoundedCornerShape(8.dp),
                         color = badgeColor.copy(alpha = 0.90f)
                     ) {
-                        Row(
-                            verticalAlignment = Alignment.CenterVertically,
-                            horizontalArrangement = Arrangement.spacedBy(3.dp),
-                            modifier = Modifier.padding(horizontal = 6.dp, vertical = 3.dp)
-                        ) {
-                            if (badgeIconRes != null) {
+                        if (durationText != null) {
+                            Row(
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.spacedBy(3.dp),
+                                modifier = Modifier.padding(horizontal = 6.dp, vertical = 3.dp)
+                            ) {
                                 Icon(
                                     painter = painterResource(badgeIconRes),
                                     contentDescription = null,
                                     tint = Color.White,
-                                    modifier = Modifier.size(11.dp)
+                                    modifier = Modifier.size(12.dp)
+                                )
+                                Text(
+                                    text = durationText,
+                                    style = MaterialTheme.typography.labelSmall,
+                                    fontWeight = FontWeight.Bold,
+                                    color = Color.White
                                 )
                             }
-                            Text(
-                                text = badgeLabel,
-                                style = MaterialTheme.typography.labelSmall,
-                                fontWeight = FontWeight.Bold,
-                                color = Color.White
-                            )
+                        } else {
+                            Box(
+                                contentAlignment = Alignment.Center,
+                                modifier = Modifier.padding(horizontal = 6.dp, vertical = 4.dp)
+                            ) {
+                                Icon(
+                                    painter = painterResource(badgeIconRes),
+                                    contentDescription = null,
+                                    tint = Color.White,
+                                    modifier = Modifier.size(13.dp)
+                                )
+                            }
                         }
                     }
 
@@ -394,7 +404,7 @@ fun MediaGalleryTile(
                                     modifier = Modifier.size(12.dp)
                                 )
                                 Text(
-                                    text = "Queue",
+                                    text = "Pending",
                                     style = MaterialTheme.typography.labelSmall,
                                     fontWeight = FontWeight.SemiBold,
                                     color = Color.White
@@ -482,7 +492,7 @@ fun MediaGalleryTile(
                             "Indexing... • ${formatFileSize(file.size)}"
                         file.indexingStatus == IndexingStatus.PENDING ->
                             if (isQueuePaused) "Paused • ${formatFileSize(file.size)}"
-                            else "In queue • ${formatFileSize(file.size)}"
+                            else "Pending • ${formatFileSize(file.size)}"
                         file.indexingStatus == IndexingStatus.FAILED ->
                             "Indexing failed • ${formatFileSize(file.size)}"
                         else ->

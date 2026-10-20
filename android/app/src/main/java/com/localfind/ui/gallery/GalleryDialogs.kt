@@ -86,7 +86,7 @@ internal fun FileDetailsDialog(
                 val statusText = when (file.indexingStatus) {
                     IndexingStatus.INDEXED -> "Ready to search"
                     IndexingStatus.INDEXING -> "Indexing..."
-                    IndexingStatus.PENDING -> if (isQueuePaused) "Paused in queue" else "Waiting in queue"
+                    IndexingStatus.PENDING -> if (isQueuePaused) "Paused" else "Pending"
                     IndexingStatus.FAILED -> "Indexing failed"
                 }
                 Text(

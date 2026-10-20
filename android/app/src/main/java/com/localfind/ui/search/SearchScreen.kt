@@ -25,7 +25,6 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
-import androidx.compose.material3.Button
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.FilterChipDefaults
@@ -65,7 +64,7 @@ import com.localfind.ui.gallery.iconResId
  * or triggers a search inside a specific file from file details / viewers.
  *
  * Features:
- * - Top search bar with back navigation (`←`), auto-focused query input, clear button, and Search button.
+ * - Top search bar with back navigation (`←`), auto-focused query input, and clear button.
  * - Optional scoped search banner when searching within a specific [targetFile].
  * - Modality filter chips (`All`, `Photos`, `Videos`, `Docs`, `Audio`) to filter ranked hits.
  * - Interactive example suggestion pills when idle.
@@ -191,19 +190,6 @@ fun SearchScreen(
                     }
                 )
             )
-
-            Spacer(modifier = Modifier.width(8.dp))
-
-            Button(
-                onClick = {
-                    focusManager.clearFocus()
-                    onSearch()
-                },
-                enabled = query.isNotBlank() && !isSearching,
-                shape = RoundedCornerShape(22.dp)
-            ) {
-                Text("Go", fontWeight = FontWeight.Bold)
-            }
         }
 
         // =====================================================================
