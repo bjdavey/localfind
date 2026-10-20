@@ -282,6 +282,26 @@ class FileStore(context: Context) : SQLiteOpenHelper(
         writableDatabase.update(TABLE_FILES, values, "uri = ?", arrayOf(uri))
     }
 
+    /**
+     * Reassigns multiple files' containing folder in a single atomic database transaction.
+     * Passing `null` moves the files to library root.
+     */
+    fun updateFilesFolder(uris: List<String>, folderId: String?) {
+        if (uris.isEmpty()) return
+        writableDatabase.transaction {
+            val values = ContentValues().apply {
+                if (folderId != null) {
+                    put("folder_id", folderId)
+                } else {
+                    putNull("folder_id")
+                }
+            }
+            for (uri in uris) {
+                update(TABLE_FILES, values, "uri = ?", arrayOf(uri))
+            }
+        }
+    }
+
     // =========================================================================
     // FILE OPERATIONS
     // =========================================================================
@@ -415,6 +435,18 @@ class FileStore(context: Context) : SQLiteOpenHelper(
      */
     fun delete(uri: String): Boolean {
         return writableDatabase.delete(TABLE_FILES, "uri = ?", arrayOf(uri)) > 0
+    }
+
+    /**
+     * Deletes multiple imported file records by their URIs inside an atomic transaction.
+     */
+    fun deleteFiles(uris: List<String>) {
+        if (uris.isEmpty()) return
+        writableDatabase.transaction {
+            for (uri in uris) {
+                delete(TABLE_FILES, "uri = ?", arrayOf(uri))
+            }
+        }
     }
 
     private fun Cursor.toFolder(): Folder = Folder(

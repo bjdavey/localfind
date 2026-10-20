@@ -42,8 +42,13 @@ val OnTertiaryContainerLight = Color(0xFF001E30)
 // --- Surfaces & Neutral Backgrounds ---
 val DarkSurface = Color(0xFF121417)
 val DarkSurfaceVariant = Color(0xFF1E2227)
+val OnDarkSurface = Color(0xFFE2E2E6)
+val OnDarkSurfaceVariant = Color(0xFFC4C6D0)
+
 val LightSurface = Color(0xFFF8F9FA)
 val LightSurfaceVariant = Color(0xFFEEF1F4)
+val OnLightSurface = Color(0xFF191C1E)
+val OnLightSurfaceVariant = Color(0xFF44474E)
 
 // --- File Modality Badges & Indicator Accents ---
 val BadgeImage = Color(0xFF26A69A)

@@ -3,12 +3,14 @@ package com.localfind.ui.theme
 import android.app.Activity
 import android.os.Build
 import androidx.compose.foundation.isSystemInDarkTheme
+import androidx.compose.material3.LocalContentColor
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.darkColorScheme
 import androidx.compose.material3.dynamicDarkColorScheme
 import androidx.compose.material3.dynamicLightColorScheme
 import androidx.compose.material3.lightColorScheme
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.SideEffect
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalView
@@ -29,8 +31,11 @@ private val DarkColorScheme = darkColorScheme(
     tertiaryContainer = TertiaryContainerDark,
     onTertiaryContainer = OnTertiaryContainerDark,
     background = DarkSurface,
+    onBackground = OnDarkSurface,
     surface = DarkSurface,
-    surfaceVariant = DarkSurfaceVariant
+    onSurface = OnDarkSurface,
+    surfaceVariant = DarkSurfaceVariant,
+    onSurfaceVariant = OnDarkSurfaceVariant
 )
 
 private val LightColorScheme = lightColorScheme(
@@ -47,8 +52,11 @@ private val LightColorScheme = lightColorScheme(
     tertiaryContainer = TertiaryContainerLight,
     onTertiaryContainer = OnTertiaryContainerLight,
     background = LightSurface,
+    onBackground = OnLightSurface,
     surface = LightSurface,
-    surfaceVariant = LightSurfaceVariant
+    onSurface = OnLightSurface,
+    surfaceVariant = LightSurfaceVariant,
+    onSurfaceVariant = OnLightSurfaceVariant
 )
 
 @Composable
@@ -80,7 +88,11 @@ fun LocalFindTheme(
 
     MaterialTheme(
         colorScheme = colorScheme,
-        typography = Typography,
-        content = content
-    )
+        typography = Typography
+    ) {
+        CompositionLocalProvider(
+            LocalContentColor provides colorScheme.onBackground,
+            content = content
+        )
+    }
 }

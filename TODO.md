@@ -60,7 +60,7 @@
 - Top bar should hide on scrolling
 - Support landscape orientation in file viewer
 - Show file details and open in phone gallery or its own app
-- Multi select
+- [x] Multi select
 - Good test samples
 - What else?
 - Final E2E test with edge cases

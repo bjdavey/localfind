@@ -1,5 +1,6 @@
 package com.localfind.ui.gallery
 
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
@@ -82,8 +83,11 @@ fun MediaGalleryTile(
     isActivelyIndexing: Boolean = false,
     activeProgressFraction: Float = 0f,
     isQueuePaused: Boolean = false,
+    isSelectionMode: Boolean = false,
+    isSelected: Boolean = false,
     onClick: () -> Unit,
     onLongClick: () -> Unit,
+    onMoreOptionsClick: (() -> Unit)? = null,
     onCancelIndex: (() -> Unit)? = null,
     onRetryIndex: (() -> Unit)? = null,
     onPauseIndex: (() -> Unit)? = null,
@@ -120,10 +124,17 @@ fun MediaGalleryTile(
     val isIndexing = isActivelyIndexing || file.indexingStatus == IndexingStatus.INDEXING
     val isWashed = isPending || isFailed || isIndexing
 
+    val selectionBorder = if (isSelectionMode && isSelected) {
+        Modifier.border(2.5.dp, MaterialTheme.colorScheme.primary, RoundedCornerShape(16.dp))
+    } else {
+        Modifier
+    }
+
     Surface(
         modifier = modifier
             .fillMaxWidth()
             .aspectRatio(1f)
+            .then(selectionBorder)
             .clip(RoundedCornerShape(16.dp))
             .combinedClickable(
                 onClick = onClick,
@@ -420,7 +431,7 @@ fun MediaGalleryTile(
                         // Failed: show Retry only
                         if (onRetryIndex != null) {
                             StatusActionButton(
-                                text = "Retry",
+                                text = "Try again",
                                 iconRes = R.drawable.ic_refresh,
                                 contentColor = Color.White,
                                 backgroundColor = MaterialTheme.colorScheme.primary.copy(alpha = 0.85f),
@@ -465,8 +476,29 @@ fun MediaGalleryTile(
                     .padding(8.dp),
                 verticalAlignment = Alignment.Top
             ) {
-                // Modality Badge (Duration for video/audio, icon-only for others; omitted for photos)
-                if (category != GalleryCategory.PHOTOS) {
+                if (isSelectionMode) {
+                    // Checkbox indicator for multi-select
+                    Surface(
+                        modifier = Modifier
+                            .size(26.dp)
+                            .clip(CircleShape),
+                        shape = CircleShape,
+                        color = if (isSelected) MaterialTheme.colorScheme.primary else Color.Black.copy(alpha = 0.45f),
+                        border = if (!isSelected) BorderStroke(1.5.dp, Color.White) else null
+                    ) {
+                        if (isSelected) {
+                            Box(contentAlignment = Alignment.Center) {
+                                Icon(
+                                    painter = painterResource(R.drawable.ic_check),
+                                    contentDescription = "Selected",
+                                    tint = MaterialTheme.colorScheme.onPrimary,
+                                    modifier = Modifier.size(16.dp)
+                                )
+                            }
+                        }
+                    }
+                } else if (category != GalleryCategory.PHOTOS) {
+                    // Modality Badge (Duration for video/audio, icon-only for others; omitted for photos)
                     Surface(
                         shape = RoundedCornerShape(8.dp),
                         color = badgeColor.copy(alpha = 0.90f)
@@ -508,24 +540,35 @@ fun MediaGalleryTile(
 
                 Spacer(modifier = Modifier.weight(1f))
 
-                // Quick actions menu button (opens file info / delete dialog)
-                Surface(
-                    modifier = Modifier
-                        .size(26.dp)
-                        .clip(CircleShape)
-                        .clickable(onClick = onLongClick),
-                    shape = CircleShape,
-                    color = Color.Black.copy(alpha = 0.45f)
-                ) {
-                    Box(contentAlignment = Alignment.Center) {
-                        Icon(
-                            painter = painterResource(R.drawable.ic_more_vert),
-                            contentDescription = "Options",
-                            tint = Color.White,
-                            modifier = Modifier.size(16.dp)
-                        )
+                // Quick actions menu button (hidden during selection mode)
+                if (!isSelectionMode) {
+                    Surface(
+                        modifier = Modifier
+                            .size(26.dp)
+                            .clip(CircleShape)
+                            .clickable(onClick = onMoreOptionsClick ?: onLongClick),
+                        shape = CircleShape,
+                        color = Color.Black.copy(alpha = 0.45f)
+                    ) {
+                        Box(contentAlignment = Alignment.Center) {
+                            Icon(
+                                painter = painterResource(R.drawable.ic_more_vert),
+                                contentDescription = "Options",
+                                tint = Color.White,
+                                modifier = Modifier.size(16.dp)
+                            )
+                        }
                     }
                 }
+            }
+
+            // Subtle highlight tint over tile when selected
+            if (isSelectionMode && isSelected) {
+                Box(
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .background(MaterialTheme.colorScheme.primary.copy(alpha = 0.18f))
+                )
             }
 
             // -----------------------------------------------------------------

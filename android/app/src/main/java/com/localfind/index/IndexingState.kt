@@ -70,7 +70,7 @@ object IndexingProgressState {
     /**
      * Updates state to reflect that the indexing queue has been paused.
      */
-    fun setPaused(isPaused: Boolean, message: String = "Indexing paused") {
+    fun setPaused(isPaused: Boolean, message: String = "Paused") {
         val cur = _progress.value
         _progress.value = cur.copy(
             isIndexing = false,

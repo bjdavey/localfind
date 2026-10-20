@@ -444,7 +444,7 @@ fun SettingsScreen(
 
                     SettingActionRow(
                         title = "Reindex library",
-                        subtitle = if (isIndexing) "Indexing in progress..." else "$fileCount files in library",
+                        subtitle = if (isIndexing) "Analysis in progress..." else "$fileCount files in library",
                         description = "Clear current vector embeddings and regenerate new embeddings for all imported files using current settings.",
                         buttonText = "Reindex",
                         enabled = !isIndexing && fileCount > 0,

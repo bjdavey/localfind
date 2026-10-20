@@ -1,10 +1,13 @@
 package com.localfind.ui.gallery
 
+import androidx.activity.compose.BackHandler
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.expandVertically
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.animation.shrinkVertically
+import androidx.compose.animation.slideInVertically
+import androidx.compose.animation.slideOutVertically
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -55,6 +58,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.res.painterResource
@@ -98,6 +102,8 @@ fun GalleryScreen(
     onImportFolder: () -> Unit = {},
     enableFolderImport: Boolean = false,
     onMoveFileToFolder: (ImportedFile, String?) -> Unit = { _, _ -> },
+    onMoveMultipleFiles: (List<ImportedFile>, String?) -> Unit = { _, _ -> },
+    onDeleteMultipleFiles: (List<ImportedFile>) -> Unit = {},
     onRetryLoadModel: () -> Unit = {},
     onOpenSearch: () -> Unit,
     onSearchInFile: ((ImportedFile) -> Unit)? = null,
@@ -122,6 +128,22 @@ fun GalleryScreen(
     var folderToRename by remember { mutableStateOf<Folder?>(null) }
     var folderToDelete by remember { mutableStateOf<Folder?>(null) }
     var fileToMove by remember { mutableStateOf<ImportedFile?>(null) }
+    var isSelectionMode by remember { mutableStateOf(false) }
+    var selectedFileUris by remember { mutableStateOf(emptySet<String>()) }
+    var showBatchMoveDialog by remember { mutableStateOf(false) }
+    var showBatchDeleteDialog by remember { mutableStateOf(false) }
+
+    LaunchedEffect(currentFolderId) {
+        if (isSelectionMode) {
+            isSelectionMode = false
+            selectedFileUris = emptySet()
+        }
+    }
+
+    BackHandler(enabled = isSelectionMode) {
+        isSelectionMode = false
+        selectedFileUris = emptySet()
+    }
 
     // Folder and navigation state
     val currentFolder = remember(folders, currentFolderId) {
@@ -216,6 +238,43 @@ fun GalleryScreen(
         )
     }
 
+    // Batch Move dialog for multiple selected files
+    if (showBatchMoveDialog) {
+        val selectedFiles = remember(importedFiles, selectedFileUris) {
+            importedFiles.filter { it.uri in selectedFileUris }
+        }
+        MoveMultipleFilesDialog(
+            filesCount = selectedFiles.size,
+            folders = folders,
+            onMove = { targetFolderId ->
+                val targets = selectedFiles
+                showBatchMoveDialog = false
+                isSelectionMode = false
+                selectedFileUris = emptySet()
+                onMoveMultipleFiles(targets, targetFolderId)
+            },
+            onDismiss = { showBatchMoveDialog = false }
+        )
+    }
+
+    // Batch Delete confirmation dialog for multiple selected files
+    if (showBatchDeleteDialog) {
+        val selectedFiles = remember(importedFiles, selectedFileUris) {
+            importedFiles.filter { it.uri in selectedFileUris }
+        }
+        DeleteMultipleFilesDialog(
+            filesCount = selectedFiles.size,
+            onConfirm = {
+                val targets = selectedFiles
+                showBatchDeleteDialog = false
+                isSelectionMode = false
+                selectedFileUris = emptySet()
+                onDeleteMultipleFiles(targets)
+            },
+            onDismiss = { showBatchDeleteDialog = false }
+        )
+    }
+
     // Folder actions menu (Rename / Delete)
     inspectedFolder?.let { folder ->
         FolderActionsDialog(
@@ -271,26 +330,6 @@ fun GalleryScreen(
         )
     }
 
-    // Import options modal (Import Files / Import Folder / New Folder)
-    if (showImportMenu) {
-        ImportOptionsMenu(
-            onDismiss = { showImportMenu = false },
-            onImportFiles = {
-                showImportMenu = false
-                onImportFiles()
-            },
-            onImportFolder = {
-                showImportMenu = false
-                onImportFolder()
-            },
-            onCreateFolder = {
-                showImportMenu = false
-                showCreateFolderDialog = true
-            },
-            enableFolderImport = enableFolderImport
-        )
-    }
-
     val statusBarPadding = WindowInsets.statusBars.asPaddingValues()
     val navBarPadding = WindowInsets.navigationBars.asPaddingValues()
 
@@ -305,36 +344,130 @@ fun GalleryScreen(
                 .padding(top = statusBarPadding.calculateTopPadding())
         ) {
             // =====================================================================
-            // 1. TOP HEADER BAR (App Title + Stats + Top-Right Settings)
+            // 1. TOP HEADER BAR (Contextual Multi-Select Bar or App Title + Stats + Settings)
             // =====================================================================
-            Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(start = 20.dp, end = 12.dp, top = 12.dp, bottom = 4.dp),
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.SpaceBetween
-            ) {
-                Column(modifier = Modifier.weight(1f)) {
-                    Text(
-                        text = "LocalFind",
-                        style = MaterialTheme.typography.headlineSmall,
-                        fontWeight = FontWeight.Bold,
-                        color = MaterialTheme.colorScheme.onBackground
-                    )
-                    val fileCountLabel = if (importedFiles.size == 1) "1 file" else "${importedFiles.size} files"
-                    Text(
-                        text = "$fileCountLabel",
-                        style = MaterialTheme.typography.labelMedium,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant
-                    )
-                }
+            if (isSelectionMode) {
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(start = 12.dp, end = 8.dp, top = 8.dp, bottom = 4.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.SpaceBetween
+                ) {
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        IconButton(
+                            onClick = {
+                                isSelectionMode = false
+                                selectedFileUris = emptySet()
+                            }
+                        ) {
+                            Icon(
+                                painter = painterResource(R.drawable.ic_close),
+                                contentDescription = "Exit selection",
+                                tint = MaterialTheme.colorScheme.onBackground
+                            )
+                        }
+                        val countText = if (selectedFileUris.size == 1) "1 selected" else "${selectedFileUris.size} selected"
+                        Text(
+                            text = countText,
+                            style = MaterialTheme.typography.titleMedium,
+                            fontWeight = FontWeight.Bold,
+                            color = MaterialTheme.colorScheme.onBackground
+                        )
+                    }
 
-                IconButton(onClick = onOpenSettings) {
-                    Icon(
-                        painter = painterResource(R.drawable.ic_settings),
-                        contentDescription = "Settings",
-                        tint = MaterialTheme.colorScheme.onSurfaceVariant
-                    )
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(2.dp)
+                    ) {
+                        // Select All button (toggles all in current view)
+                        val allCurrentUris = remember(currentFolderFiles) { currentFolderFiles.map { it.uri }.toSet() }
+                        val isAllSelected = allCurrentUris.isNotEmpty() && selectedFileUris.containsAll(allCurrentUris)
+                        IconButton(
+                            onClick = {
+                                selectedFileUris = if (isAllSelected) {
+                                    selectedFileUris - allCurrentUris
+                                } else {
+                                    selectedFileUris + allCurrentUris
+                                }
+                            }
+                        ) {
+                            Icon(
+                                painter = painterResource(R.drawable.ic_select_all),
+                                contentDescription = if (isAllSelected) "Deselect all" else "Select all",
+                                tint = if (isAllSelected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                        }
+
+                        // Move button
+                        IconButton(
+                            onClick = { showBatchMoveDialog = true },
+                            enabled = selectedFileUris.isNotEmpty()
+                        ) {
+                            Icon(
+                                painter = painterResource(R.drawable.ic_drive_file_move),
+                                contentDescription = "Move selected",
+                                tint = if (selectedFileUris.isNotEmpty()) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.38f)
+                            )
+                        }
+
+                        // Delete button
+                        IconButton(
+                            onClick = { showBatchDeleteDialog = true },
+                            enabled = selectedFileUris.isNotEmpty()
+                        ) {
+                            Icon(
+                                painter = painterResource(R.drawable.ic_delete),
+                                contentDescription = "Delete selected",
+                                tint = if (selectedFileUris.isNotEmpty()) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.38f)
+                            )
+                        }
+                    }
+                }
+            } else {
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(start = 20.dp, end = 12.dp, top = 12.dp, bottom = 4.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.SpaceBetween
+                ) {
+                    Column(modifier = Modifier.weight(1f)) {
+                        Text(
+                            text = "LocalFind",
+                            style = MaterialTheme.typography.headlineSmall,
+                            fontWeight = FontWeight.Bold,
+                            color = MaterialTheme.colorScheme.onBackground
+                        )
+                        val fileCountLabel = if (importedFiles.size == 1) "1 file" else "${importedFiles.size} files"
+                        Text(
+                            text = "$fileCountLabel",
+                            style = MaterialTheme.typography.labelMedium,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
+
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        if (currentFolderFiles.isNotEmpty()) {
+                            IconButton(onClick = { isSelectionMode = true }) {
+                                Icon(
+                                    painter = painterResource(R.drawable.ic_checklist),
+                                    contentDescription = "Select files",
+                                    tint = MaterialTheme.colorScheme.onSurfaceVariant
+                                )
+                            }
+                        }
+                        IconButton(onClick = onOpenSettings) {
+                            Icon(
+                                painter = painterResource(R.drawable.ic_settings),
+                                contentDescription = "Settings",
+                                tint = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                        }
+                    }
                 }
             }
 
@@ -472,15 +605,15 @@ fun GalleryScreen(
                                 it.indexingStatus == IndexingStatus.PENDING || it.indexingStatus == IndexingStatus.INDEXING
                             }
                             if (indexingProgress.message.isNotBlank() && indexingProgress.isPaused) indexingProgress.message
-                            else "Indexing paused ($pendingCount pending)"
+                            else "Paused ($pendingCount pending)"
                         } else if (indexingProgress.totalFiles > 0) {
-                            "Indexing ${indexingProgress.fileIndex}/${indexingProgress.totalFiles}"
+                            "Analyzing ${indexingProgress.fileIndex}/${indexingProgress.totalFiles}"
                         } else if (statusMessage.startsWith("Importing")) {
                             statusMessage
-                        } else if (indexingProgress.message.isNotBlank() && !indexingProgress.message.startsWith("Indexing ")) {
+                        } else if (indexingProgress.message.isNotBlank() && !indexingProgress.message.startsWith("Indexing ") && !indexingProgress.message.startsWith("Analyzing ")) {
                             indexingProgress.message
                         } else {
-                            "Indexing files..."
+                            "Analyzing files..."
                         }
 
                         val showPercent = !isPaused && (indexingProgress.progressFraction > 0f || indexingProgress.currentChunk > 0)
@@ -488,7 +621,7 @@ fun GalleryScreen(
 
                         val activeFileName = indexingProgress.currentFileName
                             ?: importedFiles.firstOrNull { it.uri == indexingProgress.currentUri }?.displayName
-                            ?: if (indexingProgress.message.startsWith("Indexing ") && indexingProgress.message.contains(": ")) {
+                            ?: if ((indexingProgress.message.startsWith("Indexing ") || indexingProgress.message.startsWith("Analyzing ")) && indexingProgress.message.contains(": ")) {
                                 indexingProgress.message.substringAfter(": ").substringBeforeLast(" (").trim().takeIf { it.isNotBlank() }
                             } else null
 
@@ -683,13 +816,13 @@ fun GalleryScreen(
                             )
                             Column(modifier = Modifier.weight(1f)) {
                                 Text(
-                                    text = if (failedCount == 1) "1 file failed indexing" else "$failedCount files failed indexing",
+                                    text = if (failedCount == 1) "1 file failed analysis" else "$failedCount files failed analysis",
                                     style = MaterialTheme.typography.labelMedium,
                                     fontWeight = FontWeight.SemiBold,
                                     color = MaterialTheme.colorScheme.onErrorContainer
                                 )
                                 Text(
-                                    text = "Tap Retry All to try again",
+                                    text = "Tap Try again to retry",
                                     style = MaterialTheme.typography.bodySmall,
                                     color = MaterialTheme.colorScheme.onErrorContainer.copy(alpha = 0.8f),
                                     maxLines = 1,
@@ -715,7 +848,7 @@ fun GalleryScreen(
                                 )
                                 Spacer(modifier = Modifier.width(4.dp))
                                 Text(
-                                    text = "Retry All",
+                                    text = "Try again",
                                     style = MaterialTheme.typography.labelSmall,
                                     fontWeight = FontWeight.Bold
                                 )
@@ -867,7 +1000,7 @@ fun GalleryScreen(
                             fontWeight = FontWeight.SemiBold
                         )
                         Text(
-                            text = "Tap the + button in the bottom dock to import files, import a folder, or create a subfolder.",
+                            text = "Tap the + button in the bottom dock to import files or create a subfolder.",
                             style = MaterialTheme.typography.bodyMedium,
                             color = MaterialTheme.colorScheme.onSurfaceVariant,
                             textAlign = TextAlign.Center
@@ -916,8 +1049,8 @@ fun GalleryScreen(
                         start = 12.dp,
                         end = 12.dp,
                         top = 6.dp,
-                        // Extra bottom padding so the floating dock never obscures the bottom row
-                        bottom = 104.dp + navBarPadding.calculateBottomPadding()
+                        // Extra bottom padding so the floating dock never obscures the bottom row (reduced when dock is hidden)
+                        bottom = (if (isSelectionMode) 24.dp else 104.dp) + navBarPadding.calculateBottomPadding()
                     ),
                     horizontalArrangement = Arrangement.spacedBy(10.dp),
                     verticalArrangement = Arrangement.spacedBy(10.dp)
@@ -934,8 +1067,17 @@ fun GalleryScreen(
                             FolderGalleryTile(
                                 folder = folder,
                                 itemCount = itemCount,
-                                onClick = { onNavigateFolder(folder.id) },
-                                onLongClick = { inspectedFolder = folder }
+                                onClick = {
+                                    if (!isSelectionMode) {
+                                        onNavigateFolder(folder.id)
+                                    }
+                                },
+                                onLongClick = {
+                                    if (!isSelectionMode) {
+                                        inspectedFolder = folder
+                                    }
+                                },
+                                modifier = if (isSelectionMode) Modifier.alpha(0.45f) else Modifier
                             )
                         }
                     }
@@ -951,13 +1093,41 @@ fun GalleryScreen(
                             indexingProgress.progressFraction
                         } else 0f
 
+                        val isSelected = file.uri in selectedFileUris
+
                         MediaGalleryTile(
                             file = file,
                             isActivelyIndexing = isActivelyIndexing,
                             activeProgressFraction = activeFraction,
                             isQueuePaused = isQueuePaused,
-                            onClick = { onFileClick(file) },
-                            onLongClick = { inspectedFile = file },
+                            isSelectionMode = isSelectionMode,
+                            isSelected = isSelected,
+                            onClick = {
+                                if (isSelectionMode) {
+                                    selectedFileUris = if (isSelected) {
+                                        selectedFileUris - file.uri
+                                    } else {
+                                        selectedFileUris + file.uri
+                                    }
+                                } else {
+                                    onFileClick(file)
+                                }
+                            },
+                            onLongClick = {
+                                if (!isSelectionMode) {
+                                    isSelectionMode = true
+                                    selectedFileUris = setOf(file.uri)
+                                } else {
+                                    selectedFileUris = if (isSelected) {
+                                        selectedFileUris - file.uri
+                                    } else {
+                                        selectedFileUris + file.uri
+                                    }
+                                }
+                            },
+                            onMoreOptionsClick = {
+                                inspectedFile = file
+                            },
                             onCancelIndex = onCancelIndexFile?.let { { it(file) } },
                             onRetryIndex = onRetryIndexFile?.let { { it(file) } },
                             onPauseIndex = onPauseIndexing,
@@ -971,9 +1141,10 @@ fun GalleryScreen(
         // =====================================================================
         // 6. OPTION C UNIFIED BOTTOM FLOATING DOCK (Search Pill + Import Action Menu)
         // =====================================================================
-        FloatingSearchAndImportDock(
-            onSearchClick = onOpenSearch,
-            onImportClick = { showImportMenu = true },
+        AnimatedVisibility(
+            visible = !isSelectionMode,
+            enter = fadeIn() + slideInVertically { it },
+            exit = fadeOut() + slideOutVertically { it },
             modifier = Modifier
                 .align(Alignment.BottomCenter)
                 .padding(
@@ -981,6 +1152,33 @@ fun GalleryScreen(
                     end = 20.dp,
                     bottom = 16.dp + navBarPadding.calculateBottomPadding()
                 )
+        ) {
+            FloatingSearchAndImportDock(
+                onSearchClick = onOpenSearch,
+                onImportClick = { showImportMenu = true }
+            )
+        }
+
+        // =====================================================================
+        // 7. SPEED-DIAL FLOATING ACTION MENU FROM ADD FAB
+        // =====================================================================
+        ImportOptionsMenu(
+            expanded = showImportMenu,
+            onDismiss = { showImportMenu = false },
+            onImportFiles = {
+                showImportMenu = false
+                onImportFiles()
+            },
+            onImportFolder = {
+                showImportMenu = false
+                onImportFolder()
+            },
+            onCreateFolder = {
+                showImportMenu = false
+                showCreateFolderDialog = true
+            },
+            enableFolderImport = enableFolderImport,
+            bottomPadding = 16.dp + navBarPadding.calculateBottomPadding()
         )
     }
 }
@@ -1097,6 +1295,7 @@ private fun EmptyGalleryState(
         Surface(
             shape = RoundedCornerShape(24.dp),
             color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.65f),
+            contentColor = MaterialTheme.colorScheme.onSurfaceVariant,
             modifier = Modifier.fillMaxWidth()
         ) {
             Column(
@@ -1136,6 +1335,7 @@ private fun EmptyGalleryState(
                 Text(
                     text = "Your Library is Empty",
                     style = MaterialTheme.typography.titleLarge,
+                    color = MaterialTheme.colorScheme.onSurface,
                     fontWeight = FontWeight.Bold,
                     textAlign = TextAlign.Center
                 )

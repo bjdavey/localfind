@@ -261,7 +261,7 @@ fun MainScreen(
             val pendingCount = store.getPendingFiles().size
             if (pendingCount > 0) {
                 if (IndexingWorker.isPaused(context)) {
-                    IndexingProgressState.setPaused(true, "Indexing paused ($pendingCount pending)")
+                    IndexingProgressState.setPaused(true, "Paused ($pendingCount pending)")
                 } else {
                     IndexingWorker.enqueue(context, replace = true)
                 }
@@ -330,6 +330,56 @@ fun MainScreen(
             Toast.makeText(
                 context,
                 "Removed ${file.displayName} from library",
+                Toast.LENGTH_SHORT
+            ).show()
+        }
+    }
+
+    /**
+     * Batch removes multiple imported files from the local library.
+     */
+    fun removeFiles(files: List<ImportedFile>) {
+        if (files.isEmpty()) return
+        scope.launch {
+            val count = files.size
+            status = "Removing $count file(s)..."
+            withContext(Dispatchers.IO) {
+                val uris = files.map { it.uri }
+                for (file in files) {
+                    IndexingWorker.cancelFile(context, file.uri)
+                    ThumbnailHelper.evictPreview(file.uri)
+                    try {
+                        context.contentResolver.releasePersistableUriPermission(
+                            file.uri.toUri(),
+                            Intent.FLAG_GRANT_READ_URI_PERMISSION
+                        )
+                    } catch (_: Exception) {}
+                }
+
+                val fileStore = FileStore.getInstance(context)
+                fileStore.deleteFiles(uris)
+                val updatedFiles = fileStore.getAll()
+
+                EngineManager.withStore(context) { store ->
+                    for (uri in uris) {
+                        try {
+                            store.deleteByFileUri(uri)
+                        } catch (_: Exception) {}
+                    }
+                }
+
+                withContext(Dispatchers.Main) {
+                    importedFiles = updatedFiles
+                    val uriSet = uris.toSet()
+                    searchResults = searchResults.filter { it.fileUri !in uriSet }
+                }
+            }
+
+            refreshIndexCount()
+            status = "Removed $count file(s)"
+            Toast.makeText(
+                context,
+                "Removed $count file(s) from library",
                 Toast.LENGTH_SHORT
             ).show()
         }
@@ -434,7 +484,7 @@ fun MainScreen(
                 if (supportedFiles.isNotEmpty()) {
                     if (IndexingWorker.isPaused(context)) {
                         val pendingCount = withContext(Dispatchers.IO) { FileStore.getInstance(context).getPendingFiles().size }
-                        IndexingProgressState.setPaused(true, "Indexing paused ($pendingCount pending)")
+                        IndexingProgressState.setPaused(true, "Paused ($pendingCount pending)")
                     } else {
                         IndexingWorker.enqueue(context)
                     }
@@ -470,7 +520,7 @@ fun MainScreen(
                 if (result.importedFiles.isNotEmpty()) {
                     if (IndexingWorker.isPaused(context)) {
                         val pendingCount = withContext(Dispatchers.IO) { FileStore.getInstance(context).getPendingFiles().size }
-                        IndexingProgressState.setPaused(true, "Indexing paused ($pendingCount pending)")
+                        IndexingProgressState.setPaused(true, "Paused ($pendingCount pending)")
                     } else {
                         IndexingWorker.enqueue(context)
                     }
@@ -556,6 +606,19 @@ fun MainScreen(
             val store = FileStore.getInstance(context)
             store.updateFileFolder(file.uri, targetFolderId)
             reloadFiles()
+        }
+    }
+
+    fun moveFilesToFolder(files: List<ImportedFile>, targetFolderId: String?) {
+        if (files.isEmpty()) return
+        scope.launch(Dispatchers.IO) {
+            val store = FileStore.getInstance(context)
+            store.updateFilesFolder(files.map { it.uri }, targetFolderId)
+            reloadFiles()
+            withContext(Dispatchers.Main) {
+                val targetName = if (targetFolderId == null) "Library Root" else folders.firstOrNull { it.id == targetFolderId }?.name ?: "folder"
+                Toast.makeText(context, "Moved ${files.size} file(s) to $targetName", Toast.LENGTH_SHORT).show()
+            }
         }
     }
 
@@ -646,6 +709,8 @@ fun MainScreen(
             onImportFolder = { folderPickerLauncher.launch(null) },
             enableFolderImport = settings.enableFolderImport,
             onMoveFileToFolder = { file, targetFolderId -> moveFileToFolder(file, targetFolderId) },
+            onMoveMultipleFiles = { files, targetFolderId -> moveFilesToFolder(files, targetFolderId) },
+            onDeleteMultipleFiles = { files -> removeFiles(files) },
             gridState = galleryGridState,
             onRetryLoadModel = { retryLoadModel() },
             onOpenSearch = {
@@ -687,7 +752,7 @@ fun MainScreen(
                 scope.launch(Dispatchers.IO) {
                     IndexingWorker.pause(context)
                     withContext(Dispatchers.Main) {
-                        Toast.makeText(context, "Indexing paused", Toast.LENGTH_SHORT).show()
+                        Toast.makeText(context, "Paused", Toast.LENGTH_SHORT).show()
                     }
                     reloadFiles()
                 }
@@ -697,7 +762,7 @@ fun MainScreen(
                     status = "Resuming..."
                     IndexingWorker.resume(context)
                     withContext(Dispatchers.Main) {
-                        Toast.makeText(context, "Indexing resumed", Toast.LENGTH_SHORT).show()
+                        Toast.makeText(context, "Resumed", Toast.LENGTH_SHORT).show()
                     }
                     reloadFiles()
                 }
@@ -707,7 +772,7 @@ fun MainScreen(
                     IndexingWorker.cancel(context)
                     withContext(Dispatchers.Main) {
                         status = "Ready"
-                        Toast.makeText(context, "Indexing cancelled", Toast.LENGTH_SHORT).show()
+                        Toast.makeText(context, "Analysis cancelled", Toast.LENGTH_SHORT).show()
                     }
                     reloadFiles()
                 }

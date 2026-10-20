@@ -420,6 +420,7 @@ fun SearchScreen(
                         Text(
                             text = "Search by meaning",
                             style = MaterialTheme.typography.titleLarge,
+                            color = MaterialTheme.colorScheme.onSurface,
                             fontWeight = FontWeight.Bold,
                             textAlign = TextAlign.Center
                         )

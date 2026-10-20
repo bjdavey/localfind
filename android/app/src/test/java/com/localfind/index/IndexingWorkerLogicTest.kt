@@ -403,11 +403,11 @@ class IndexingWorkerLogicTest {
         assertFalse(IndexingProgressState.progress.value.isPaused)
 
         // Set paused
-        IndexingProgressState.setPaused(isPaused = true, message = "Indexing paused (3 pending)")
+        IndexingProgressState.setPaused(isPaused = true, message = "Paused (3 pending)")
         val paused = IndexingProgressState.progress.value
         assertFalse(paused.isIndexing)
         assertTrue(paused.isPaused)
-        assertEquals("Indexing paused (3 pending)", paused.message)
+        assertEquals("Paused (3 pending)", paused.message)
 
         // Update when resuming
         IndexingProgressState.update(
@@ -419,13 +419,13 @@ class IndexingWorkerLogicTest {
             currentChunk = 0,
             totalChunks = 10,
             progressFraction = 0f,
-            message = "Indexing 1/3: resume.pdf (0%)",
+            message = "Analyzing 1/3: resume.pdf (0%)",
             isPaused = false
         )
         val resumed = IndexingProgressState.progress.value
         assertTrue(resumed.isIndexing)
         assertFalse(resumed.isPaused)
-        assertEquals("Indexing 1/3: resume.pdf (0%)", resumed.message)
+        assertEquals("Analyzing 1/3: resume.pdf (0%)", resumed.message)
 
         // Reset clears paused flag
         IndexingProgressState.reset()
@@ -486,7 +486,7 @@ class IndexingWorkerLogicTest {
                 isProgressIndexing = false,
                 isPaused = true,
                 hasPending = true,
-                statusMessage = "Indexing paused"
+                statusMessage = "Paused"
             )
         )
 
