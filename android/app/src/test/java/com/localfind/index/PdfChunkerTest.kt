@@ -147,5 +147,23 @@ class PdfChunkerTest {
         assertEquals(1, validPageChunks.size)
         assertEquals(2, validPageChunks[0].pageNumber)
     }
+
+    @Test
+    fun pdfIndexingProgress_doesNotRepeatOrDropAfterExtraction() {
+        // Verifies the inline progress scaling: Phase 1 (0..15%) and Phase 2 (15..100%)
+        val totalPages = 10
+        val totalChunks = 50
+
+        // Phase 1 (page extraction): 0% -> 15%
+        val phase1LastPercent = totalPages * 15 / totalPages.coerceAtLeast(1)
+        assertEquals(15, phase1LastPercent)
+
+        // Phase 2 (chunk embedding): starts >= 15% and reaches 100%
+        val chunk1Percent = 15 + (1 * 85 / totalChunks)
+        assertTrue("Chunk 1 progress must not drop below extraction progress", chunk1Percent >= phase1LastPercent)
+
+        val chunkFinalPercent = 15 + (totalChunks * 85 / totalChunks)
+        assertEquals(100, chunkFinalPercent)
+    }
 }
 

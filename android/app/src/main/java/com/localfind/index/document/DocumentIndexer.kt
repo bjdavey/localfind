@@ -123,8 +123,8 @@ fun Indexer.indexPdfFile(
                     if (isCancelled()) {
                         return IndexResult(file.uri, 0, false, "Indexing cancelled")
                     }
-                    // Phase 1 (Text extraction): Advance smoothly from 0% to ~15% of overall work
-                    onProgress?.invoke(pageNum, totalPages.coerceAtLeast(1) * 7)
+                    // Phase 1 (Text extraction): 0% to 15%
+                    onProgress?.invoke(pageNum * 15 / totalPages.coerceAtLeast(1), 100)
                     stripper.startPage = pageNum
                     stripper.endPage = pageNum
                     val pageText = stripper.getText(document)
@@ -142,6 +142,11 @@ fun Indexer.indexPdfFile(
         return IndexResult(file.uri, 0, false, "PDF extraction failed: ${e.message}")
     }
 
+    // Phase 2 (Embedding & persistence): 15% to 100%
+    val chunkProgress: ((Int, Int) -> Unit)? = onProgress?.let { cb ->
+        { cur, tot -> cb(15 + (if (tot > 0) cur * 85 / tot else 85), 100) }
+    }
+
     return indexChunkedItems(
         file = file,
         type = "pdf",
@@ -149,7 +154,7 @@ fun Indexer.indexPdfFile(
         batchSize = 10,
         deleteOnEmpty = true,
         isCancelled = isCancelled,
-        onProgress = onProgress
+        onProgress = chunkProgress
     ) { chunk ->
         ChunkEmbeddingData(
             snippetText = chunk.text,

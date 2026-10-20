@@ -66,6 +66,7 @@
 - Publish
 
 ## Bugs / Issues
+- [ ] Anything under search view is still clickable
 - [x] Fix app crash due to duplicate keys in search results list (LazyColumn crash on device)
 - [x] Can not cancel stuck sync file
 - [x] Should not allow import files other than supported that has builtin viewer
@@ -77,6 +78,7 @@
 - [x] Stuck after PDF indexing 
 - [x] Check if original file is deleted when opening
 - [x] Search after filter, not filter search results
+- [x] Fix PDF indexing progress bar repeating after 15%
 
 
 ## Backlog
