@@ -181,7 +181,7 @@ fun SettingsScreen(
             }
 
             SettingSliderRow(
-                title = "Maximum search results (Top-K)",
+                title = "Maximum search results",
                 subtitle = "${settings.topK} results",
                 description = "Maximum number of ranked results returned"
             ) {

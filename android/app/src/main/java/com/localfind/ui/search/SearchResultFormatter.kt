@@ -22,7 +22,7 @@ object SearchResultFormatter {
      */
     fun formatLocation(fileType: String, location: Long): String {
         return when (fileType.lowercase(Locale.ROOT)) {
-            "text" -> "Offset $location"
+            "text" -> "Matching passage"
             "pdf" -> "Page $location"
             "image" -> "Full image"
             "audio", "video" -> formatTimeMs(location)

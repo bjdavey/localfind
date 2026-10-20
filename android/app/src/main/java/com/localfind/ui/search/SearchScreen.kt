@@ -313,7 +313,7 @@ fun SearchScreen(
                     ) {
                         CircularProgressIndicator()
                         Text(
-                            text = "Embedding query & searching across $indexedChunksCount chunks...",
+                            text = "Searching your files offline...",
                             style = MaterialTheme.typography.bodyMedium,
                             color = MaterialTheme.colorScheme.onSurfaceVariant
                         )
@@ -407,7 +407,7 @@ fun SearchScreen(
                             fontSize = 44.sp
                         )
                         Text(
-                            text = "Multimodal Semantic Search",
+                            text = "Search by meaning",
                             style = MaterialTheme.typography.titleLarge,
                             fontWeight = FontWeight.Bold,
                             textAlign = TextAlign.Center
@@ -453,7 +453,7 @@ fun SearchScreen(
 
                         Text(
                             text = if (indexedChunksCount > 0) {
-                                "$indexedChunksCount multimodal chunks indexed & ready (100% offline)"
+                                "All files indexed & ready (100% offline)"
                             } else {
                                 "No files indexed yet — return to Gallery and tap + to import files."
                             },

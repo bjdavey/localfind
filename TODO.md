@@ -50,7 +50,7 @@
 
 
 ## Milestone 5: First release
-- Simplify UI for non-tech people and keep advanced mode option in settings
+- [x] Simplify UI for non-tech people and keep advanced mode option in settings
 - Search by image (visual similarity query)
 - Support GIF
 - Better PDF viewer
@@ -61,6 +61,7 @@
 - Multi select
 - Button to retry All for failed or in queue 
 - Good test samples
+- What else?
 - Final E2E test with edge cases
 - Publish
 

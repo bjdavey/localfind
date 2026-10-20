@@ -159,7 +159,7 @@ fun TextViewerScreen(
                         )
                         val subtitle = when {
                             highlightRange != null || params.targetOffset > 0 ->
-                                "Line ${targetLineIndex + 1} • Passage at offset ${params.targetOffset}"
+                                "Line ${targetLineIndex + 1} • Matching passage"
                             lines.isNotEmpty() ->
                                 "${lines.size} lines • Full document"
                             else -> "Document"

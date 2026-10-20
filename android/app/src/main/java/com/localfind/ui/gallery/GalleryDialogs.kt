@@ -64,33 +64,27 @@ internal fun FileDetailsDialog(
                     text = "Size: ${formatFileSize(file.size)}",
                     style = MaterialTheme.typography.bodyMedium
                 )
-                if (!file.mimeType.isNullOrBlank()) {
-                    Text(
-                        text = "Type: ${file.mimeType}",
-                        style = MaterialTheme.typography.bodyMedium
-                    )
+                val friendlyType = when {
+                    file.displayName.endsWith(".pdf", ignoreCase = true) || file.mimeType == "application/pdf" -> "PDF Document"
+                    file.displayName.endsWith(".txt", ignoreCase = true) -> "Text Document (.txt)"
+                    file.displayName.endsWith(".md", ignoreCase = true) -> "Markdown Document (.md)"
+                    ThumbnailHelper.categorizeFile(file.displayName, file.mimeType) == GalleryCategory.PHOTOS -> "Photo"
+                    ThumbnailHelper.categorizeFile(file.displayName, file.mimeType) == GalleryCategory.VIDEOS -> "Video"
+                    ThumbnailHelper.categorizeFile(file.displayName, file.mimeType) == GalleryCategory.AUDIO -> "Audio"
+                    else -> file.mimeType ?: "File"
                 }
                 Text(
-                    text = "Category: ${ThumbnailHelper.categorizeFile(file.displayName, file.mimeType).label}",
+                    text = "Type: $friendlyType",
                     style = MaterialTheme.typography.bodyMedium
                 )
                 val statusText = when (file.indexingStatus) {
-                    IndexingStatus.INDEXED -> "Indexed (${file.chunksCount} chunks)"
-                    IndexingStatus.INDEXING ->
-                        if (file.chunksCount > 0) "Indexing (${file.chunksCount} chunks done)..."
-                        else "Indexing in background..."
-                    IndexingStatus.PENDING ->
-                        if (isQueuePaused) {
-                            if (file.chunksCount > 0) "Paused (${file.chunksCount} chunks done)"
-                            else "Indexing paused in queue"
-                        } else {
-                            if (file.chunksCount > 0) "Waiting to resume (${file.chunksCount} chunks done)"
-                            else "Waiting in background queue"
-                        }
-                    IndexingStatus.FAILED -> "Indexing failed / cancelled"
+                    IndexingStatus.INDEXED -> "Ready to search"
+                    IndexingStatus.INDEXING -> "Indexing..."
+                    IndexingStatus.PENDING -> if (isQueuePaused) "Paused in queue" else "Waiting in queue"
+                    IndexingStatus.FAILED -> "Indexing failed"
                 }
                 Text(
-                    text = "Index Status: $statusText",
+                    text = "Status: $statusText",
                     style = MaterialTheme.typography.bodyMedium,
                     fontWeight = FontWeight.SemiBold,
                     color = when (file.indexingStatus) {

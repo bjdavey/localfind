@@ -317,8 +317,9 @@ fun GalleryScreen(
                         fontWeight = FontWeight.Bold,
                         color = MaterialTheme.colorScheme.onBackground
                     )
+                    val fileCountLabel = if (importedFiles.size == 1) "1 file" else "${importedFiles.size} files"
                     Text(
-                        text = "${importedFiles.size} files • $indexedChunksCount indexed chunks • 100% offline",
+                        text = "$fileCountLabel • 100% offline",
                         style = MaterialTheme.typography.labelMedium,
                         color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
@@ -929,13 +930,13 @@ private fun EmptyGalleryState(
                     fontSize = 32.sp
                 )
                 Text(
-                    text = "Your Visual Library is Empty",
+                    text = "Your Library is Empty",
                     style = MaterialTheme.typography.titleLarge,
                     fontWeight = FontWeight.Bold,
                     textAlign = TextAlign.Center
                 )
                 Text(
-                    text = "Import photos, videos, PDFs, text documents, or audio clips to browse and search them by meaning — 100% offline on your device.",
+                    text = "Import videos, photos, PDFs, text documents, or audio clips to browse and search inside them by meaning — 100% offline on your device.",
                     style = MaterialTheme.typography.bodyMedium,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                     textAlign = TextAlign.Center

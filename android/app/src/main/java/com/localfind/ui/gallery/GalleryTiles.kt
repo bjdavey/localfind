@@ -438,8 +438,6 @@ fun MediaGalleryTile(
                             else "In queue • ${formatFileSize(file.size)}"
                         file.indexingStatus == IndexingStatus.FAILED ->
                             "Indexing failed • ${formatFileSize(file.size)}"
-                        file.chunksCount > 0 ->
-                            "${formatFileSize(file.size)} • ${file.chunksCount} chunks"
                         else ->
                             formatFileSize(file.size)
                     }

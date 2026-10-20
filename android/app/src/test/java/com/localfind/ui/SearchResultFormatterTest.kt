@@ -12,9 +12,9 @@ import org.junit.Test
 class SearchResultFormatterTest {
 
     @Test
-    fun formatLocationTextReturnsOffset() {
-        assertEquals("Offset 150", SearchResultFormatter.formatLocation("text", 150L))
-        assertEquals("Offset 0", SearchResultFormatter.formatLocation("TEXT", 0L))
+    fun formatLocationTextReturnsMatchingPassage() {
+        assertEquals("Matching passage", SearchResultFormatter.formatLocation("text", 150L))
+        assertEquals("Matching passage", SearchResultFormatter.formatLocation("TEXT", 0L))
     }
 
     @Test
