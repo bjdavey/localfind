@@ -39,6 +39,7 @@ import androidx.media3.common.MediaItem
 import androidx.media3.exoplayer.ExoPlayer
 import androidx.media3.ui.PlayerView
 import com.localfind.R
+import com.localfind.data.FileOpener
 import com.localfind.index.Indexer
 import com.localfind.ui.search.SearchResultFormatter
 
@@ -124,16 +125,13 @@ fun MediaPlayerScreen(
                             maxLines = 1,
                             overflow = TextOverflow.Ellipsis
                         )
-                        val subtitle = if (params.startMs > 0L) {
-                            "From ${SearchResultFormatter.formatTimeMs(params.startMs)}"
-                        } else {
-                            "Full playback • 00:00"
+                        if (params.startMs > 0L) {
+                            Text(
+                                text = "From ${SearchResultFormatter.formatTimeMs(params.startMs)}",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = Color(0xCCFFFFFF)
+                            )
                         }
-                        Text(
-                            text = subtitle,
-                            style = MaterialTheme.typography.bodySmall,
-                            color = Color(0xCCFFFFFF)
-                        )
                     }
                 },
                 navigationIcon = {
@@ -154,6 +152,16 @@ fun MediaPlayerScreen(
                                 tint = Color.White
                             )
                         }
+                    }
+                    IconButton(onClick = {
+                        player.pause()
+                        FileOpener.openInExternalApp(context, params.uri, params.fileName)
+                    }) {
+                        Icon(
+                            painter = painterResource(R.drawable.ic_open_in_new),
+                            contentDescription = "Open in external player or gallery",
+                            tint = Color.White
+                        )
                     }
                 }
             )

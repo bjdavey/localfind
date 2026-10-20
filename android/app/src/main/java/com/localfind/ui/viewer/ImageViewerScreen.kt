@@ -43,6 +43,7 @@ import coil.compose.AsyncImage
 import coil.compose.AsyncImagePainter
 import coil.request.ImageRequest
 import com.localfind.R
+import com.localfind.data.FileOpener
 import kotlinx.coroutines.delay
 
 /**
@@ -122,16 +123,6 @@ fun ImageViewerScreen(
                             maxLines = 1,
                             overflow = TextOverflow.Ellipsis
                         )
-                        val subtitle = if (scale > 1.05f) {
-                            "Zoom: ${(scale * 100).toInt()}% • Double-tap to reset"
-                        } else {
-                            "Full image • Pinch or double-tap to zoom"
-                        }
-                        Text(
-                            text = subtitle,
-                            style = MaterialTheme.typography.bodySmall,
-                            color = Color(0xCCFFFFFF)
-                        )
                     }
                 },
                 navigationIcon = {
@@ -155,6 +146,15 @@ fun ImageViewerScreen(
                                 tint = Color.White
                             )
                         }
+                    }
+                    IconButton(onClick = {
+                        FileOpener.openInExternalApp(context, params.uri, params.fileName)
+                    }) {
+                        Icon(
+                            painter = painterResource(R.drawable.ic_open_in_new),
+                            contentDescription = "Open in phone gallery or app",
+                            tint = Color.White
+                        )
                     }
                 }
             )

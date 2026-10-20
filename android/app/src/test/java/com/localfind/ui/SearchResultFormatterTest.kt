@@ -24,8 +24,8 @@ class SearchResultFormatterTest {
     }
 
     @Test
-    fun formatLocationImageReturnsFullImage() {
-        assertEquals("Full image", SearchResultFormatter.formatLocation("image", 0L))
+    fun formatLocationImageReturnsEmpty() {
+        assertEquals("", SearchResultFormatter.formatLocation("image", 0L))
     }
 
     @Test

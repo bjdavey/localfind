@@ -54,14 +54,15 @@ import com.localfind.data.IndexingStatus
 import com.localfind.data.formatFileSize
 
 /**
- * Dialog displaying file metadata and providing quick actions ("Open", "Search in File", "Move", "Remove from Library").
+ * Dialog displaying file metadata and providing quick actions ("Open", "Open with/Gallery", "Search in File", "Move", "Remove from Library").
  */
 @Composable
 internal fun FileDetailsDialog(
     file: ImportedFile,
     isQueuePaused: Boolean = false,
     onDismiss: () -> Unit,
-    onOpen: () -> Unit,
+    onOpen: (() -> Unit)? = null,
+    onOpenExternal: (() -> Unit)? = null,
     onSearchInFile: (() -> Unit)? = null,
     onMoveToFolder: (() -> Unit)? = null,
     onDelete: () -> Unit,
@@ -71,116 +72,289 @@ internal fun FileDetailsDialog(
     AlertDialog(
         onDismissRequest = onDismiss,
         title = {
-            Text(
-                text = file.displayName,
-                maxLines = 2,
-                overflow = TextOverflow.Ellipsis,
-                fontWeight = FontWeight.Bold
-            )
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(12.dp)
+            ) {
+                val category = ThumbnailHelper.categorizeFile(file.displayName, file.mimeType)
+                val iconRes = when (category) {
+                    GalleryCategory.PHOTOS -> R.drawable.ic_image
+                    GalleryCategory.VIDEOS -> R.drawable.ic_videocam
+                    GalleryCategory.AUDIO -> R.drawable.ic_audiotrack
+                    GalleryCategory.PDFS -> R.drawable.ic_picture_as_pdf
+                    GalleryCategory.TEXT -> R.drawable.ic_description
+                    else -> R.drawable.ic_description
+                }
+                Surface(
+                    shape = RoundedCornerShape(10.dp),
+                    color = MaterialTheme.colorScheme.primaryContainer,
+                    modifier = Modifier.size(40.dp)
+                ) {
+                    Box(contentAlignment = Alignment.Center) {
+                        Icon(
+                            painter = painterResource(iconRes),
+                            contentDescription = null,
+                            tint = MaterialTheme.colorScheme.primary,
+                            modifier = Modifier.size(22.dp)
+                        )
+                    }
+                }
+                Text(
+                    text = file.displayName,
+                    maxLines = 2,
+                    overflow = TextOverflow.Ellipsis,
+                    fontWeight = FontWeight.Bold,
+                    style = MaterialTheme.typography.titleMedium
+                )
+            }
         },
         text = {
-            Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
-                Text(
-                    text = "Size: ${formatFileSize(file.size)}",
-                    style = MaterialTheme.typography.bodyMedium
-                )
-                val friendlyType = when {
-                    file.displayName.endsWith(".pdf", ignoreCase = true) || file.mimeType == "application/pdf" -> "PDF Document"
-                    file.displayName.endsWith(".txt", ignoreCase = true) -> "Text Document (.txt)"
-                    file.displayName.endsWith(".md", ignoreCase = true) -> "Markdown Document (.md)"
-                    ThumbnailHelper.categorizeFile(file.displayName, file.mimeType) == GalleryCategory.PHOTOS -> "Photo"
-                    ThumbnailHelper.categorizeFile(file.displayName, file.mimeType) == GalleryCategory.VIDEOS -> "Video"
-                    ThumbnailHelper.categorizeFile(file.displayName, file.mimeType) == GalleryCategory.AUDIO -> "Audio"
-                    else -> file.mimeType ?: "File"
-                }
-                Text(
-                    text = "Type: $friendlyType",
-                    style = MaterialTheme.typography.bodyMedium
-                )
-                val statusText = when (file.indexingStatus) {
-                    IndexingStatus.INDEXED -> "Ready"
-                    IndexingStatus.INDEXING -> "Analyzing..."
-                    IndexingStatus.PENDING -> if (isQueuePaused) "Paused" else "Pending"
-                    IndexingStatus.FAILED -> "Analysis failed"
-                }
-                Text(
-                    text = "Status: $statusText",
-                    style = MaterialTheme.typography.bodyMedium,
-                    fontWeight = FontWeight.SemiBold,
-                    color = when (file.indexingStatus) {
-                        IndexingStatus.FAILED -> MaterialTheme.colorScheme.error
-                        IndexingStatus.INDEXED -> MaterialTheme.colorScheme.primary
-                        else -> MaterialTheme.colorScheme.onSurfaceVariant
+            Column(
+                modifier = Modifier.fillMaxWidth(),
+                verticalArrangement = Arrangement.spacedBy(10.dp)
+            ) {
+                // Metadata Card
+                Surface(
+                    shape = RoundedCornerShape(10.dp),
+                    color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.6f),
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Column(
+                        modifier = Modifier.padding(horizontal = 12.dp, vertical = 10.dp),
+                        verticalArrangement = Arrangement.spacedBy(6.dp)
+                    ) {
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Text(
+                                text = "Size",
+                                style = MaterialTheme.typography.bodyMedium,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                            Text(
+                                text = formatFileSize(file.size),
+                                style = MaterialTheme.typography.bodyMedium,
+                                fontWeight = FontWeight.SemiBold
+                            )
+                        }
+
+                        val friendlyType = when {
+                            file.displayName.endsWith(".pdf", ignoreCase = true) || file.mimeType == "application/pdf" -> "PDF Document"
+                            file.displayName.endsWith(".txt", ignoreCase = true) -> "Text Document (.txt)"
+                            file.displayName.endsWith(".md", ignoreCase = true) -> "Markdown Document (.md)"
+                            ThumbnailHelper.categorizeFile(file.displayName, file.mimeType) == GalleryCategory.PHOTOS -> "Photo"
+                            ThumbnailHelper.categorizeFile(file.displayName, file.mimeType) == GalleryCategory.VIDEOS -> "Video"
+                            ThumbnailHelper.categorizeFile(file.displayName, file.mimeType) == GalleryCategory.AUDIO -> "Audio"
+                            else -> file.mimeType ?: "File"
+                        }
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Text(
+                                text = "Type",
+                                style = MaterialTheme.typography.bodyMedium,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                            Text(
+                                text = friendlyType,
+                                style = MaterialTheme.typography.bodyMedium,
+                                fontWeight = FontWeight.SemiBold
+                            )
+                        }
+
+                        val statusText = when (file.indexingStatus) {
+                            IndexingStatus.INDEXED -> "Ready"
+                            IndexingStatus.INDEXING -> "Analyzing..."
+                            IndexingStatus.PENDING -> if (isQueuePaused) "Paused" else "Pending"
+                            IndexingStatus.FAILED -> "Analysis failed"
+                        }
+                        val statusColor = when (file.indexingStatus) {
+                            IndexingStatus.FAILED -> MaterialTheme.colorScheme.error
+                            IndexingStatus.INDEXED -> MaterialTheme.colorScheme.primary
+                            else -> MaterialTheme.colorScheme.onSurfaceVariant
+                        }
+                        val statusIcon = when (file.indexingStatus) {
+                            IndexingStatus.INDEXED -> R.drawable.ic_check
+                            IndexingStatus.FAILED -> R.drawable.ic_warning
+                            IndexingStatus.INDEXING -> R.drawable.ic_auto_awesome
+                            IndexingStatus.PENDING -> R.drawable.ic_hourglass_empty
+                        }
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Text(
+                                text = "Status",
+                                style = MaterialTheme.typography.bodyMedium,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                            Row(
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.spacedBy(4.dp)
+                            ) {
+                                Icon(
+                                    painter = painterResource(statusIcon),
+                                    contentDescription = null,
+                                    tint = statusColor,
+                                    modifier = Modifier.size(16.dp)
+                                )
+                                Text(
+                                    text = statusText,
+                                    style = MaterialTheme.typography.bodyMedium,
+                                    fontWeight = FontWeight.SemiBold,
+                                    color = statusColor
+                                )
+                            }
+                        }
                     }
-                )
+                }
+
+                // Retry Button if indexing failed
+                if (file.indexingStatus == IndexingStatus.FAILED && onRetry != null) {
+                    Button(
+                        onClick = onRetry,
+                        modifier = Modifier.fillMaxWidth(),
+                        colors = ButtonDefaults.buttonColors(
+                            containerColor = MaterialTheme.colorScheme.errorContainer,
+                            contentColor = MaterialTheme.colorScheme.onErrorContainer
+                        )
+                    ) {
+                        Icon(
+                            painter = painterResource(R.drawable.ic_refresh),
+                            contentDescription = null,
+                            modifier = Modifier.size(18.dp)
+                        )
+                        Spacer(modifier = Modifier.width(8.dp))
+                        Text("Try again", fontWeight = FontWeight.SemiBold)
+                    }
+                }
+
+                // Cancel Button if currently indexing or queued
+                if ((file.indexingStatus == IndexingStatus.INDEXING || file.indexingStatus == IndexingStatus.PENDING) && onCancelSync != null) {
+                    FilledTonalButton(
+                        onClick = onCancelSync,
+                        modifier = Modifier.fillMaxWidth(),
+                        colors = ButtonDefaults.filledTonalButtonColors(
+                            containerColor = MaterialTheme.colorScheme.errorContainer.copy(alpha = 0.5f),
+                            contentColor = MaterialTheme.colorScheme.error
+                        )
+                    ) {
+                        Icon(
+                            painter = painterResource(R.drawable.ic_close),
+                            contentDescription = null,
+                            modifier = Modifier.size(18.dp)
+                        )
+                        Spacer(modifier = Modifier.width(8.dp))
+                        Text("Cancel indexing", fontWeight = FontWeight.SemiBold)
+                    }
+                }
+
+                // Open in phone gallery or native app ("Open in Gallery" or "Open original file")
+                if (onOpenExternal != null) {
+                    val category = ThumbnailHelper.categorizeFile(file.displayName, file.mimeType)
+                    val externalLabel = when (category) {
+                        GalleryCategory.PHOTOS -> "Open in Gallery"
+                        else -> "Open original file"
+                    }
+                    Button(
+                        onClick = onOpenExternal,
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        Icon(
+                            painter = painterResource(R.drawable.ic_open_in_new),
+                            contentDescription = null,
+                            modifier = Modifier.size(18.dp)
+                        )
+                        Spacer(modifier = Modifier.width(8.dp))
+                        Text(externalLabel, fontWeight = FontWeight.SemiBold)
+                    }
+                }
+
+                // Secondary actions: Search in File and Move to Folder
+                if (file.indexingStatus == IndexingStatus.INDEXED && onSearchInFile != null && onMoveToFolder != null) {
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        FilledTonalButton(
+                            onClick = onSearchInFile,
+                            modifier = Modifier.weight(1f)
+                        ) {
+                            Icon(
+                                painter = painterResource(R.drawable.ic_search),
+                                contentDescription = null,
+                                modifier = Modifier.size(18.dp)
+                            )
+                            Spacer(modifier = Modifier.width(6.dp))
+                            Text("Search", maxLines = 1)
+                        }
+                        FilledTonalButton(
+                            onClick = onMoveToFolder,
+                            modifier = Modifier.weight(1f)
+                        ) {
+                            Icon(
+                                painter = painterResource(R.drawable.ic_drive_file_move),
+                                contentDescription = null,
+                                modifier = Modifier.size(18.dp)
+                            )
+                            Spacer(modifier = Modifier.width(6.dp))
+                            Text("Move", maxLines = 1)
+                        }
+                    }
+                } else {
+                    if (file.indexingStatus == IndexingStatus.INDEXED && onSearchInFile != null) {
+                        FilledTonalButton(
+                            onClick = onSearchInFile,
+                            modifier = Modifier.fillMaxWidth()
+                        ) {
+                            Icon(
+                                painter = painterResource(R.drawable.ic_search),
+                                contentDescription = null,
+                                modifier = Modifier.size(18.dp)
+                            )
+                            Spacer(modifier = Modifier.width(6.dp))
+                            Text("Search in file")
+                        }
+                    }
+                    if (onMoveToFolder != null) {
+                        FilledTonalButton(
+                            onClick = onMoveToFolder,
+                            modifier = Modifier.fillMaxWidth()
+                        ) {
+                            Icon(
+                                painter = painterResource(R.drawable.ic_drive_file_move),
+                                contentDescription = null,
+                                modifier = Modifier.size(18.dp)
+                            )
+                            Spacer(modifier = Modifier.width(6.dp))
+                            Text("Move to folder")
+                        }
+                    }
+                }
             }
         },
         confirmButton = {
-            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                if (file.indexingStatus == IndexingStatus.FAILED && onRetry != null) {
-                    Button(
-                        onClick = onRetry
-                    ) {
-                        Text("Try again")
-                    }
-                }
-                if ((file.indexingStatus == IndexingStatus.INDEXING || file.indexingStatus == IndexingStatus.PENDING) && onCancelSync != null) {
-                    FilledTonalButton(
-                        onClick = onCancelSync
-                    ) {
-                        Text("Cancel Sync", color = MaterialTheme.colorScheme.error)
-                    }
-                }
-                if (onMoveToFolder != null) {
-                    FilledTonalButton(onClick = onMoveToFolder) {
-                        Icon(
-                            painter = painterResource(R.drawable.ic_drive_file_move),
-                            contentDescription = null,
-                            modifier = Modifier.size(16.dp)
-                        )
-                        Spacer(modifier = Modifier.width(4.dp))
-                        Text("Move")
-                    }
-                }
-                if (file.indexingStatus == IndexingStatus.INDEXED && onSearchInFile != null) {
-                    FilledTonalButton(onClick = onSearchInFile) {
-                        Icon(
-                            painter = painterResource(R.drawable.ic_search),
-                            contentDescription = null,
-                            modifier = Modifier.size(16.dp)
-                        )
-                        Spacer(modifier = Modifier.width(4.dp))
-                        Text("Search")
-                    }
-                }
-                Button(onClick = onOpen) {
-                    Icon(
-                        painter = painterResource(R.drawable.ic_visibility),
-                        contentDescription = null,
-                        modifier = Modifier.size(16.dp)
-                    )
-                    Spacer(modifier = Modifier.width(4.dp))
-                    Text("Open")
-                }
+            TextButton(onClick = onDismiss) {
+                Text("Close")
             }
         },
         dismissButton = {
-            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                TextButton(
-                    onClick = onDelete
-                ) {
-                    Icon(
-                        painter = painterResource(R.drawable.ic_delete),
-                        contentDescription = null,
-                        tint = MaterialTheme.colorScheme.error,
-                        modifier = Modifier.size(16.dp)
-                    )
-                    Spacer(modifier = Modifier.width(4.dp))
-                    Text("Remove", color = MaterialTheme.colorScheme.error)
-                }
-                TextButton(onClick = onDismiss) {
-                    Text("Close")
-                }
+            TextButton(
+                onClick = onDelete
+            ) {
+                Icon(
+                    painter = painterResource(R.drawable.ic_delete),
+                    contentDescription = null,
+                    tint = MaterialTheme.colorScheme.error,
+                    modifier = Modifier.size(18.dp)
+                )
+                Spacer(modifier = Modifier.width(4.dp))
+                Text("Remove", color = MaterialTheme.colorScheme.error)
             }
         }
     )

@@ -3,6 +3,7 @@ package com.localfind.ui
 import com.localfind.data.ImportedFile
 import com.localfind.ui.gallery.GalleryCategory
 import com.localfind.ui.gallery.ThumbnailHelper
+import com.localfind.ui.gallery.iconResId
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
 import org.junit.Test
@@ -115,5 +116,16 @@ class ThumbnailHelperTest {
             GalleryCategory.entries.toList(),
             ThumbnailHelper.getAvailableCategories(allTypes)
         )
+    }
+
+    @Test
+    fun `galleryCategory iconResId maps to valid Material Symbol drawables for all categories`() {
+        // Ensures all modalities map to their respective Material Symbol icon drawable
+        assertEquals(com.localfind.R.drawable.ic_grid_view, GalleryCategory.ALL.iconResId)
+        assertEquals(com.localfind.R.drawable.ic_image, GalleryCategory.PHOTOS.iconResId)
+        assertEquals(com.localfind.R.drawable.ic_videocam, GalleryCategory.VIDEOS.iconResId)
+        assertEquals(com.localfind.R.drawable.ic_picture_as_pdf, GalleryCategory.PDFS.iconResId)
+        assertEquals(com.localfind.R.drawable.ic_description, GalleryCategory.TEXT.iconResId)
+        assertEquals(com.localfind.R.drawable.ic_audiotrack, GalleryCategory.AUDIO.iconResId)
     }
 }

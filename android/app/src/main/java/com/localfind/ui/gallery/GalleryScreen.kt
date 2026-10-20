@@ -61,6 +61,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.shadow
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
@@ -69,6 +70,7 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.localfind.R
+import com.localfind.data.FileOpener
 import com.localfind.data.Folder
 import com.localfind.data.ImportedFile
 import com.localfind.data.IndexingStatus
@@ -122,6 +124,7 @@ fun GalleryScreen(
 ) {
     var selectedCategory by remember { mutableStateOf(GalleryCategory.ALL) }
     var inspectedFile by remember { mutableStateOf<ImportedFile?>(null) }
+    val context = LocalContext.current
     var showImportMenu by remember { mutableStateOf(false) }
     var showCreateFolderDialog by remember { mutableStateOf(false) }
     var inspectedFolder by remember { mutableStateOf<Folder?>(null) }
@@ -185,10 +188,10 @@ fun GalleryScreen(
             file = file,
             isQueuePaused = indexingProgress.isPaused,
             onDismiss = { inspectedFile = null },
-            onOpen = {
+            onOpenExternal = {
                 val target = file
                 inspectedFile = null
-                onFileClick(target)
+                FileOpener.openInExternalApp(context, target.uri, target.displayName, target.mimeType)
             },
             onSearchInFile = onSearchInFile?.let { searchFn ->
                 {

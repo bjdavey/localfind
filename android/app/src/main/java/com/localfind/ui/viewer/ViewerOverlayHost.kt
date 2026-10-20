@@ -20,6 +20,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.core.net.toUri
 import com.localfind.data.FileAvailability
+import com.localfind.data.FileOpener
 import com.localfind.data.ImportedFile
 import com.localfind.index.Indexer
 import com.localfind.search.SearchResult
@@ -144,20 +145,7 @@ class ViewerState {
             return
         }
 
-        try {
-            val uri = result.fileUri.toUri()
-            val intent = Intent(Intent.ACTION_VIEW).apply {
-                setDataAndType(uri, "*/*")
-                addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
-            }
-            context.startActivity(intent)
-        } catch (e: Exception) {
-            Toast.makeText(
-                context,
-                "Could not open ${result.fileName}: ${e.message}",
-                Toast.LENGTH_SHORT
-            ).show()
-        }
+        FileOpener.openInExternalApp(context, result.fileUri, result.fileName)
     }
 
     /**
@@ -224,11 +212,7 @@ class ViewerState {
             return
         }
 
-        Toast.makeText(
-            context,
-            "No builtin viewer available for ${file.displayName}",
-            Toast.LENGTH_SHORT
-        ).show()
+        FileOpener.openInExternalApp(context, file.uri, file.displayName, file.mimeType)
     }
 }
 

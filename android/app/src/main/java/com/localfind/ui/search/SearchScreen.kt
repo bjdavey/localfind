@@ -55,6 +55,7 @@ import com.localfind.R
 import com.localfind.data.ImportedFile
 import com.localfind.search.SearchResult
 import com.localfind.ui.gallery.GalleryCategory
+import com.localfind.ui.gallery.ThumbnailHelper
 import com.localfind.ui.gallery.iconResId
 
 /**
@@ -196,6 +197,11 @@ fun SearchScreen(
         // 1.5. SCOPED TARGET FILE BANNER (When searching inside a specific file)
         // =====================================================================
         if (targetFile != null) {
+            // Determine file modality to display the corresponding Material Symbol icon
+            val targetCategory = remember(targetFile) {
+                ThumbnailHelper.categorizeFile(targetFile.displayName, targetFile.mimeType)
+            }
+
             Surface(
                 modifier = Modifier
                     .fillMaxWidth()
@@ -213,8 +219,14 @@ fun SearchScreen(
                         verticalAlignment = Alignment.CenterVertically,
                         horizontalArrangement = Arrangement.spacedBy(6.dp)
                     ) {
+                        Icon(
+                            painter = painterResource(targetCategory.iconResId),
+                            contentDescription = targetCategory.label,
+                            tint = MaterialTheme.colorScheme.onSecondaryContainer,
+                            modifier = Modifier.size(18.dp)
+                        )
                         Text(
-                            text = "🎯 In:",
+                            text = "In:",
                             style = MaterialTheme.typography.labelMedium,
                             fontWeight = FontWeight.Bold,
                             color = MaterialTheme.colorScheme.onSecondaryContainer
@@ -465,9 +477,9 @@ fun SearchScreen(
 
                         Text(
                             text = if (indexedChunksCount > 0) {
-                                "All files indexed & ready (100% offline)"
+                                "All files analyzed & ready (100% offline)"
                             } else {
-                                "No files indexed yet — return to Gallery and tap + to import files."
+                                "No files analyzed yet — return to Gallery and tap + to import files."
                             },
                             style = MaterialTheme.typography.bodySmall,
                             color = MaterialTheme.colorScheme.outline,

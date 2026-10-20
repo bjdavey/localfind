@@ -45,6 +45,7 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.core.net.toUri
 import com.localfind.R
+import com.localfind.data.FileOpener
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.withContext
@@ -164,7 +165,7 @@ fun TextViewerScreen(
                             highlightRange != null || params.targetOffset > 0 ->
                                 "Line ${targetLineIndex + 1} • Matching passage"
                             lines.isNotEmpty() ->
-                                "${lines.size} lines • Full document"
+                                "${lines.size} lines"
                             else -> "Document"
                         }
                         Text(
@@ -190,6 +191,14 @@ fun TextViewerScreen(
                                 contentDescription = "Search in file"
                             )
                         }
+                    }
+                    IconButton(onClick = {
+                        FileOpener.openInExternalApp(context, params.uri, params.fileName)
+                    }) {
+                        Icon(
+                            painter = painterResource(R.drawable.ic_open_in_new),
+                            contentDescription = "Open in external text editor"
+                        )
                     }
                 }
             )

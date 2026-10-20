@@ -59,7 +59,7 @@
 - Support import by share from other apps
 - Top bar should hide on scrolling
 - Support landscape orientation in file viewer
-- Show file details and open in phone gallery or its own app
+- [x] Show file details and open in phone gallery or its own app
 - [x] Multi select
 - Good test samples
 - What else?

@@ -24,7 +24,7 @@ object SearchResultFormatter {
         return when (fileType.lowercase(Locale.ROOT)) {
             "text" -> "Matching passage"
             "pdf" -> "Page $location"
-            "image" -> "Full image"
+            "image" -> ""
             "audio", "video" -> formatTimeMs(location)
             else -> "Location $location"
         }
