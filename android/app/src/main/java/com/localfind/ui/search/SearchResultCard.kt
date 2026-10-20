@@ -110,13 +110,20 @@ fun SearchResultCard(
         if (category == GalleryCategory.VIDEOS) result.location else null
     }
 
-    var previewData by remember(result.fileUri, videoTimeOffset) {
+    // For PDF results, locate the thumbnail at the matched chunk's 1-based page number
+    val pdfPageNumber = remember(category, result.location) {
+        if (category == GalleryCategory.PDFS && result.location > 0) result.location.toInt() else null
+    }
+
+    var previewData by remember(result.fileUri, videoTimeOffset, pdfPageNumber) {
         mutableStateOf(
-            if (result.fileUri.isNotBlank()) ThumbnailHelper.getCachedPreview(result.fileUri, videoTimeOffset) else null
+            if (result.fileUri.isNotBlank()) {
+                ThumbnailHelper.getCachedPreview(result.fileUri, videoTimeOffset, pdfPageNumber)
+            } else null
         )
     }
 
-    LaunchedEffect(result.fileUri, videoTimeOffset) {
+    LaunchedEffect(result.fileUri, videoTimeOffset, pdfPageNumber) {
         if (previewData == null && result.fileUri.isNotBlank() && category != GalleryCategory.PHOTOS) {
             previewData = withContext(Dispatchers.IO) {
                 ThumbnailHelper.loadPreviewBlocking(
@@ -124,7 +131,8 @@ fun SearchResultCard(
                     uriString = result.fileUri,
                     fileName = result.fileName,
                     mimeType = null,
-                    timeOffsetMs = videoTimeOffset
+                    timeOffsetMs = videoTimeOffset,
+                    pageNumber = pdfPageNumber
                 )
             }
         }
@@ -207,6 +215,7 @@ fun SearchResultCard(
                                 bitmap = bmp.asImageBitmap(),
                                 contentDescription = result.fileName,
                                 contentScale = ContentScale.Crop,
+                                alignment = Alignment.TopCenter,
                                 modifier = Modifier.fillMaxSize()
                             )
                         } else {

@@ -113,11 +113,33 @@ object ThumbnailHelper {
     }
 
     /**
-     * Builds the cache key for preview data. For video search results with a specific timestamp,
-     * appends the time offset so multiple matches from the same video file have distinct previews.
+     * Computes the 0-based page index to render for a PDF document.
+     *
+     * @param pageNumber 1-based page number from search result location, or null for cover page.
+     * @param pageCount Total page count in the PDF.
+     * @return 0-based page index clamped to [0, pageCount - 1].
      */
-    fun previewCacheKey(uriString: String, timeOffsetMs: Long? = null): String {
-        return if (timeOffsetMs != null) "$uriString@$timeOffsetMs" else uriString
+    fun computePdfTargetPageIndex(pageNumber: Int?, pageCount: Int): Int {
+        if (pageCount <= 0) return 0
+        val target1Based = (pageNumber ?: 1).coerceIn(1, pageCount)
+        return target1Based - 1
+    }
+
+    /**
+     * Builds the cache key for preview data. For video search results with a specific timestamp,
+     * or PDF search results with a matching page number, appends the offset so multiple matches
+     * from the same file have distinct previews.
+     */
+    fun previewCacheKey(
+        uriString: String,
+        timeOffsetMs: Long? = null,
+        pageNumber: Int? = null
+    ): String {
+        return when {
+            pageNumber != null -> "$uriString@p$pageNumber"
+            timeOffsetMs != null -> "$uriString@$timeOffsetMs"
+            else -> uriString
+        }
     }
 
     /**
@@ -219,10 +241,15 @@ object ThumbnailHelper {
      * Retrieves cached [FilePreviewData] immediately if available, or `null` if not yet loaded.
      *
      * @param uri File URI string.
-     * @param timeOffsetMs Optional timestamp offset in ms for search results to fetch the specific moment preview.
+     * @param timeOffsetMs Optional timestamp offset in ms for video search results.
+     * @param pageNumber Optional 1-based page number for PDF search results.
      */
-    fun getCachedPreview(uri: String, timeOffsetMs: Long? = null): FilePreviewData? {
-        val key = previewCacheKey(uri, timeOffsetMs)
+    fun getCachedPreview(
+        uri: String,
+        timeOffsetMs: Long? = null,
+        pageNumber: Int? = null
+    ): FilePreviewData? {
+        val key = previewCacheKey(uri, timeOffsetMs, pageNumber)
         synchronized(previewCache) {
             return previewCache.get(key)
         }
@@ -245,7 +272,7 @@ object ThumbnailHelper {
     /**
      * Loads or generates the visual preview for a file on a background thread and stores it in cache.
      *
-     * - **PDF**: Renders Page 1 onto a white bitmap via [PdfRenderer] and formats `"N p."` badge.
+     * - **PDF**: Renders matching page (or Page 1) onto a white bitmap via [PdfRenderer] and formats badge.
      * - **Video**: Extracts a frame at target moment + 2s offset via [MediaMetadataRetriever] and formats `"mm:ss"` duration.
      * - **Audio**: Extracts embedded album cover art if present and formats `"mm:ss"` duration.
      * - **Text / Markdown**: Reads the first lines of text for the document sheet preview card.
@@ -255,9 +282,10 @@ object ThumbnailHelper {
         uriString: String,
         fileName: String,
         mimeType: String?,
-        timeOffsetMs: Long? = null
+        timeOffsetMs: Long? = null,
+        pageNumber: Int? = null
     ): FilePreviewData {
-        val cacheKey = previewCacheKey(uriString, timeOffsetMs)
+        val cacheKey = previewCacheKey(uriString, timeOffsetMs, pageNumber)
         synchronized(previewCache) {
             previewCache.get(cacheKey)?.let { return it }
         }
@@ -269,7 +297,7 @@ object ThumbnailHelper {
         }
 
         val generated = when {
-            Indexer.isPdfNameOrMime(fileName, mimeType) -> loadPdfPreview(context, uri)
+            Indexer.isPdfNameOrMime(fileName, mimeType) -> loadPdfPreview(context, uri, pageNumber)
             Indexer.isVideoNameOrMime(fileName, mimeType) -> loadVideoPreview(context, uri, timeOffsetMs)
             Indexer.isAudioNameOrMime(fileName, mimeType) -> loadAudioPreview(context, uri)
             Indexer.isTextNameOrMime(fileName, mimeType) -> loadTextPreview(context, uri, fileName)
@@ -283,10 +311,14 @@ object ThumbnailHelper {
     }
 
     /**
-     * Renders the first page (index 0) of a PDF document into a downsampled [Bitmap]
-     * and returns the total page count badge (e.g., `"12 p."`).
+     * Renders a specific page (or page 1 if not specified) of a PDF document into a downsampled [Bitmap]
+     * and returns the page count badge (e.g., `"p. 4 of 12"` or `"PDF • 12 p."`).
      */
-    private fun loadPdfPreview(context: Context, uri: Uri): FilePreviewData {
+    private fun loadPdfPreview(
+        context: Context,
+        uri: Uri,
+        pageNumber: Int? = null
+    ): FilePreviewData {
         try {
             context.contentResolver.openFileDescriptor(uri, "r")?.use { pfd ->
                 PdfRenderer(pfd).use { renderer ->
@@ -294,7 +326,8 @@ object ThumbnailHelper {
                     if (pageCount <= 0) {
                         return FilePreviewData(badgeText = "PDF")
                     }
-                    renderer.openPage(0).use { page ->
+                    val pageIndex = computePdfTargetPageIndex(pageNumber, pageCount)
+                    renderer.openPage(pageIndex).use { page ->
                         val scale = THUMBNAIL_MAX_DIM.toFloat() / max(page.width, page.height).coerceAtLeast(1)
                         val width = (page.width * scale).roundToInt().coerceAtLeast(1)
                         val height = (page.height * scale).roundToInt().coerceAtLeast(1)
@@ -304,9 +337,15 @@ object ThumbnailHelper {
                         bitmap.eraseColor(AndroidColor.WHITE)
                         page.render(bitmap, null, null, PdfRenderer.Page.RENDER_MODE_FOR_DISPLAY)
 
+                        val badge = if (pageNumber != null) {
+                            "p. ${pageIndex + 1} of $pageCount"
+                        } else {
+                            "PDF • $pageCount p."
+                        }
+
                         return FilePreviewData(
                             bitmap = bitmap,
-                            badgeText = "PDF • $pageCount p."
+                            badgeText = badge
                         )
                     }
                 }

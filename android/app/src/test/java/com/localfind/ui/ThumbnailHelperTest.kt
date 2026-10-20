@@ -171,5 +171,29 @@ class ThumbnailHelperTest {
         // Search results with moment timestamps use distinct URI@timestamp keys
         assertEquals("content://video.mp4@0", ThumbnailHelper.previewCacheKey("content://video.mp4", 0L))
         assertEquals("content://video.mp4@15000", ThumbnailHelper.previewCacheKey("content://video.mp4", 15_000L))
+
+        // Search results with PDF page numbers use distinct URI@p<page> keys
+        assertEquals("content://doc.pdf@p4", ThumbnailHelper.previewCacheKey("content://doc.pdf", pageNumber = 4))
+        assertEquals("content://doc.pdf", ThumbnailHelper.previewCacheKey("content://doc.pdf", pageNumber = null))
+    }
+
+    @Test
+    fun `computePdfTargetPageIndex computes 0-based page index with safe clamping`() {
+        // Null page defaults to page index 0 (page 1)
+        assertEquals(0, ThumbnailHelper.computePdfTargetPageIndex(null, 10))
+
+        // 1-based page 1 maps to index 0
+        assertEquals(0, ThumbnailHelper.computePdfTargetPageIndex(1, 10))
+
+        // 1-based page 4 maps to index 3
+        assertEquals(3, ThumbnailHelper.computePdfTargetPageIndex(4, 10))
+
+        // Out-of-bounds page numbers clamp safely within [0, pageCount - 1]
+        assertEquals(9, ThumbnailHelper.computePdfTargetPageIndex(15, 10))
+        assertEquals(0, ThumbnailHelper.computePdfTargetPageIndex(0, 10))
+        assertEquals(0, ThumbnailHelper.computePdfTargetPageIndex(-5, 10))
+
+        // Document with 0 pages handled safely without division-by-zero or crash
+        assertEquals(0, ThumbnailHelper.computePdfTargetPageIndex(1, 0))
     }
 }
