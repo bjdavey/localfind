@@ -21,6 +21,7 @@ import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
+import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
@@ -38,6 +39,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
@@ -46,6 +48,7 @@ import androidx.compose.ui.unit.sp
 import androidx.core.net.toUri
 import coil.compose.AsyncImage
 import coil.request.ImageRequest
+import com.localfind.R
 import com.localfind.search.SearchResult
 import com.localfind.ui.gallery.GalleryCategory
 import com.localfind.ui.gallery.ThumbnailHelper
@@ -160,7 +163,12 @@ fun SearchResultCard(
                                 modifier = Modifier.fillMaxSize()
                             )
                         } else {
-                            Text("🖼", fontSize = 28.sp)
+                            Icon(
+                                painter = painterResource(R.drawable.ic_image),
+                                contentDescription = null,
+                                tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                                modifier = Modifier.size(32.dp)
+                            )
                         }
                     }
 
@@ -181,7 +189,12 @@ fun SearchResultCard(
                                 .background(Color.Black.copy(alpha = 0.6f)),
                             contentAlignment = Alignment.Center
                         ) {
-                            Text("▶", color = Color.White, fontSize = 12.sp)
+                            Icon(
+                                painter = painterResource(R.drawable.ic_play_arrow),
+                                contentDescription = null,
+                                tint = Color.White,
+                                modifier = Modifier.size(16.dp)
+                            )
                         }
                     }
 
@@ -257,7 +270,12 @@ fun SearchResultCard(
                                     ),
                                 contentAlignment = Alignment.Center
                             ) {
-                                Text("♫", color = Color.White, fontSize = 26.sp)
+                                Icon(
+                                    painter = painterResource(R.drawable.ic_audiotrack),
+                                    contentDescription = null,
+                                    tint = Color.White,
+                                    modifier = Modifier.size(28.dp)
+                                )
                             }
                         }
                     }

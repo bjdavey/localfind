@@ -20,6 +20,7 @@ import androidx.compose.foundation.text.selection.SelectionContainer
 import androidx.compose.material3.Button
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
@@ -34,6 +35,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.SpanStyle
 import androidx.compose.ui.text.buildAnnotatedString
 import androidx.compose.ui.text.font.FontFamily
@@ -42,6 +44,7 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.core.net.toUri
+import com.localfind.R
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.withContext
@@ -173,18 +176,18 @@ fun TextViewerScreen(
                 },
                 navigationIcon = {
                     IconButton(onClick = onClose) {
-                        Text(
-                            text = "←",
-                            style = MaterialTheme.typography.titleLarge
+                        Icon(
+                            painter = painterResource(R.drawable.ic_arrow_back),
+                            contentDescription = "Close"
                         )
                     }
                 },
                 actions = {
                     if (onSearchInFile != null) {
                         IconButton(onClick = onSearchInFile) {
-                            Text(
-                                text = "🔍",
-                                style = MaterialTheme.typography.titleMedium
+                            Icon(
+                                painter = painterResource(R.drawable.ic_search),
+                                contentDescription = "Search in file"
                             )
                         }
                     }

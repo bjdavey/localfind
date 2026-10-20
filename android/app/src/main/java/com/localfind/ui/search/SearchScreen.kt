@@ -56,6 +56,7 @@ import com.localfind.R
 import com.localfind.data.ImportedFile
 import com.localfind.search.SearchResult
 import com.localfind.ui.gallery.GalleryCategory
+import com.localfind.ui.gallery.iconResId
 
 /**
  * Dedicated Full-Screen Semantic Search View.
@@ -135,10 +136,10 @@ fun SearchScreen(
         ) {
             if (onClose != null) {
                 IconButton(onClick = onClose) {
-                    Text(
-                        text = "←",
-                        style = MaterialTheme.typography.titleLarge,
-                        fontWeight = FontWeight.Bold
+                    Icon(
+                        painter = painterResource(R.drawable.ic_arrow_back),
+                        contentDescription = "Back",
+                        modifier = Modifier.size(24.dp)
                     )
                 }
             }
@@ -170,9 +171,11 @@ fun SearchScreen(
                 trailingIcon = {
                     if (query.isNotEmpty()) {
                         IconButton(onClick = onClear) {
-                            Text(
-                                text = "✕",
-                                style = MaterialTheme.typography.bodyLarge
+                            Icon(
+                                painter = painterResource(R.drawable.ic_close),
+                                contentDescription = "Clear search",
+                                tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                                modifier = Modifier.size(20.dp)
                             )
                         }
                     }
@@ -244,12 +247,23 @@ fun SearchScreen(
                             onClick = onClearTargetFile,
                             contentPadding = PaddingValues(horizontal = 8.dp, vertical = 0.dp)
                         ) {
-                            Text(
-                                text = "Search All Files ✕",
-                                style = MaterialTheme.typography.labelMedium,
-                                fontWeight = FontWeight.Bold,
-                                color = MaterialTheme.colorScheme.primary
-                            )
+                            Row(
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.spacedBy(4.dp)
+                            ) {
+                                Text(
+                                    text = "Search All Files",
+                                    style = MaterialTheme.typography.labelMedium,
+                                    fontWeight = FontWeight.Bold,
+                                    color = MaterialTheme.colorScheme.primary
+                                )
+                                Icon(
+                                    painter = painterResource(R.drawable.ic_close),
+                                    contentDescription = "Search all files",
+                                    tint = MaterialTheme.colorScheme.primary,
+                                    modifier = Modifier.size(14.dp)
+                                )
+                            }
                         }
                     }
                 }
@@ -278,11 +292,18 @@ fun SearchScreen(
                                 onCategoryChange(category)
                             }
                         },
+                        leadingIcon = {
+                            Icon(
+                                painter = painterResource(category.iconResId),
+                                contentDescription = null,
+                                modifier = Modifier.size(16.dp)
+                            )
+                        },
                         label = {
                             // Show result count on the active filter chip when results are present
                             val suffix = if (isSelected && hasSearched && searchResults.isNotEmpty()) " (${searchResults.size})" else ""
                             Text(
-                                text = "${category.icon} ${category.label}$suffix",
+                                text = "${category.label}$suffix",
                                 fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Medium
                             )
                         },
@@ -350,9 +371,11 @@ fun SearchScreen(
                         horizontalAlignment = Alignment.CenterHorizontally,
                         verticalArrangement = Arrangement.spacedBy(8.dp)
                     ) {
-                        Text(
-                            text = "🔎",
-                            fontSize = 42.sp
+                        Icon(
+                            painter = painterResource(R.drawable.ic_search_off),
+                            contentDescription = null,
+                            modifier = Modifier.size(48.dp),
+                            tint = MaterialTheme.colorScheme.onSurfaceVariant
                         )
                         Text(
                             text = if (selectedCategory == GalleryCategory.ALL) {
@@ -402,9 +425,11 @@ fun SearchScreen(
                         horizontalAlignment = Alignment.CenterHorizontally,
                         verticalArrangement = Arrangement.spacedBy(10.dp)
                     ) {
-                        Text(
-                            text = "✨",
-                            fontSize = 44.sp
+                        Icon(
+                            painter = painterResource(R.drawable.ic_auto_awesome),
+                            contentDescription = null,
+                            modifier = Modifier.size(44.dp),
+                            tint = MaterialTheme.colorScheme.primary
                         )
                         Text(
                             text = "Search by meaning",

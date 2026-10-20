@@ -9,6 +9,7 @@ import android.media.MediaMetadataRetriever
 import android.net.Uri
 import android.util.LruCache
 import androidx.core.net.toUri
+import com.localfind.R
 import com.localfind.data.Folder
 import com.localfind.data.ImportedFile
 import com.localfind.index.Indexer
@@ -43,6 +44,19 @@ enum class GalleryCategory(
     TEXT("Text", "📝", listOf("text")),
     AUDIO("Audio", "🎵", listOf("audio"))
 }
+
+/**
+ * Material Symbol drawable resource associated with each [GalleryCategory].
+ */
+val GalleryCategory.iconResId: Int
+    get() = when (this) {
+        GalleryCategory.ALL -> R.drawable.ic_grid_view
+        GalleryCategory.PHOTOS -> R.drawable.ic_image
+        GalleryCategory.VIDEOS -> R.drawable.ic_videocam
+        GalleryCategory.PDFS -> R.drawable.ic_picture_as_pdf
+        GalleryCategory.TEXT -> R.drawable.ic_description
+        GalleryCategory.AUDIO -> R.drawable.ic_audiotrack
+    }
 
 /**
  * Cached preview data for a single file in the gallery or search results.

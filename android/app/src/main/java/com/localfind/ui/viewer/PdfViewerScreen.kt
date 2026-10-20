@@ -13,14 +13,18 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Button
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
@@ -40,10 +44,12 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.core.net.toUri
+import com.localfind.R
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.withContext
@@ -243,18 +249,18 @@ fun PdfViewerScreen(
                 },
                 navigationIcon = {
                     IconButton(onClick = onClose) {
-                        Text(
-                            text = "←",
-                            style = MaterialTheme.typography.titleLarge
+                        Icon(
+                            painter = painterResource(R.drawable.ic_arrow_back),
+                            contentDescription = "Close"
                         )
                     }
                 },
                 actions = {
                     if (onSearchInFile != null) {
                         IconButton(onClick = onSearchInFile) {
-                            Text(
-                                text = "🔍",
-                                style = MaterialTheme.typography.titleMedium
+                            Icon(
+                                painter = painterResource(R.drawable.ic_search),
+                                contentDescription = "Search in file"
                             )
                         }
                     }
@@ -282,6 +288,12 @@ fun PdfViewerScreen(
                             },
                             enabled = currentPageNumber > 1 && !isLoading
                         ) {
+                            Icon(
+                                painter = painterResource(R.drawable.ic_arrow_back),
+                                contentDescription = null,
+                                modifier = Modifier.size(16.dp)
+                            )
+                            Spacer(modifier = Modifier.width(4.dp))
                             Text("Previous")
                         }
 
@@ -300,6 +312,12 @@ fun PdfViewerScreen(
                             enabled = currentPageNumber < totalPages && !isLoading
                         ) {
                             Text("Next")
+                            Spacer(modifier = Modifier.width(4.dp))
+                            Icon(
+                                painter = painterResource(R.drawable.ic_arrow_forward),
+                                contentDescription = null,
+                                modifier = Modifier.size(16.dp)
+                            )
                         }
                     }
                 }

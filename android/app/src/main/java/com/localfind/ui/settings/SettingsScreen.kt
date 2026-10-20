@@ -11,12 +11,15 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.HorizontalDivider
+import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
@@ -34,9 +37,11 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.localfind.R
 import com.localfind.data.AppSettings
 import com.localfind.data.ModelStatus
 import java.util.Locale
@@ -124,11 +129,20 @@ fun SettingsScreen(
                 title = { Text("Settings", fontWeight = FontWeight.Medium) },
                 navigationIcon = {
                     IconButton(onClick = onClose) {
-                        Text("←", style = MaterialTheme.typography.titleLarge)
+                        Icon(
+                            painter = painterResource(R.drawable.ic_arrow_back),
+                            contentDescription = "Back"
+                        )
                     }
                 },
                 actions = {
                     TextButton(onClick = { showResetDialog = true }) {
+                        Icon(
+                            painter = painterResource(R.drawable.ic_restart_alt),
+                            contentDescription = null,
+                            modifier = Modifier.size(18.dp)
+                        )
+                        Spacer(modifier = Modifier.width(4.dp))
                         Text("Reset")
                     }
                 }
@@ -211,10 +225,22 @@ fun SettingsScreen(
                     .fillMaxWidth()
                     .padding(horizontal = 20.dp, vertical = 6.dp)
             ) {
-                Text(
-                    text = if (showAdvanced) "Hide Advanced Settings ▲" else "Show Advanced Settings ▼",
-                    style = MaterialTheme.typography.labelLarge
-                )
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    Text(
+                        text = if (showAdvanced) "Hide Advanced Settings" else "Show Advanced Settings",
+                        style = MaterialTheme.typography.labelLarge
+                    )
+                    Icon(
+                        painter = painterResource(
+                            if (showAdvanced) R.drawable.ic_keyboard_arrow_up else R.drawable.ic_keyboard_arrow_down
+                        ),
+                        contentDescription = null,
+                        modifier = Modifier.size(18.dp)
+                    )
+                }
             }
 
             AnimatedVisibility(visible = showAdvanced) {
@@ -387,7 +413,7 @@ fun SettingsScreen(
                         subtitle = when (modelStatus) {
                             is ModelStatus.Loaded -> "Loaded (${modelStatus.sizeBytes / 1_048_576} MB)"
                             is ModelStatus.Loading -> "Loading..."
-                            is ModelStatus.Error -> "⚠️ Not Loaded"
+                            is ModelStatus.Error -> "Not Loaded"
                         },
                         description = when (modelStatus) {
                             is ModelStatus.Loaded -> "EmbeddingGemma 2 (740M, 768-dim shared space) in app internal storage."

@@ -35,6 +35,7 @@ The text query uses the same model, so a text query can match an image, an audio
 | PDF viewing | Android `PdfRenderer` |
 | Image / thumbnails | Coil (`AsyncImage`), `ImageDecoder` |
 | Audio / video | Media3 (ExoPlayer, UI `PlayerView`), `MediaMetadataRetriever`, `MediaExtractor` / `MediaCodec` |
+| Icons / Symbols | Google Material Symbols (Vector Drawables in `res/drawable/` via Compose `painterResource`) |
 | Concurrency | Kotlin coroutines, AndroidX WorkManager |
 
 ## 3. Model Delivery
@@ -125,22 +126,24 @@ All variables are persisted locally using native Android `SharedPreferences` ([S
 Single Gradle module, organized by feature and modality subpackages:
 
 ```text
-android/app/src/main/java/.../localfind/
-├── MainActivity.kt
-├── ui/
-│   ├── gallery/   # GalleryScreen, GalleryTiles, GalleryDialogs, ThumbnailHelper
-│   ├── search/    # SearchScreen, SearchResultCard, SearchResultFormatter
-│   ├── viewer/    # ViewerOverlayHost, Image/Media/Pdf/TextViewerScreen, TextViewerHelper
-│   ├── settings/  # SettingsScreen
-│   └── theme/     # Color, Theme, Type
-├── index/
-│   ├── Indexer.kt, IndexingWorker.kt, IndexingState.kt, IndexingResumeManager.kt, IndexingActionReceiver.kt
-│   ├── document/  # DocumentIndexer, TextChunker, PdfChunker
-│   ├── image/     # ImageIndexer
-│   ├── audio/     # AudioIndexer, AudioChunker, AudioDecoder
-│   └── video/     # VideoIndexer, VideoChunker
-├── embed/         # MediaPipe UniversalEmbedder wrapper (Embedder, VectorMath)
-└── data/          # FileStore (SQLite), FileImporter (SAF), EmbeddingStore (SqliteVectorStore), EngineManager, AppSettings
+android/app/src/main/
+├── res/drawable/   # Google Material Symbols Vector Drawables (ic_*.xml)
+└── java/.../localfind/
+    ├── MainActivity.kt
+    ├── ui/
+    │   ├── gallery/   # GalleryScreen, GalleryTiles, GalleryDialogs, ThumbnailHelper
+    │   ├── search/    # SearchScreen, SearchResultCard, SearchResultFormatter
+    │   ├── viewer/    # ViewerOverlayHost, Image/Media/Pdf/TextViewerScreen, TextViewerHelper
+    │   ├── settings/  # SettingsScreen
+    │   └── theme/     # Color, Theme, Type
+    ├── index/
+    │   ├── Indexer.kt, IndexingWorker.kt, IndexingState.kt, IndexingResumeManager.kt, IndexingActionReceiver.kt
+    │   ├── document/  # DocumentIndexer, TextChunker, PdfChunker
+    │   ├── image/     # ImageIndexer
+    │   ├── audio/     # AudioIndexer, AudioChunker, AudioDecoder
+    │   └── video/     # VideoIndexer, VideoChunker
+    ├── embed/         # MediaPipe UniversalEmbedder wrapper (Embedder, VectorMath)
+    └── data/          # FileStore (SQLite), FileImporter (SAF), EmbeddingStore (SqliteVectorStore), EngineManager, AppSettings
 ```
 
 ## 12. Technical Invariants

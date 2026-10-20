@@ -12,6 +12,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.material3.Button
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
@@ -33,6 +34,7 @@ import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -40,6 +42,7 @@ import androidx.core.net.toUri
 import coil.compose.AsyncImage
 import coil.compose.AsyncImagePainter
 import coil.request.ImageRequest
+import com.localfind.R
 import kotlinx.coroutines.delay
 
 /**
@@ -133,10 +136,10 @@ fun ImageViewerScreen(
                 },
                 navigationIcon = {
                     IconButton(onClick = onClose) {
-                        Text(
-                            text = "←",
-                            style = MaterialTheme.typography.titleLarge,
-                            color = Color.White
+                        Icon(
+                            painter = painterResource(R.drawable.ic_arrow_back),
+                            contentDescription = "Close",
+                            tint = Color.White
                         )
                     }
                 },
@@ -146,10 +149,10 @@ fun ImageViewerScreen(
                             scale = 1f
                             offset = Offset.Zero
                         }) {
-                            Text(
-                                text = "↺",
-                                style = MaterialTheme.typography.titleMedium,
-                                color = Color.White
+                            Icon(
+                                painter = painterResource(R.drawable.ic_refresh),
+                                contentDescription = "Reset zoom",
+                                tint = Color.White
                             )
                         }
                     }

@@ -21,6 +21,7 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
@@ -38,6 +39,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
@@ -47,6 +49,7 @@ import androidx.compose.ui.unit.sp
 import androidx.core.net.toUri
 import coil.compose.AsyncImage
 import coil.request.ImageRequest
+import com.localfind.R
 import com.localfind.data.Folder
 import com.localfind.data.ImportedFile
 import com.localfind.data.IndexingStatus
@@ -168,11 +171,11 @@ fun MediaGalleryTile(
                             .border(1.5.dp, Color.White.copy(alpha = 0.85f), CircleShape),
                         contentAlignment = Alignment.Center
                     ) {
-                        Text(
-                            text = "▶",
-                            color = Color.White,
-                            fontSize = 18.sp,
-                            modifier = Modifier.padding(start = 2.dp)
+                        Icon(
+                            painter = painterResource(R.drawable.ic_play_arrow),
+                            contentDescription = "Play",
+                            tint = Color.White,
+                            modifier = Modifier.size(24.dp)
                         )
                     }
                 }
@@ -317,12 +320,21 @@ fun MediaGalleryTile(
                 GalleryCategory.ALL -> BadgeImage
             }
 
+            val badgeIconRes = when (category) {
+                GalleryCategory.VIDEOS -> R.drawable.ic_videocam
+                GalleryCategory.AUDIO -> R.drawable.ic_audiotrack
+                GalleryCategory.PDFS -> R.drawable.ic_picture_as_pdf
+                GalleryCategory.TEXT -> R.drawable.ic_description
+                GalleryCategory.PHOTOS -> R.drawable.ic_image
+                GalleryCategory.ALL -> null
+            }
+
             val badgeLabel = when (category) {
                 GalleryCategory.PHOTOS -> "IMG"
-                GalleryCategory.VIDEOS -> previewData?.badgeText?.let { "▶ $it" } ?: "VIDEO"
+                GalleryCategory.VIDEOS -> previewData?.badgeText ?: "VIDEO"
                 GalleryCategory.PDFS -> previewData?.badgeText ?: "PDF"
                 GalleryCategory.TEXT -> previewData?.badgeText ?: "TXT"
-                GalleryCategory.AUDIO -> previewData?.badgeText?.let { "♫ $it" } ?: "AUDIO"
+                GalleryCategory.AUDIO -> previewData?.badgeText ?: "AUDIO"
                 GalleryCategory.ALL -> ""
             }
 
@@ -342,13 +354,26 @@ fun MediaGalleryTile(
                         shape = RoundedCornerShape(8.dp),
                         color = badgeColor.copy(alpha = 0.90f)
                     ) {
-                        Text(
-                            text = badgeLabel,
-                            style = MaterialTheme.typography.labelSmall,
-                            fontWeight = FontWeight.Bold,
-                            color = Color.White,
-                            modifier = Modifier.padding(horizontal = 7.dp, vertical = 3.dp)
-                        )
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(3.dp),
+                            modifier = Modifier.padding(horizontal = 6.dp, vertical = 3.dp)
+                        ) {
+                            if (badgeIconRes != null) {
+                                Icon(
+                                    painter = painterResource(badgeIconRes),
+                                    contentDescription = null,
+                                    tint = Color.White,
+                                    modifier = Modifier.size(11.dp)
+                                )
+                            }
+                            Text(
+                                text = badgeLabel,
+                                style = MaterialTheme.typography.labelSmall,
+                                fontWeight = FontWeight.Bold,
+                                color = Color.White
+                            )
+                        }
                     }
 
                     // Background Queue or Failure Status Chip
@@ -357,26 +382,48 @@ fun MediaGalleryTile(
                             shape = RoundedCornerShape(8.dp),
                             color = Color.Black.copy(alpha = 0.70f)
                         ) {
-                            Text(
-                                text = "⏳ Queue",
-                                style = MaterialTheme.typography.labelSmall,
-                                fontWeight = FontWeight.SemiBold,
-                                color = Color.White,
+                            Row(
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.spacedBy(4.dp),
                                 modifier = Modifier.padding(horizontal = 6.dp, vertical = 3.dp)
-                            )
+                            ) {
+                                Icon(
+                                    painter = painterResource(R.drawable.ic_hourglass_empty),
+                                    contentDescription = null,
+                                    tint = Color.White,
+                                    modifier = Modifier.size(12.dp)
+                                )
+                                Text(
+                                    text = "Queue",
+                                    style = MaterialTheme.typography.labelSmall,
+                                    fontWeight = FontWeight.SemiBold,
+                                    color = Color.White
+                                )
+                            }
                         }
                     } else if (file.indexingStatus == IndexingStatus.FAILED && !isActivelyIndexing) {
                         Surface(
                             shape = RoundedCornerShape(8.dp),
                             color = MaterialTheme.colorScheme.error.copy(alpha = 0.90f)
                         ) {
-                            Text(
-                                text = "⚠️ Failed",
-                                style = MaterialTheme.typography.labelSmall,
-                                fontWeight = FontWeight.Bold,
-                                color = Color.White,
+                            Row(
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.spacedBy(4.dp),
                                 modifier = Modifier.padding(horizontal = 6.dp, vertical = 3.dp)
-                            )
+                            ) {
+                                Icon(
+                                    painter = painterResource(R.drawable.ic_warning),
+                                    contentDescription = null,
+                                    tint = Color.White,
+                                    modifier = Modifier.size(12.dp)
+                                )
+                                Text(
+                                    text = "Failed",
+                                    style = MaterialTheme.typography.labelSmall,
+                                    fontWeight = FontWeight.Bold,
+                                    color = Color.White
+                                )
+                            }
                         }
                     }
                 }
@@ -391,11 +438,11 @@ fun MediaGalleryTile(
                     color = Color.Black.copy(alpha = 0.45f)
                 ) {
                     Box(contentAlignment = Alignment.Center) {
-                        Text(
-                            text = "⋮",
-                            color = Color.White,
-                            fontWeight = FontWeight.Bold,
-                            fontSize = 14.sp
+                        Icon(
+                            painter = painterResource(R.drawable.ic_more_vert),
+                            contentDescription = "Options",
+                            tint = Color.White,
+                            modifier = Modifier.size(16.dp)
                         )
                     }
                 }
@@ -593,11 +640,11 @@ fun FolderGalleryTile(
                 color = MaterialTheme.colorScheme.surface.copy(alpha = 0.85f)
             ) {
                 Box(contentAlignment = Alignment.Center) {
-                    Text(
-                        text = "⋮",
-                        fontWeight = FontWeight.Bold,
-                        fontSize = 14.sp,
-                        color = MaterialTheme.colorScheme.onSurface
+                    Icon(
+                        painter = painterResource(R.drawable.ic_more_vert),
+                        contentDescription = "Folder options",
+                        tint = MaterialTheme.colorScheme.onSurface,
+                        modifier = Modifier.size(16.dp)
                     )
                 }
             }
@@ -610,9 +657,11 @@ fun FolderGalleryTile(
                 horizontalAlignment = Alignment.CenterHorizontally,
                 verticalArrangement = Arrangement.Center
             ) {
-                Text(
-                    text = "📁",
-                    fontSize = 42.sp
+                Icon(
+                    painter = painterResource(R.drawable.ic_folder),
+                    contentDescription = null,
+                    modifier = Modifier.size(48.dp),
+                    tint = MaterialTheme.colorScheme.primary
                 )
                 Spacer(modifier = Modifier.height(8.dp))
                 Text(

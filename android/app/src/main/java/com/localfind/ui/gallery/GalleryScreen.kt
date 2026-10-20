@@ -328,10 +328,10 @@ fun GalleryScreen(
                 }
 
                 IconButton(onClick = onOpenSettings) {
-                    Text(
-                        text = "⚙",
-                        style = MaterialTheme.typography.titleLarge,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    Icon(
+                        painter = painterResource(R.drawable.ic_settings),
+                        contentDescription = "Settings",
+                        tint = MaterialTheme.colorScheme.onSurfaceVariant
                     )
                 }
             }
@@ -402,9 +402,11 @@ fun GalleryScreen(
                             verticalAlignment = Alignment.CenterVertically,
                             horizontalArrangement = Arrangement.spacedBy(10.dp)
                         ) {
-                            Text(
-                                text = "⚠️",
-                                style = MaterialTheme.typography.titleMedium
+                            Icon(
+                                painter = painterResource(R.drawable.ic_warning),
+                                contentDescription = "Warning",
+                                tint = MaterialTheme.colorScheme.error,
+                                modifier = Modifier.size(22.dp)
                             )
                             Column(modifier = Modifier.weight(1f)) {
                                 Text(
@@ -519,6 +521,13 @@ fun GalleryScreen(
                                         contentPadding = PaddingValues(horizontal = 8.dp, vertical = 4.dp),
                                         modifier = Modifier.height(34.dp)
                                     ) {
+                                        Icon(
+                                            painter = painterResource(R.drawable.ic_play_arrow),
+                                            contentDescription = null,
+                                            modifier = Modifier.size(16.dp),
+                                            tint = MaterialTheme.colorScheme.primary
+                                        )
+                                        Spacer(modifier = Modifier.width(4.dp))
                                         Text(
                                             text = "Resume",
                                             style = MaterialTheme.typography.labelSmall,
@@ -535,6 +544,13 @@ fun GalleryScreen(
                                         contentPadding = PaddingValues(horizontal = 8.dp, vertical = 4.dp),
                                         modifier = Modifier.height(34.dp)
                                     ) {
+                                        Icon(
+                                            painter = painterResource(R.drawable.ic_pause),
+                                            contentDescription = null,
+                                            modifier = Modifier.size(16.dp),
+                                            tint = MaterialTheme.colorScheme.secondary
+                                        )
+                                        Spacer(modifier = Modifier.width(4.dp))
                                         Text(
                                             text = "Pause",
                                             style = MaterialTheme.typography.labelSmall,
@@ -551,6 +567,13 @@ fun GalleryScreen(
                                     contentPadding = PaddingValues(horizontal = 8.dp, vertical = 4.dp),
                                     modifier = Modifier.height(34.dp)
                                 ) {
+                                    Icon(
+                                        painter = painterResource(R.drawable.ic_close),
+                                        contentDescription = null,
+                                        modifier = Modifier.size(16.dp),
+                                        tint = MaterialTheme.colorScheme.error
+                                    )
+                                    Spacer(modifier = Modifier.width(4.dp))
                                     Text(
                                         text = "Cancel",
                                         style = MaterialTheme.typography.labelSmall,
@@ -584,9 +607,16 @@ fun GalleryScreen(
                         FilterChip(
                             selected = isSelected,
                             onClick = { selectedCategory = category },
+                            leadingIcon = {
+                                Icon(
+                                    painter = painterResource(category.iconResId),
+                                    contentDescription = null,
+                                    modifier = Modifier.size(16.dp)
+                                )
+                            },
                             label = {
                                 Text(
-                                    text = if (count > 0) "${category.icon} ${category.label} ($count)" else "${category.icon} ${category.label}",
+                                    text = if (count > 0) "${category.label} ($count)" else category.label,
                                     fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Medium
                                 )
                             },
@@ -621,10 +651,10 @@ fun GalleryScreen(
                             onClick = { onNavigateFolder(currentFolder.parentId) },
                             modifier = Modifier.size(36.dp)
                         ) {
-                            Text(
-                                text = "←",
-                                style = MaterialTheme.typography.titleMedium,
-                                fontWeight = FontWeight.Bold
+                            Icon(
+                                painter = painterResource(R.drawable.ic_arrow_back),
+                                contentDescription = "Back",
+                                modifier = Modifier.size(20.dp)
                             )
                         }
                         Spacer(modifier = Modifier.width(6.dp))
@@ -649,10 +679,10 @@ fun GalleryScreen(
                             onClick = { inspectedFolder = currentFolder },
                             modifier = Modifier.size(36.dp)
                         ) {
-                            Text(
-                                text = "⋮",
-                                style = MaterialTheme.typography.titleMedium,
-                                fontWeight = FontWeight.Bold
+                            Icon(
+                                painter = painterResource(R.drawable.ic_more_vert),
+                                contentDescription = "Folder options",
+                                modifier = Modifier.size(20.dp)
                             )
                         }
                     }
@@ -687,9 +717,11 @@ fun GalleryScreen(
                         horizontalAlignment = Alignment.CenterHorizontally,
                         verticalArrangement = Arrangement.spacedBy(8.dp)
                     ) {
-                        Text(
-                            text = "📁",
-                            fontSize = 40.sp
+                        Icon(
+                            painter = painterResource(R.drawable.ic_folder_open),
+                            contentDescription = null,
+                            modifier = Modifier.size(48.dp),
+                            tint = MaterialTheme.colorScheme.primary.copy(alpha = 0.8f)
                         )
                         Text(
                             text = "This folder is empty",
@@ -716,9 +748,11 @@ fun GalleryScreen(
                         horizontalAlignment = Alignment.CenterHorizontally,
                         verticalArrangement = Arrangement.spacedBy(8.dp)
                     ) {
-                        Text(
-                            text = selectedCategory.icon,
-                            fontSize = 40.sp
+                        Icon(
+                            painter = painterResource(selectedCategory.iconResId),
+                            contentDescription = null,
+                            modifier = Modifier.size(48.dp),
+                            tint = MaterialTheme.colorScheme.primary.copy(alpha = 0.8f)
                         )
                         Text(
                             text = "No ${selectedCategory.label.lowercase()} here",
@@ -892,11 +926,11 @@ fun FloatingSearchAndImportDock(
                 color = MaterialTheme.colorScheme.primary
             ) {
                 Box(contentAlignment = Alignment.Center) {
-                    Text(
-                        text = "+",
-                        fontSize = 24.sp,
-                        fontWeight = FontWeight.Bold,
-                        color = MaterialTheme.colorScheme.onPrimary
+                    Icon(
+                        painter = painterResource(R.drawable.ic_add),
+                        contentDescription = "Import",
+                        tint = MaterialTheme.colorScheme.onPrimary,
+                        modifier = Modifier.size(24.dp)
                     )
                 }
             }
@@ -929,10 +963,35 @@ private fun EmptyGalleryState(
                 horizontalAlignment = Alignment.CenterHorizontally,
                 verticalArrangement = Arrangement.spacedBy(12.dp)
             ) {
-                Text(
-                    text = "🖼  🎬  📄  🎵",
-                    fontSize = 32.sp
-                )
+                Row(
+                    horizontalArrangement = Arrangement.spacedBy(16.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Icon(
+                        painter = painterResource(R.drawable.ic_image),
+                        contentDescription = null,
+                        modifier = Modifier.size(32.dp),
+                        tint = MaterialTheme.colorScheme.primary
+                    )
+                    Icon(
+                        painter = painterResource(R.drawable.ic_videocam),
+                        contentDescription = null,
+                        modifier = Modifier.size(32.dp),
+                        tint = MaterialTheme.colorScheme.primary
+                    )
+                    Icon(
+                        painter = painterResource(R.drawable.ic_picture_as_pdf),
+                        contentDescription = null,
+                        modifier = Modifier.size(32.dp),
+                        tint = MaterialTheme.colorScheme.primary
+                    )
+                    Icon(
+                        painter = painterResource(R.drawable.ic_audiotrack),
+                        contentDescription = null,
+                        modifier = Modifier.size(32.dp),
+                        tint = MaterialTheme.colorScheme.primary
+                    )
+                }
                 Text(
                     text = "Your Library is Empty",
                     style = MaterialTheme.typography.titleLarge,
@@ -956,9 +1015,15 @@ private fun EmptyGalleryState(
                         modifier = Modifier.fillMaxWidth(),
                         shape = RoundedCornerShape(20.dp)
                     ) {
+                        Icon(
+                            painter = painterResource(R.drawable.ic_add),
+                            contentDescription = null,
+                            modifier = Modifier.size(18.dp)
+                        )
+                        Spacer(modifier = Modifier.width(6.dp))
                         Text(
-                            text = "+ Import Files",
-                            modifier = Modifier.padding(horizontal = 4.dp, vertical = 2.dp),
+                            text = "Import Files",
+                            modifier = Modifier.padding(vertical = 2.dp),
                             fontWeight = FontWeight.SemiBold
                         )
                     }
@@ -968,9 +1033,15 @@ private fun EmptyGalleryState(
                             modifier = Modifier.fillMaxWidth(),
                             shape = RoundedCornerShape(20.dp)
                         ) {
+                            Icon(
+                                painter = painterResource(R.drawable.ic_folder_open),
+                                contentDescription = null,
+                                modifier = Modifier.size(18.dp)
+                            )
+                            Spacer(modifier = Modifier.width(6.dp))
                             Text(
-                                text = "📁 Folder",
-                                modifier = Modifier.padding(horizontal = 4.dp, vertical = 2.dp),
+                                text = "Import Folder",
+                                modifier = Modifier.padding(vertical = 2.dp),
                                 fontWeight = FontWeight.SemiBold
                             )
                         }
@@ -980,9 +1051,15 @@ private fun EmptyGalleryState(
                         modifier = Modifier.fillMaxWidth(),
                         shape = RoundedCornerShape(20.dp)
                     ) {
+                        Icon(
+                            painter = painterResource(R.drawable.ic_create_new_folder),
+                            contentDescription = null,
+                            modifier = Modifier.size(18.dp)
+                        )
+                        Spacer(modifier = Modifier.width(6.dp))
                         Text(
-                            text = "+ New Folder",
-                            modifier = Modifier.padding(horizontal = 4.dp, vertical = 2.dp),
+                            text = "New Folder",
+                            modifier = Modifier.padding(vertical = 2.dp),
                             fontWeight = FontWeight.SemiBold
                         )
                     }
