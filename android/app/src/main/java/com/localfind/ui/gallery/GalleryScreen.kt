@@ -154,10 +154,10 @@ fun GalleryScreen(
         folders.firstOrNull { it.id == currentFolderId }
     }
     val currentSubfolders = remember(folders, currentFolderId) {
-        folders.filter { it.parentId == currentFolderId }
+        folders.filter { it.parentId == currentFolderId }.distinctBy { it.id }
     }
     val currentFolderFiles = remember(importedFiles, currentFolderId, selectedCategory) {
-        ThumbnailHelper.filterFilesByFolder(importedFiles, currentFolderId, selectedCategory)
+        ThumbnailHelper.filterFilesByFolder(importedFiles, currentFolderId, selectedCategory).distinctBy { it.uri }
     }
 
     // Breadcrumb path resolution (Root -> Subfolder -> Current)

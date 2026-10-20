@@ -66,6 +66,7 @@
 - Publish
 
 ## Bugs / Issues
+- [x] App-wide crash resilience: defensive gallery grid keys, viewer fallbacks, and global crash guard
 - [ ] Anything under search view is still clickable
 - [x] Fix app crash due to duplicate keys in search results list (LazyColumn crash on device)
 - [x] Can not cancel stuck sync file

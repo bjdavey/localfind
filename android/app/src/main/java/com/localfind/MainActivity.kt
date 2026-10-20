@@ -86,6 +86,35 @@ class MainActivity : FragmentActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+
+        // Global Crash Guard: Intercepts unhandled runtime exceptions on any thread to prevent
+        // sudden OS force-closes, logging the failure and gracefully recovering the user back to the library.
+        val isRecoveredLaunch = intent.getBooleanExtra("crash_recovered", false)
+        if (isRecoveredLaunch) {
+            android.widget.Toast.makeText(this, "Recovered from an unexpected error", android.widget.Toast.LENGTH_SHORT).show()
+        }
+
+        val defaultHandler = Thread.getDefaultUncaughtExceptionHandler()
+        Thread.setDefaultUncaughtExceptionHandler { thread, throwable ->
+            android.util.Log.e("CrashGuard", "Intercepted uncaught exception on thread ${thread.name}", throwable)
+            // If already launched from a recovery, fall back to default handler to prevent infinite restart loops
+            if (isRecoveredLaunch) {
+                defaultHandler?.uncaughtException(thread, throwable)
+                return@setDefaultUncaughtExceptionHandler
+            }
+            try {
+                val restartIntent = Intent(applicationContext, MainActivity::class.java).apply {
+                    addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TASK)
+                    putExtra("crash_recovered", true)
+                }
+                startActivity(restartIntent)
+            } catch (_: Exception) {
+                defaultHandler?.uncaughtException(thread, throwable)
+                return@setDefaultUncaughtExceptionHandler
+            }
+            Runtime.getRuntime().exit(0)
+        }
+
         // If launched via ACTION_SEND or ACTION_SEND_MULTIPLE, stage intent for processing
         if (ShareImporter.isShareIntent(intent)) {
             pendingShareIntent = intent
@@ -554,7 +583,7 @@ fun MainScreen(
                         )
                     }
                 }
-                searchResults = results
+                searchResults = results.distinctBy { it.chunkId }
                 hasSearched = true
                 scope.launch {
                     try {
@@ -644,7 +673,7 @@ fun MainScreen(
                         )
                     }
                 }
-                searchResults = results
+                searchResults = results.distinctBy { it.chunkId }
                 hasSearched = true
                 scope.launch {
                     try {

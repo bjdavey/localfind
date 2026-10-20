@@ -173,18 +173,26 @@ fun PdfViewerScreen(
                 .background(MaterialTheme.colorScheme.surfaceVariant),
             contentAlignment = Alignment.Center
         ) {
-            if (!useFallbackRenderer) {
+            val parsedDocUri = remember(params.uri) {
+                try {
+                    params.uri.toUri()
+                } catch (_: Exception) {
+                    null
+                }
+            }
+
+            if (!useFallbackRenderer && parsedDocUri != null) {
                 // Primary: Official AndroidX Jetpack PDF Viewer Fragment
                 Box(modifier = Modifier.fillMaxSize()) {
                     AndroidFragment<LocalFindPdfViewerFragment>(
                         modifier = Modifier.fillMaxSize(),
-                        arguments = remember(params.uri) {
-                            bundleOf("documentUri" to params.uri.toUri())
+                        arguments = remember(parsedDocUri) {
+                            bundleOf("documentUri" to parsedDocUri)
                         }
                     ) { fragment ->
                         fragmentRef = fragment
                         fragment.initialPage = params.initialPage
-                        fragment.documentUri = params.uri.toUri()
+                        fragment.documentUri = parsedDocUri
                         fragment.onLoadSuccess = {
                             isDocumentLoading = false
                         }

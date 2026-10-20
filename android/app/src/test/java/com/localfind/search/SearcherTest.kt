@@ -24,27 +24,25 @@ class SearcherTest {
      * to simulate MediaPipe's [com.google.mediapipe.tasks.retrieval.components.SqliteVectorStore].
      */
     private class FakeVectorStore : VectorStore {
-        private val records = ConcurrentHashMap<String, RetrievalRecord>()
+        // Use a list to mirror SQLite table behavior (which does not automatically overwrite duplicate IDs)
+        private val records = java.util.concurrent.CopyOnWriteArrayList<RetrievalRecord>()
 
         override fun upsert(records: List<RetrievalRecord>) {
-            records.forEach { this.records[it.id] = it }
+            this.records.addAll(records)
         }
 
         override fun get(ids: List<String>): List<RetrievalRecord> =
-            ids.mapNotNull { records[it] }
+            ids.mapNotNull { id -> records.firstOrNull { it.id == id } }
 
         override fun getAllRecordIds(): List<String> =
-            records.keys.toList()
+            records.map { it.id }
 
         override fun delete(ids: List<String>) {
-            ids.forEach { records.remove(it) }
+            records.removeAll { it.id in ids }
         }
 
         override fun delete(metadata: Map<String, String>) {
-            val toRemove = records.values.filter { r ->
-                metadata.all { (k, v) -> r.metadata[k] == v }
-            }.map { it.id }
-            toRemove.forEach { records.remove(it) }
+            records.removeAll { r -> metadata.all { (k, v) -> r.metadata[k] == v } }
         }
 
         override fun deleteAll() {
@@ -59,7 +57,7 @@ class SearcherTest {
             topK: Int,
             metadataFilter: Map<String, String>
         ): List<RetrievalRecord> {
-            return records.values
+            return records
                 .filter { r -> metadataFilter.all { (k, v) -> r.metadata[k] == v } }
                 .sortedByDescending { Searcher.calculateCosineSimilarity(queryEmbedding, it.embeddings) }
                 .take(topK)
