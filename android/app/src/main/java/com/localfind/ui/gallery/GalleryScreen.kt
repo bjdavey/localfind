@@ -95,6 +95,7 @@ fun GalleryScreen(
     onRenameFolder: (Folder, String) -> Unit = { _, _ -> },
     onDeleteFolder: (Folder) -> Unit = {},
     onImportFolder: () -> Unit = {},
+    enableFolderImport: Boolean = false,
     onMoveFileToFolder: (ImportedFile, String?) -> Unit = { _, _ -> },
     onRetryLoadModel: () -> Unit = {},
     onOpenSearch: () -> Unit,
@@ -283,7 +284,8 @@ fun GalleryScreen(
             onCreateFolder = {
                 showImportMenu = false
                 showCreateFolderDialog = true
-            }
+            },
+            enableFolderImport = enableFolderImport
         )
     }
 
@@ -668,6 +670,7 @@ fun GalleryScreen(
                     onImportFiles = onImportFiles,
                     onImportFolder = onImportFolder,
                     onCreateFolder = { showCreateFolderDialog = true },
+                    enableFolderImport = enableFolderImport,
                     modifier = Modifier
                         .weight(1f)
                         .fillMaxWidth()
@@ -909,6 +912,7 @@ private fun EmptyGalleryState(
     onImportFiles: () -> Unit,
     onImportFolder: () -> Unit,
     onCreateFolder: () -> Unit,
+    enableFolderImport: Boolean = false,
     modifier: Modifier = Modifier
 ) {
     Box(
@@ -942,36 +946,42 @@ private fun EmptyGalleryState(
                     textAlign = TextAlign.Center
                 )
                 Spacer(modifier = Modifier.height(4.dp))
-                Row(
-                    horizontalArrangement = Arrangement.spacedBy(8.dp),
-                    verticalAlignment = Alignment.CenterVertically
+                Column(
+                    modifier = Modifier.fillMaxWidth(),
+                    verticalArrangement = Arrangement.spacedBy(8.dp),
+                    horizontalAlignment = Alignment.CenterHorizontally
                 ) {
                     Button(
                         onClick = onImportFiles,
+                        modifier = Modifier.fillMaxWidth(),
                         shape = RoundedCornerShape(20.dp)
                     ) {
                         Text(
-                            text = "+ Files",
+                            text = "+ Import Files",
                             modifier = Modifier.padding(horizontal = 4.dp, vertical = 2.dp),
                             fontWeight = FontWeight.SemiBold
                         )
                     }
-                    FilledTonalButton(
-                        onClick = onImportFolder,
-                        shape = RoundedCornerShape(20.dp)
-                    ) {
-                        Text(
-                            text = "📁 Folder",
-                            modifier = Modifier.padding(horizontal = 4.dp, vertical = 2.dp),
-                            fontWeight = FontWeight.SemiBold
-                        )
+                    if (enableFolderImport) {
+                        FilledTonalButton(
+                            onClick = onImportFolder,
+                            modifier = Modifier.fillMaxWidth(),
+                            shape = RoundedCornerShape(20.dp)
+                        ) {
+                            Text(
+                                text = "📁 Folder",
+                                modifier = Modifier.padding(horizontal = 4.dp, vertical = 2.dp),
+                                fontWeight = FontWeight.SemiBold
+                            )
+                        }
                     }
                     FilledTonalButton(
                         onClick = onCreateFolder,
+                        modifier = Modifier.fillMaxWidth(),
                         shape = RoundedCornerShape(20.dp)
                     ) {
                         Text(
-                            text = "+ New",
+                            text = "+ New Folder",
                             modifier = Modifier.padding(horizontal = 4.dp, vertical = 2.dp),
                             fontWeight = FontWeight.SemiBold
                         )

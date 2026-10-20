@@ -642,6 +642,7 @@ fun MainScreen(
             onRenameFolder = { folder, newName -> renameFolder(folder, newName) },
             onDeleteFolder = { folder -> deleteFolder(folder) },
             onImportFolder = { folderPickerLauncher.launch(null) },
+            enableFolderImport = settings.enableFolderImport,
             onMoveFileToFolder = { file, targetFolderId -> moveFileToFolder(file, targetFolderId) },
             gridState = galleryGridState,
             onRetryLoadModel = { retryLoadModel() },

@@ -29,6 +29,7 @@ class AppSettingsTest {
         assertEquals(false, settings.videoIncludeAudio) // Vision-only default
         assertEquals(true, settings.videoSkipSimilarChunks)
         assertEquals(0.85f, settings.videoSimilarityThreshold, 0.0001f)
+        assertEquals(false, settings.enableFolderImport)
     }
 
     @Test
@@ -92,7 +93,8 @@ class AppSettingsTest {
             maxImageDimension = 768,
             videoIncludeAudio = true,
             videoSkipSimilarChunks = false,
-            videoSimilarityThreshold = 0.9f
+            videoSimilarityThreshold = 0.9f,
+            enableFolderImport = true
         )
         store.save(modified)
 
@@ -109,6 +111,7 @@ class AppSettingsTest {
         assertEquals(true, reloaded.videoIncludeAudio)
         assertEquals(false, reloaded.videoSkipSimilarChunks)
         assertEquals(0.9f, reloaded.videoSimilarityThreshold, 0.0001f)
+        assertEquals(true, reloaded.enableFolderImport)
 
         // 3. Reset settings to default
         val reset = store.reset()
@@ -118,6 +121,7 @@ class AppSettingsTest {
         assertEquals(DEFAULT_TEXT_CHUNK_SIZE, reset.textChunkSize)
         assertEquals(false, reset.videoIncludeAudio)
         assertEquals(true, reset.videoSkipSimilarChunks)
+        assertEquals(false, reset.enableFolderImport)
         assertEquals(0.85f, reset.videoSimilarityThreshold, 0.0001f)
 
         val afterReset = store.load()

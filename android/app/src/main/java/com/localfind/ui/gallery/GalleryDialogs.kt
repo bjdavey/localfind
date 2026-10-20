@@ -327,7 +327,8 @@ internal fun ImportOptionsMenu(
     onDismiss: () -> Unit,
     onImportFiles: () -> Unit,
     onImportFolder: () -> Unit,
-    onCreateFolder: () -> Unit
+    onCreateFolder: () -> Unit,
+    enableFolderImport: Boolean = false
 ) {
     AlertDialog(
         onDismissRequest = onDismiss,
@@ -358,26 +359,28 @@ internal fun ImportOptionsMenu(
                     }
                 }
 
-                Surface(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .clip(RoundedCornerShape(12.dp))
-                        .clickable(onClick = onImportFolder),
-                    color = MaterialTheme.colorScheme.surfaceVariant
-                ) {
-                    Row(
-                        modifier = Modifier.padding(14.dp),
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.spacedBy(12.dp)
+                if (enableFolderImport) {
+                    Surface(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clip(RoundedCornerShape(12.dp))
+                            .clickable(onClick = onImportFolder),
+                        color = MaterialTheme.colorScheme.surfaceVariant
                     ) {
-                        Text("📁", fontSize = 24.sp)
-                        Column {
-                            Text("Import Folder", fontWeight = FontWeight.Bold)
-                            Text(
-                                "Scan and import all supported files recursively",
-                                style = MaterialTheme.typography.bodySmall,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant
-                            )
+                        Row(
+                            modifier = Modifier.padding(14.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(12.dp)
+                        ) {
+                            Text("📁", fontSize = 24.sp)
+                            Column {
+                                Text("Import Folder", fontWeight = FontWeight.Bold)
+                                Text(
+                                    "Scan and import all supported files recursively",
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                                )
+                            }
                         }
                     }
                 }

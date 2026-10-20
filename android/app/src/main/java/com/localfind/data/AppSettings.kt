@@ -40,6 +40,9 @@ const val DEFAULT_VIDEO_SKIP_SIMILAR = true
 /** Default visual similarity threshold (0.0 .. 1.0) above which consecutive scenes are skipped. */
 const val DEFAULT_VIDEO_SIMILARITY_THRESHOLD = 0.85f
 
+/** Default whether folder import is enabled (hidden by default unless enabled from advanced settings). */
+const val DEFAULT_ENABLE_FOLDER_IMPORT = false
+
 /**
  * Configuration model holding all tunable variables for searching and indexing in LocalFind.
  *
@@ -58,6 +61,7 @@ const val DEFAULT_VIDEO_SIMILARITY_THRESHOLD = 0.85f
  * @property videoIncludeAudio Whether to decode and embed audio tracks in videos alongside visual keyframes.
  * @property videoSkipSimilarChunks Whether to skip consecutive video windows with visually redundant content.
  * @property videoSimilarityThreshold Similarity cutoff (0.5 .. 1.0) for detecting redundant video windows.
+ * @property enableFolderImport Whether importing entire directories is exposed in the gallery UI.
  */
 data class AppSettings(
     val darkMode: Boolean = DEFAULT_DARK_MODE,
@@ -71,7 +75,8 @@ data class AppSettings(
     val maxImageDimension: Int = DEFAULT_MAX_IMAGE_DIMENSION,
     val videoIncludeAudio: Boolean = DEFAULT_VIDEO_INCLUDE_AUDIO,
     val videoSkipSimilarChunks: Boolean = DEFAULT_VIDEO_SKIP_SIMILAR,
-    val videoSimilarityThreshold: Float = DEFAULT_VIDEO_SIMILARITY_THRESHOLD
+    val videoSimilarityThreshold: Float = DEFAULT_VIDEO_SIMILARITY_THRESHOLD,
+    val enableFolderImport: Boolean = DEFAULT_ENABLE_FOLDER_IMPORT
 ) {
     /**
      * Returns a copy of [AppSettings] with all values clamped to valid and safe ranges.
@@ -90,7 +95,8 @@ data class AppSettings(
             maxImageDimension = maxImageDimension.coerceIn(128, 2048),
             videoIncludeAudio = videoIncludeAudio,
             videoSkipSimilarChunks = videoSkipSimilarChunks,
-            videoSimilarityThreshold = videoSimilarityThreshold.coerceIn(0.5f, 1.0f)
+            videoSimilarityThreshold = videoSimilarityThreshold.coerceIn(0.5f, 1.0f),
+            enableFolderImport = enableFolderImport
         )
     }
 }
@@ -137,7 +143,8 @@ class SettingsStore(private val prefs: SharedPreferences) {
             maxImageDimension = prefs.getInt(KEY_MAX_IMAGE_DIMENSION, DEFAULT_MAX_IMAGE_DIMENSION),
             videoIncludeAudio = prefs.getBoolean(KEY_VIDEO_INCLUDE_AUDIO, DEFAULT_VIDEO_INCLUDE_AUDIO),
             videoSkipSimilarChunks = prefs.getBoolean(KEY_VIDEO_SKIP_SIMILAR, DEFAULT_VIDEO_SKIP_SIMILAR),
-            videoSimilarityThreshold = prefs.getFloat(KEY_VIDEO_SIMILARITY_THRESHOLD, DEFAULT_VIDEO_SIMILARITY_THRESHOLD)
+            videoSimilarityThreshold = prefs.getFloat(KEY_VIDEO_SIMILARITY_THRESHOLD, DEFAULT_VIDEO_SIMILARITY_THRESHOLD),
+            enableFolderImport = prefs.getBoolean(KEY_ENABLE_FOLDER_IMPORT, DEFAULT_ENABLE_FOLDER_IMPORT)
         ).sanitized()
     }
 
@@ -159,6 +166,7 @@ class SettingsStore(private val prefs: SharedPreferences) {
             putBoolean(KEY_VIDEO_INCLUDE_AUDIO, valid.videoIncludeAudio)
             putBoolean(KEY_VIDEO_SKIP_SIMILAR, valid.videoSkipSimilarChunks)
             putFloat(KEY_VIDEO_SIMILARITY_THRESHOLD, valid.videoSimilarityThreshold)
+            putBoolean(KEY_ENABLE_FOLDER_IMPORT, valid.enableFolderImport)
         }
     }
 
@@ -187,6 +195,7 @@ class SettingsStore(private val prefs: SharedPreferences) {
         const val KEY_VIDEO_INCLUDE_AUDIO = "video_include_audio"
         const val KEY_VIDEO_SKIP_SIMILAR = "video_skip_similar"
         const val KEY_VIDEO_SIMILARITY_THRESHOLD = "video_similarity_threshold"
+        const val KEY_ENABLE_FOLDER_IMPORT = "enable_folder_import"
     }
 }
 

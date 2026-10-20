@@ -354,6 +354,18 @@ fun SettingsScreen(
                     // =================================================================
                     SettingsCategoryHeader("LIBRARY & REINDEXING")
 
+                    SettingSwitchRow(
+                        title = "Enable folder import",
+                        subtitle = "Not Recommended",
+                        description = "Show folder import options in the gallery and action sheets.",
+                        checked = settings.enableFolderImport,
+                        onCheckedChange = { checked ->
+                            onSettingsChange(settings.copy(enableFolderImport = checked))
+                        }
+                    )
+
+                    SettingsSectionDivider()
+
                     SettingActionRow(
                         title = "Reindex library",
                         subtitle = if (isIndexing) "Indexing in progress..." else "$fileCount files in library",
