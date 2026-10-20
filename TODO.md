@@ -55,12 +55,12 @@
 - [x] Enhance UI/UX
 - [x] Search by image (visual similarity query)
 - [x] Support GIF
-- Support import by share from other apps
-- Better PDF viewer
+- [x] Support import by share from other apps
+- [x] Better PDF viewer
 - Support landscape orientation in file viewer
 - [x] Show file details and open in phone gallery or its own app
 - [x] Multi select
-- Refactor code
+- Refactor, optimize, check dead code
 - What else?
 - Final E2E test with edge cases
 - Publish

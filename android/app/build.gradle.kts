@@ -59,6 +59,8 @@ dependencies {
     implementation(libs.media3.exoplayer)
     implementation(libs.media3.ui)
     implementation(libs.androidx.work.runtime.ktx)
+    implementation(libs.androidx.pdf.viewer.fragment)
+    implementation(libs.androidx.fragment.compose)
 
     testImplementation(libs.junit)
     androidTestImplementation(platform(libs.androidx.compose.bom))
