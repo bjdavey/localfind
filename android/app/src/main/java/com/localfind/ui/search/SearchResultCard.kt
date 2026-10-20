@@ -70,6 +70,11 @@ fun SearchResultsList(
     listState: LazyListState = rememberLazyListState(),
     modifier: Modifier = Modifier
 ) {
+    // Defensively ensure chunk keys are unique so LazyColumn never throws an IllegalArgumentException
+    val uniqueResults = remember(results) {
+        results.distinctBy { it.chunkId }
+    }
+
     LazyColumn(
         state = listState,
         modifier = modifier,
@@ -77,7 +82,7 @@ fun SearchResultsList(
         verticalArrangement = Arrangement.spacedBy(12.dp)
     ) {
         items(
-            items = results,
+            items = uniqueResults,
             key = { it.chunkId }
         ) { result ->
             SearchResultCard(

@@ -66,6 +66,7 @@
 - Publish
 
 ## Bugs / Issues
+- [x] Fix app crash due to duplicate keys in search results list (LazyColumn crash on device)
 - [x] Can not cancel stuck sync file
 - [x] Should not allow import files other than supported that has builtin viewer
 - [x] Fix resume indexing after app closed, and keep indexing working in background while showing notification to prevent the app from being stopped when closed

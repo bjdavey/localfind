@@ -236,10 +236,8 @@ fun Indexer.indexVideoFile(
             }
         }
     } catch (e: Exception) {
-        if (records.isNotEmpty()) {
-            embeddingStore.storeBatch(records)
-            records.clear()
-        }
+        // Discard uncommitted in-memory batch on error to prevent duplicate insertions when retrying
+        records.clear()
         return IndexResult(file.uri, 0, false, "Video indexing failed: ${e.message}")
     } finally {
         audioDeferred?.cancel()
@@ -249,6 +247,7 @@ fun Indexer.indexVideoFile(
     if (records.isNotEmpty()) {
         embeddingStore.storeBatch(records)
         records.clear()
+        IndexingResumeManager.setResumeChunk(context, file.uri, totalWindows, file.size)
     }
 
     if (isCancelled()) {

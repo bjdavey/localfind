@@ -633,5 +633,57 @@ class SearcherTest {
 
         searcher.searchImage(dummyBitmap)
     }
-}
 
+    @Test
+    fun searchDeduplicatesResultsByChunkId() {
+        // Simulates a scenario where vectorStore returns duplicate records with identical IDs
+        // (e.g. MediaPipe SqliteVectorStore having duplicate rows after an interrupted resume)
+        val duplicateStore = object : VectorStore {
+            private val duplicateList = mutableListOf<RetrievalRecord>()
+
+            override fun upsert(records: List<RetrievalRecord>) {
+                duplicateList.addAll(records)
+            }
+            override fun get(ids: List<String>): List<RetrievalRecord> =
+                duplicateList.filter { it.id in ids }
+            override fun getAllRecordIds(): List<String> = duplicateList.map { it.id }
+            override fun delete(ids: List<String>) { duplicateList.removeAll { it.id in ids } }
+            override fun delete(metadata: Map<String, String>) {
+                duplicateList.removeAll { r -> metadata.all { (k, v) -> r.metadata[k] == v } }
+            }
+            override fun deleteAll() { duplicateList.clear() }
+            override fun search(queryEmbedding: FloatArray, topK: Int): List<RetrievalRecord> =
+                search(queryEmbedding, topK, emptyMap())
+            override fun search(
+                queryEmbedding: FloatArray,
+                topK: Int,
+                metadataFilter: Map<String, String>
+            ): List<RetrievalRecord> {
+                return duplicateList
+            }
+            override fun close() { duplicateList.clear() }
+        }
+
+        val embeddingStore = EmbeddingStore(duplicateStore)
+        val searcher = Searcher(embeddingStore) { floatArrayOf(1f, 0f) }
+
+        val rec1 = RetrievalRecord(
+            "chunk_dup_1",
+            listOf(TextPart("Duplicate chunk test")),
+            floatArrayOf(1f, 0f),
+            mapOf("name" to "doc.txt", "type" to "text")
+        )
+        val rec2 = RetrievalRecord(
+            "chunk_dup_1",
+            listOf(TextPart("Duplicate chunk test")),
+            floatArrayOf(1f, 0f),
+            mapOf("name" to "doc.txt", "type" to "text")
+        )
+        duplicateStore.upsert(listOf(rec1, rec2))
+
+        val results = searcher.search("test", topK = 10)
+        // Must deduplicate so only 1 result is returned
+        assertEquals(1, results.size)
+        assertEquals("chunk_dup_1", results[0].chunkId)
+    }
+}

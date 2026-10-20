@@ -198,8 +198,7 @@ class Searcher(
                 .flatMap { type ->
                     embeddingStore.search(queryEmbedding, fetchLimit, metadataFilter + ("type" to type))
                 }
-                .distinctBy { it.id }
-        }
+        }.distinctBy { it.id }
 
         // Map RetrievalRecord items to SearchResult objects, filtering out excluded source URI if present
         val results = records.mapNotNull { record ->
@@ -238,9 +237,11 @@ class Searcher(
             )
         }
 
-        // Filter by minimum similarity threshold, order by descending score, and take topK
+        // Filter by minimum similarity threshold, deduplicate by chunk ID to prevent duplicate UI keys,
+        // order by descending score, and take topK
         return results
             .filter { it.score >= threshold }
+            .distinctBy { it.chunkId }
             .sortedByDescending { it.score }
             .take(topK)
     }

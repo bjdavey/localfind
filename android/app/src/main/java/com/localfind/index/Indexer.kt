@@ -216,10 +216,8 @@ class Indexer(
                 }
             }
         } catch (e: Exception) {
-            if (records.isNotEmpty()) {
-                embeddingStore.storeBatch(records)
-                records.clear()
-            }
+            // Discard uncommitted in-memory batch on error to prevent duplicate insertions when retrying
+            records.clear()
             if (errorPrefix != null) {
                 return IndexResult(file.uri, 0, false, "$errorPrefix: ${e.message}")
             }
@@ -229,6 +227,7 @@ class Indexer(
         if (records.isNotEmpty()) {
             embeddingStore.storeBatch(records)
             records.clear()
+            IndexingResumeManager.setResumeChunk(context, file.uri, items.size, file.size)
         }
 
         if (isCancelled()) {
