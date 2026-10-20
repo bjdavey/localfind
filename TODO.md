@@ -60,7 +60,7 @@
 - Support landscape orientation in file viewer
 - [x] Show file details and open in phone gallery or its own app
 - [x] Multi select
-- Good test samples
+- Refactor code
 - What else?
 - Final E2E test with edge cases
 - Publish

@@ -67,7 +67,9 @@ import com.localfind.ui.settings.SettingsScreen
 import com.localfind.ui.theme.LocalFindTheme
 import com.localfind.ui.viewer.ViewerOverlayHost
 import com.localfind.ui.viewer.rememberViewerState
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 
@@ -161,8 +163,9 @@ fun MainScreen(
     var searchError by remember { mutableStateOf<String?>(null) }
     var searchImageUri by remember { mutableStateOf<android.net.Uri?>(null) }
     var searchImageName by remember { mutableStateOf<String?>(null) }
-    var searchImageEmbedding by remember { mutableStateOf<FloatArray?>(null) }
+    val searchImageEmbeddingCache = remember { arrayOfNulls<FloatArray>(1) }
     var excludeSourceUri by remember { mutableStateOf<String?>(null) }
+    var currentSearchJob by remember { mutableStateOf<Job?>(null) }
 
     // Modality categories with at least one imported file in the app (plus ALL).
     // Hides filter chips for categories with 0 files in the app.
@@ -398,57 +401,89 @@ fun MainScreen(
     fun performImageSearch(
         imageUri: android.net.Uri,
         imageName: String? = null,
-        category: GalleryCategory = searchCategory,
+        category: GalleryCategory? = null,
         excludeUri: String? = null,
         useCachedEmbedding: Boolean = false
     ) {
-        if (isSearching) return
         if (modelStatus is ModelStatus.Error) {
             searchError = "Search unavailable: Embedding model is not loaded."
             hasSearched = true
             return
         }
 
+        currentSearchJob?.cancel()
+
+        // If searching inside a specific target file (e.g. video or PDF), scope results to that file
+        val fileFilter = activeSearchFile?.let { mapOf("fileId" to it.uri) } ?: emptyMap()
+
+        // When scoped to a file, do not filter by category types so all chunks of that file are matched.
+        // When searching all files, preserve or default to photos.
+        val targetCategory = if (activeSearchFile != null) {
+            searchCategory
+        } else {
+            category ?: when {
+                searchCategory == GalleryCategory.PHOTOS || searchCategory == GalleryCategory.ALL -> searchCategory
+                GalleryCategory.PHOTOS in availableCategories -> GalleryCategory.PHOTOS
+                else -> GalleryCategory.ALL
+            }
+        }
+        searchCategory = targetCategory
+
         searchImageUri = imageUri
         searchImageName = imageName ?: FileImporter.resolveDisplayName(context.contentResolver, imageUri)
         searchQuery = ""
         excludeSourceUri = excludeUri
-        val categoryTypes = category.types
+        val categoryTypes = if (activeSearchFile != null) null else targetCategory.types
 
-        scope.launch {
+        currentSearchJob = scope.launch {
             isSearching = true
             searchError = null
             try {
                 val results = withContext(Dispatchers.Default) {
-                    val embedding = if (useCachedEmbedding && searchImageEmbedding != null) {
-                        searchImageEmbedding!!
+                    val embedding = if (useCachedEmbedding && searchImageEmbeddingCache[0] != null) {
+                        searchImageEmbeddingCache[0]!!
                     } else {
-                        val bitmap = withContext(Dispatchers.IO) {
-                            com.localfind.index.image.ImageIndexer.decodeNormalizedBitmap(
-                                context,
-                                imageUri,
-                                maxDimension = settings.maxImageDimension
-                            )
-                        }
-                        val emb = try {
-                            EngineManager.withSearcher(context) { searcher ->
-                                searcher.embedImage(bitmap)
+                        val existingEmbedding = withContext(Dispatchers.IO) {
+                            try {
+                                EngineManager.withStore(context) { store ->
+                                    store.get("${imageUri}_0")?.embeddings
+                                }
+                            } catch (_: Exception) {
+                                null
                             }
-                        } finally {
-                            bitmap.recycle()
                         }
-                        emb
+
+                        if (existingEmbedding != null && existingEmbedding.isNotEmpty()) {
+                            existingEmbedding
+                        } else {
+                            val bitmap = withContext(Dispatchers.IO) {
+                                com.localfind.index.image.ImageIndexer.decodeNormalizedBitmap(
+                                    context,
+                                    imageUri,
+                                    maxDimension = settings.maxImageDimension
+                                )
+                            }
+                            val emb = try {
+                                EngineManager.withSearcher(context) { searcher ->
+                                    searcher.embedImage(bitmap)
+                                }
+                            } finally {
+                                bitmap.recycle()
+                            }
+                            emb
+                        }
                     }
 
-                    searchImageEmbedding = embedding
+                    searchImageEmbeddingCache[0] = embedding
 
                     EngineManager.withSearcher(context) { searcher ->
                         searcher.searchByEmbedding(
                             queryEmbedding = embedding,
                             topK = settings.topK,
                             threshold = settings.similarityThreshold,
+                            metadataFilter = fileFilter,
                             fileTypes = categoryTypes,
-                            excludeFileUri = excludeUri
+                            excludeFileUri = if (activeSearchFile != null) null else excludeUri
                         )
                     }
                 }
@@ -459,6 +494,8 @@ fun MainScreen(
                         searchListState.scrollToItem(0)
                     } catch (_: Exception) {}
                 }
+            } catch (_: CancellationException) {
+                // Cancelled by a newer search request; do not show error
             } catch (e: Exception) {
                 searchError = e.message ?: "Visual similarity search failed"
                 searchResults = emptyList()
@@ -492,12 +529,13 @@ fun MainScreen(
             )
             return
         }
+        currentSearchJob?.cancel()
         activeSearchFile = target
         searchCategory = GalleryCategory.ALL
         searchQuery = ""
         searchImageUri = null
         searchImageName = null
-        searchImageEmbedding = null
+        searchImageEmbeddingCache[0] = null
         excludeSourceUri = null
         hasSearched = false
         searchResults = emptyList()
@@ -515,15 +553,16 @@ fun MainScreen(
      */
     fun performSearch(queryText: String, category: GalleryCategory = searchCategory) {
         val trimmed = queryText.trim()
-        if (trimmed.isBlank() || isSearching) return
+        if (trimmed.isBlank()) return
         if (modelStatus is ModelStatus.Error) {
             searchError = "Search unavailable: Embedding model is not loaded."
             hasSearched = true
             return
         }
+        currentSearchJob?.cancel()
         val fileFilter = activeSearchFile?.let { mapOf("fileId" to it.uri) } ?: emptyMap()
         val categoryTypes = if (activeSearchFile != null) null else category.types
-        scope.launch {
+        currentSearchJob = scope.launch {
             isSearching = true
             searchError = null
             try {
@@ -546,6 +585,8 @@ fun MainScreen(
                     } catch (_: Exception) {
                     }
                 }
+            } catch (_: CancellationException) {
+                // Cancelled by a newer search request; do not show error
             } catch (e: Exception) {
                 searchError = e.message ?: "An error occurred during search"
                 searchResults = emptyList()
@@ -911,16 +952,17 @@ fun MainScreen(
                     if (searchImageUri != null) {
                         searchImageUri = null
                         searchImageName = null
-                        searchImageEmbedding = null
+                        searchImageEmbeddingCache[0] = null
                         excludeSourceUri = null
                     }
                 },
                 onSearch = { performSearch(searchQuery, searchCategory) },
                 onClear = {
+                    currentSearchJob?.cancel()
                     searchQuery = ""
                     searchImageUri = null
                     searchImageName = null
-                    searchImageEmbedding = null
+                    searchImageEmbeddingCache[0] = null
                     excludeSourceUri = null
                     hasSearched = false
                     searchResults = emptyList()
@@ -978,12 +1020,17 @@ fun MainScreen(
                 errorMessage = searchError ?: if (modelStatus is ModelStatus.Error) (modelStatus as ModelStatus.Error).message else null,
                 indexedChunksCount = indexedChunksCount,
                 onClose = {
+                    currentSearchJob?.cancel()
                     isSearchOpen = false
                     activeSearchFile = null
                     searchCategory = GalleryCategory.ALL
+                    if (searchImageUri != null) {
+                        hasSearched = false
+                        searchResults = emptyList()
+                    }
                     searchImageUri = null
                     searchImageName = null
-                    searchImageEmbedding = null
+                    searchImageEmbeddingCache[0] = null
                     excludeSourceUri = null
                 },
                 queryImageUri = searchImageUri,
@@ -992,9 +1039,10 @@ fun MainScreen(
                     performImageSearch(uri)
                 },
                 onClearQueryImage = {
+                    currentSearchJob?.cancel()
                     searchImageUri = null
                     searchImageName = null
-                    searchImageEmbedding = null
+                    searchImageEmbeddingCache[0] = null
                     excludeSourceUri = null
                     hasSearched = false
                     searchResults = emptyList()
