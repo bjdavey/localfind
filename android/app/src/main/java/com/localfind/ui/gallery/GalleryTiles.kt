@@ -33,6 +33,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
@@ -53,7 +54,6 @@ import com.localfind.R
 import com.localfind.data.Folder
 import com.localfind.data.ImportedFile
 import com.localfind.data.IndexingStatus
-import com.localfind.data.formatFileSize
 import com.localfind.index.Indexer
 import com.localfind.ui.theme.BadgeAudio
 import com.localfind.ui.theme.BadgeImage
@@ -68,11 +68,12 @@ import kotlinx.coroutines.withContext
  *
  * Renders a rich visual thumbnail tailored to the file's modality:
  * - **Photos**: Full-bleed Coil [AsyncImage].
- * - **Videos**: Extracted video keyframe + centered translucent play icon + duration pill.
+ * - **Videos**: Extracted video keyframe + duration pill.
  * - **PDFs**: Rendered Page 1 bitmap on white paper + page count pill.
  * - **Text / Markdown**: Miniature document sheet showing the actual first lines of text.
  * - **Audio**: Embedded cover art or stylized waveform bars + duration pill.
- * - **Progress Overlay**: Live determinate/indeterminate progress indicator during background indexing.
+ * - **Washed / Grayed Card**: Tiles with Pending, Failed, or Indexing status are washed out with a dimmed overlay.
+ * - **Center Status & Actions**: Pending/Failed/Indexing status displayed in the center with contextual buttons (Cancel, Retry, Pause, Resume).
  */
 @OptIn(ExperimentalFoundationApi::class)
 @Composable
@@ -84,6 +85,9 @@ fun MediaGalleryTile(
     onClick: () -> Unit,
     onLongClick: () -> Unit,
     onCancelIndex: (() -> Unit)? = null,
+    onRetryIndex: (() -> Unit)? = null,
+    onPauseIndex: (() -> Unit)? = null,
+    onResumeIndex: (() -> Unit)? = null,
     modifier: Modifier = Modifier
 ) {
     val context = LocalContext.current
@@ -111,6 +115,11 @@ fun MediaGalleryTile(
         }
     }
 
+    val isPending = file.indexingStatus == IndexingStatus.PENDING
+    val isFailed = file.indexingStatus == IndexingStatus.FAILED
+    val isIndexing = isActivelyIndexing || file.indexingStatus == IndexingStatus.INDEXING
+    val isWashed = isPending || isFailed || isIndexing
+
     Surface(
         modifier = modifier
             .fillMaxWidth()
@@ -122,149 +131,149 @@ fun MediaGalleryTile(
             ),
         shape = RoundedCornerShape(16.dp),
         color = MaterialTheme.colorScheme.surfaceVariant,
-        tonalElevation = 2.dp
+        tonalElevation = if (isWashed) 0.dp else 2.dp
     ) {
         Box(modifier = Modifier.fillMaxSize()) {
             // -----------------------------------------------------------------
-            // 1. BACKGROUND VISUAL PREVIEW BY FILE TYPE
+            // 1. BACKGROUND VISUAL PREVIEW BY FILE TYPE (washed/grayed if pending or failed)
             // -----------------------------------------------------------------
-            when (category) {
-                GalleryCategory.PHOTOS -> {
-                    AsyncImage(
-                        model = ImageRequest.Builder(context)
-                            .data(file.uri.toUri())
-                            .crossfade(true)
-                            .build(),
-                        contentDescription = file.displayName,
-                        contentScale = ContentScale.Crop,
-                        modifier = Modifier.fillMaxSize()
-                    )
-                }
-
-                GalleryCategory.VIDEOS -> {
-                    val bitmap = previewData?.bitmap
-                    if (bitmap != null) {
-                        Image(
-                            bitmap = bitmap.asImageBitmap(),
+            Box(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .then(if (isWashed) Modifier.alpha(0.40f) else Modifier)
+            ) {
+                when (category) {
+                    GalleryCategory.PHOTOS -> {
+                        AsyncImage(
+                            model = ImageRequest.Builder(context)
+                                .data(file.uri.toUri())
+                                .crossfade(true)
+                                .build(),
                             contentDescription = file.displayName,
                             contentScale = ContentScale.Crop,
                             modifier = Modifier.fillMaxSize()
                         )
-                    } else {
-                        Box(
-                            modifier = Modifier
-                                .fillMaxSize()
-                                .background(
-                                    Brush.linearGradient(
-                                        listOf(Color(0xFF1A1F2C), Color(0xFF2D3748))
-                                    )
-                                )
-                        )
                     }
-                    // Centered Play Button Circle
-                    Box(
-                        modifier = Modifier
-                            .align(Alignment.Center)
-                            .size(44.dp)
-                            .clip(CircleShape)
-                            .background(Color.Black.copy(alpha = 0.55f))
-                            .border(1.5.dp, Color.White.copy(alpha = 0.85f), CircleShape),
-                        contentAlignment = Alignment.Center
-                    ) {
-                        Icon(
-                            painter = painterResource(R.drawable.ic_play_arrow),
-                            contentDescription = "Play",
-                            tint = Color.White,
-                            modifier = Modifier.size(24.dp)
-                        )
-                    }
-                }
 
-                GalleryCategory.PDFS, GalleryCategory.TEXT -> {
-                    if (isPdf) {
-                        // PDF Page 1 Thumbnail framed as a document sheet with top alignment
+                    GalleryCategory.VIDEOS -> {
                         val bitmap = previewData?.bitmap
                         if (bitmap != null) {
+                            Image(
+                                bitmap = bitmap.asImageBitmap(),
+                                contentDescription = file.displayName,
+                                contentScale = ContentScale.Crop,
+                                modifier = Modifier.fillMaxSize()
+                            )
+                        } else {
                             Box(
                                 modifier = Modifier
                                     .fillMaxSize()
                                     .background(
                                         Brush.linearGradient(
-                                            listOf(Color(0xFF263238), Color(0xFF37474F))
+                                            listOf(Color(0xFF1A1F2C), Color(0xFF2D3748))
                                         )
                                     )
-                                    .padding(top = 36.dp, start = 10.dp, end = 10.dp, bottom = 10.dp),
-                                contentAlignment = Alignment.TopCenter
-                            ) {
-                                Surface(
-                                    modifier = Modifier.fillMaxSize(),
-                                    shape = RoundedCornerShape(topStart = 8.dp, topEnd = 8.dp, bottomStart = 4.dp, bottomEnd = 4.dp),
-                                    color = Color.White,
-                                    shadowElevation = 2.dp
-                                ) {
-                                    Image(
-                                        bitmap = bitmap.asImageBitmap(),
-                                        contentDescription = file.displayName,
-                                        contentScale = ContentScale.Crop,
-                                        alignment = Alignment.TopCenter,
-                                        modifier = Modifier
-                                            .fillMaxSize()
-                                            .padding(top = 4.dp, start = 4.dp, end = 4.dp)
-                                    )
-                                }
-                            }
-                        } else {
-                            DocumentPlaceholderSheet(
-                                snippet = "PDF Document\nTap to view pages",
-                                isPdf = true
                             )
                         }
-                    } else {
-                        // Text / Markdown First Lines Miniature Document Sheet
-                        DocumentPlaceholderSheet(
-                            snippet = previewData?.textSnippet ?: "Loading preview…",
-                            isPdf = false
-                        )
+                        // Centered Play Button removed per user request
                     }
-                }
 
-                GalleryCategory.AUDIO -> {
-                    val bitmap = previewData?.bitmap
-                    if (bitmap != null) {
-                        Image(
-                            bitmap = bitmap.asImageBitmap(),
-                            contentDescription = file.displayName,
-                            contentScale = ContentScale.Crop,
-                            modifier = Modifier.fillMaxSize()
-                        )
-                    } else {
-                        AudioWaveformPlaceholder()
+                    GalleryCategory.PDFS, GalleryCategory.TEXT -> {
+                        if (isPdf) {
+                            // PDF Page 1 Thumbnail framed as a document sheet with top alignment
+                            val bitmap = previewData?.bitmap
+                            if (bitmap != null) {
+                                Box(
+                                    modifier = Modifier
+                                        .fillMaxSize()
+                                        .background(
+                                            Brush.linearGradient(
+                                                listOf(Color(0xFF263238), Color(0xFF37474F))
+                                            )
+                                        )
+                                        .padding(top = 36.dp, start = 10.dp, end = 10.dp, bottom = 10.dp),
+                                    contentAlignment = Alignment.TopCenter
+                                ) {
+                                    Surface(
+                                        modifier = Modifier.fillMaxSize(),
+                                        shape = RoundedCornerShape(topStart = 8.dp, topEnd = 8.dp, bottomStart = 4.dp, bottomEnd = 4.dp),
+                                        color = Color.White,
+                                        shadowElevation = 2.dp
+                                    ) {
+                                        Image(
+                                            bitmap = bitmap.asImageBitmap(),
+                                            contentDescription = file.displayName,
+                                            contentScale = ContentScale.Crop,
+                                            alignment = Alignment.TopCenter,
+                                            modifier = Modifier
+                                                .fillMaxSize()
+                                                .padding(top = 4.dp, start = 4.dp, end = 4.dp)
+                                        )
+                                    }
+                                }
+                            } else {
+                                DocumentPlaceholderSheet(
+                                    snippet = "PDF Document\nTap to view pages",
+                                    isPdf = true
+                                )
+                            }
+                        } else {
+                            // Text / Markdown First Lines Miniature Document Sheet
+                            DocumentPlaceholderSheet(
+                                snippet = previewData?.textSnippet ?: "Loading preview…",
+                                isPdf = false
+                            )
+                        }
                     }
-                }
 
-                GalleryCategory.ALL -> {}
+                    GalleryCategory.AUDIO -> {
+                        val bitmap = previewData?.bitmap
+                        if (bitmap != null) {
+                            Image(
+                                bitmap = bitmap.asImageBitmap(),
+                                contentDescription = file.displayName,
+                                contentScale = ContentScale.Crop,
+                                modifier = Modifier.fillMaxSize()
+                            )
+                        } else {
+                            AudioWaveformPlaceholder()
+                        }
+                    }
+
+                    GalleryCategory.ALL -> {}
+                }
             }
 
-            // -----------------------------------------------------------------
-            // 2. ACTIVE INDEXING OVERLAY (determinate spinner + percent)
-            // -----------------------------------------------------------------
-            if (isActivelyIndexing) {
+            // Dark wash overlay scrim when pending, failed, or indexing
+            if (isWashed) {
                 Box(
                     modifier = Modifier
                         .fillMaxSize()
-                        .background(Color.Black.copy(alpha = 0.52f)),
+                        .background(Color.Black.copy(alpha = 0.40f))
+                )
+            }
+
+            // -----------------------------------------------------------------
+            // 2. CENTER CIRCULAR PROGRESS & CONTEXTUAL ACTIONS
+            // -----------------------------------------------------------------
+            if (isIndexing) {
+                Box(
+                    modifier = Modifier.fillMaxSize(),
                     contentAlignment = Alignment.Center
                 ) {
                     Column(
                         horizontalAlignment = Alignment.CenterHorizontally,
-                        verticalArrangement = Arrangement.spacedBy(6.dp)
+                        verticalArrangement = Arrangement.spacedBy(8.dp),
+                        modifier = Modifier.padding(horizontal = 8.dp)
                     ) {
+                        // Running animated circular progress (determinate with % or indeterminate)
                         if (activeProgressFraction > 0f) {
                             Box(contentAlignment = Alignment.Center) {
                                 CircularProgressIndicator(
                                     progress = { activeProgressFraction },
-                                    modifier = Modifier.size(44.dp),
-                                    color = MaterialTheme.colorScheme.primary,
+                                    modifier = Modifier.size(38.dp),
+                                    color = Color.White.copy(alpha = 0.85f),
+                                    trackColor = Color.White.copy(alpha = 0.25f),
                                     strokeWidth = 3.5.dp
                                 )
                                 Text(
@@ -277,39 +286,153 @@ fun MediaGalleryTile(
                         } else {
                             CircularProgressIndicator(
                                 modifier = Modifier.size(36.dp),
-                                color = MaterialTheme.colorScheme.primary,
-                                strokeWidth = 3.dp
+                                color = Color.White.copy(alpha = 0.85f),
+                                trackColor = Color.White.copy(alpha = 0.25f),
+                                strokeWidth = 3.5.dp
                             )
                         }
-                        Text(
-                            text = "Indexing...",
-                            style = MaterialTheme.typography.labelSmall,
-                            fontWeight = FontWeight.SemiBold,
-                            color = Color.White
-                        )
-                        if (onCancelIndex != null) {
-                            Surface(
-                                shape = RoundedCornerShape(12.dp),
-                                color = Color.Black.copy(alpha = 0.65f),
-                                modifier = Modifier
-                                    .clip(RoundedCornerShape(12.dp))
-                                    .clickable(onClick = onCancelIndex)
-                            ) {
-                                Text(
-                                    text = "Cancel",
-                                    style = MaterialTheme.typography.labelSmall,
-                                    fontWeight = FontWeight.Bold,
-                                    color = Color(0xFFFF8A80),
-                                    modifier = Modifier.padding(horizontal = 8.dp, vertical = 2.dp)
+                        // Actively indexing: show Pause and Cancel only
+                        Row(
+                            horizontalArrangement = Arrangement.spacedBy(6.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            if (onPauseIndex != null) {
+                                StatusActionButton(
+                                    text = "Pause",
+                                    iconRes = R.drawable.ic_pause,
+                                    contentColor = Color.White,
+                                    onClick = onPauseIndex
                                 )
                             }
+                            if (onCancelIndex != null) {
+                                StatusActionButton(
+                                    text = "Cancel",
+                                    iconRes = R.drawable.ic_close,
+                                    contentColor = Color(0xFFFF8A80),
+                                    onClick = onCancelIndex
+                                )
+                            }
+                        }
+                    }
+                }
+            } else if (isPending) {
+                Box(
+                    modifier = Modifier.fillMaxSize(),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Column(
+                        horizontalAlignment = Alignment.CenterHorizontally,
+                        verticalArrangement = Arrangement.spacedBy(8.dp),
+                        modifier = Modifier.padding(horizontal = 8.dp)
+                    ) {
+                        if (isQueuePaused) {
+                            // Freezed circular progress ring in muted outline with pause icon inside
+                            Box(
+                                modifier = Modifier
+                                    .size(38.dp)
+                                    .clip(CircleShape)
+                                    .border(3.5.dp, Color.White.copy(alpha = 0.55f), CircleShape),
+                                contentAlignment = Alignment.Center
+                            ) {
+                                Icon(
+                                    painter = painterResource(R.drawable.ic_pause),
+                                    contentDescription = null,
+                                    tint = Color.White.copy(alpha = 0.75f),
+                                    modifier = Modifier.size(16.dp)
+                                )
+                            }
+                            // Paused: show Resume and Cancel only
+                            Row(
+                                horizontalArrangement = Arrangement.spacedBy(6.dp),
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                if (onResumeIndex != null) {
+                                    StatusActionButton(
+                                        text = "Resume",
+                                        iconRes = R.drawable.ic_play_arrow,
+                                        contentColor = Color.White,
+                                        backgroundColor = MaterialTheme.colorScheme.primary.copy(alpha = 0.85f),
+                                        onClick = onResumeIndex
+                                    )
+                                }
+                                if (onCancelIndex != null) {
+                                    StatusActionButton(
+                                        text = "Cancel",
+                                        iconRes = R.drawable.ic_close,
+                                        contentColor = Color(0xFFFF8A80),
+                                        onClick = onCancelIndex
+                                    )
+                                }
+                            }
+                        } else {
+                            // Queued / Pending circular progress ring in muted outline
+                            Box(
+                                modifier = Modifier
+                                    .size(38.dp)
+                                    .clip(CircleShape)
+                                    .border(3.5.dp, Color.White.copy(alpha = 0.55f), CircleShape),
+                                contentAlignment = Alignment.Center
+                            ) {
+                                Icon(
+                                    painter = painterResource(R.drawable.ic_hourglass_empty),
+                                    contentDescription = null,
+                                    tint = Color.White.copy(alpha = 0.75f),
+                                    modifier = Modifier.size(16.dp)
+                                )
+                            }
+                            // Pending in queue: show Cancel only
+                            if (onCancelIndex != null) {
+                                StatusActionButton(
+                                    text = "Cancel",
+                                    iconRes = R.drawable.ic_close,
+                                    contentColor = Color(0xFFFF8A80),
+                                    onClick = onCancelIndex
+                                )
+                            }
+                        }
+                    }
+                }
+            } else if (isFailed) {
+                Box(
+                    modifier = Modifier.fillMaxSize(),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Column(
+                        horizontalAlignment = Alignment.CenterHorizontally,
+                        verticalArrangement = Arrangement.spacedBy(8.dp),
+                        modifier = Modifier.padding(horizontal = 8.dp)
+                    ) {
+                        // Failed circular progress ring in muted outline with warning icon inside
+                        Box(
+                            modifier = Modifier
+                                .size(38.dp)
+                                .clip(CircleShape)
+                                .border(3.5.dp, Color.White.copy(alpha = 0.55f), CircleShape),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Icon(
+                                painter = painterResource(R.drawable.ic_warning),
+                                contentDescription = null,
+                                tint = Color.White.copy(alpha = 0.75f),
+                                modifier = Modifier.size(16.dp)
+                            )
+                        }
+                        // Failed: show Retry only
+                        if (onRetryIndex != null) {
+                            StatusActionButton(
+                                text = "Retry",
+                                iconRes = R.drawable.ic_refresh,
+                                contentColor = Color.White,
+                                backgroundColor = MaterialTheme.colorScheme.primary.copy(alpha = 0.85f),
+                                onClick = onRetryIndex
+                            )
                         }
                     }
                 }
             }
 
             // -----------------------------------------------------------------
-            // 3. TOP-LEFT & TOP-RIGHT BADGES (Type Badge + Status Pill + Menu)
+            // 3. TOP-LEFT & TOP-RIGHT BADGES (Modality Badge + Menu)
             // -----------------------------------------------------------------
             val badgeColor = when (category) {
                 GalleryCategory.PHOTOS -> BadgeImage
@@ -343,97 +466,41 @@ fun MediaGalleryTile(
                 horizontalArrangement = Arrangement.SpaceBetween,
                 verticalAlignment = Alignment.Top
             ) {
-                Row(
-                    horizontalArrangement = Arrangement.spacedBy(4.dp),
-                    verticalAlignment = Alignment.CenterVertically
+                // Modality Badge (Duration for video/audio, icon-only for others)
+                Surface(
+                    shape = RoundedCornerShape(8.dp),
+                    color = badgeColor.copy(alpha = 0.90f)
                 ) {
-                    // Modality Badge (Duration for video/audio, icon-only for others)
-                    Surface(
-                        shape = RoundedCornerShape(8.dp),
-                        color = badgeColor.copy(alpha = 0.90f)
-                    ) {
-                        if (durationText != null) {
-                            Row(
-                                verticalAlignment = Alignment.CenterVertically,
-                                horizontalArrangement = Arrangement.spacedBy(3.dp),
-                                modifier = Modifier.padding(horizontal = 6.dp, vertical = 3.dp)
-                            ) {
-                                Icon(
-                                    painter = painterResource(badgeIconRes),
-                                    contentDescription = null,
-                                    tint = Color.White,
-                                    modifier = Modifier.size(12.dp)
-                                )
-                                Text(
-                                    text = durationText,
-                                    style = MaterialTheme.typography.labelSmall,
-                                    fontWeight = FontWeight.Bold,
-                                    color = Color.White
-                                )
-                            }
-                        } else {
-                            Box(
-                                contentAlignment = Alignment.Center,
-                                modifier = Modifier.padding(horizontal = 6.dp, vertical = 4.dp)
-                            ) {
-                                Icon(
-                                    painter = painterResource(badgeIconRes),
-                                    contentDescription = null,
-                                    tint = Color.White,
-                                    modifier = Modifier.size(13.dp)
-                                )
-                            }
-                        }
-                    }
-
-                    // Background Queue or Failure Status Chip
-                    if (file.indexingStatus == IndexingStatus.PENDING && !isActivelyIndexing) {
-                        Surface(
-                            shape = RoundedCornerShape(8.dp),
-                            color = Color.Black.copy(alpha = 0.70f)
+                    if (durationText != null) {
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(3.dp),
+                            modifier = Modifier.padding(horizontal = 6.dp, vertical = 3.dp)
                         ) {
-                            Row(
-                                verticalAlignment = Alignment.CenterVertically,
-                                horizontalArrangement = Arrangement.spacedBy(4.dp),
-                                modifier = Modifier.padding(horizontal = 6.dp, vertical = 3.dp)
-                            ) {
-                                Icon(
-                                    painter = painterResource(R.drawable.ic_hourglass_empty),
-                                    contentDescription = null,
-                                    tint = Color.White,
-                                    modifier = Modifier.size(12.dp)
-                                )
-                                Text(
-                                    text = "Pending",
-                                    style = MaterialTheme.typography.labelSmall,
-                                    fontWeight = FontWeight.SemiBold,
-                                    color = Color.White
-                                )
-                            }
+                            Icon(
+                                painter = painterResource(badgeIconRes),
+                                contentDescription = null,
+                                tint = Color.White,
+                                modifier = Modifier.size(12.dp)
+                            )
+                            Text(
+                                text = durationText,
+                                style = MaterialTheme.typography.labelSmall,
+                                fontWeight = FontWeight.Bold,
+                                color = Color.White
+                            )
                         }
-                    } else if (file.indexingStatus == IndexingStatus.FAILED && !isActivelyIndexing) {
-                        Surface(
-                            shape = RoundedCornerShape(8.dp),
-                            color = MaterialTheme.colorScheme.error.copy(alpha = 0.90f)
+                    } else {
+                        Box(
+                            contentAlignment = Alignment.Center,
+                            modifier = Modifier.padding(horizontal = 6.dp, vertical = 4.dp)
                         ) {
-                            Row(
-                                verticalAlignment = Alignment.CenterVertically,
-                                horizontalArrangement = Arrangement.spacedBy(4.dp),
-                                modifier = Modifier.padding(horizontal = 6.dp, vertical = 3.dp)
-                            ) {
-                                Icon(
-                                    painter = painterResource(R.drawable.ic_warning),
-                                    contentDescription = null,
-                                    tint = Color.White,
-                                    modifier = Modifier.size(12.dp)
-                                )
-                                Text(
-                                    text = "Failed",
-                                    style = MaterialTheme.typography.labelSmall,
-                                    fontWeight = FontWeight.Bold,
-                                    color = Color.White
-                                )
-                            }
+                            Icon(
+                                painter = painterResource(badgeIconRes),
+                                contentDescription = null,
+                                tint = Color.White,
+                                modifier = Modifier.size(13.dp)
+                            )
                         }
                     }
                 }
@@ -459,7 +526,7 @@ fun MediaGalleryTile(
             }
 
             // -----------------------------------------------------------------
-            // 4. BOTTOM GRADIENT SCRIM WITH FILE NAME, SIZE & STATUS
+            // 4. BOTTOM GRADIENT SCRIM WITH FILE NAME
             // -----------------------------------------------------------------
             Box(
                 modifier = Modifier
@@ -469,43 +536,61 @@ fun MediaGalleryTile(
                         Brush.verticalGradient(
                             colors = listOf(
                                 Color.Transparent,
-                                Color.Black.copy(alpha = 0.65f),
+                                Color.Black.copy(alpha = 0.70f),
                                 Color.Black.copy(alpha = 0.88f)
                             )
                         )
                     )
-                    .padding(horizontal = 12.dp, vertical = 10.dp)
+                    .padding(horizontal = 10.dp, vertical = 8.dp)
             ) {
-                Column {
-                    Text(
-                        text = file.displayName,
-                        style = MaterialTheme.typography.bodyMedium,
-                        fontWeight = FontWeight.SemiBold,
-                        color = Color.White,
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis
-                    )
-                    val subtitle = when {
-                        isActivelyIndexing && activeProgressFraction > 0f ->
-                            "Indexing ${(activeProgressFraction * 100).toInt()}% • ${formatFileSize(file.size)}"
-                        isActivelyIndexing ->
-                            "Indexing... • ${formatFileSize(file.size)}"
-                        file.indexingStatus == IndexingStatus.PENDING ->
-                            if (isQueuePaused) "Paused • ${formatFileSize(file.size)}"
-                            else "Pending • ${formatFileSize(file.size)}"
-                        file.indexingStatus == IndexingStatus.FAILED ->
-                            "Indexing failed • ${formatFileSize(file.size)}"
-                        else ->
-                            formatFileSize(file.size)
-                    }
-                    Text(
-                        text = subtitle,
-                        style = MaterialTheme.typography.labelSmall,
-                        color = Color.White.copy(alpha = 0.78f),
-                        maxLines = 1
-                    )
-                }
+                Text(
+                    text = file.displayName,
+                    style = MaterialTheme.typography.bodySmall,
+                    fontWeight = FontWeight.SemiBold,
+                    color = Color.White,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis
+                )
             }
+        }
+    }
+}
+
+/**
+ * Compact pill button used in gallery tiles for quick indexing actions (Cancel, Retry, Pause, Resume).
+ */
+@Composable
+private fun StatusActionButton(
+    text: String,
+    iconRes: Int,
+    contentColor: Color,
+    backgroundColor: Color = Color.Black.copy(alpha = 0.65f),
+    onClick: () -> Unit
+) {
+    Surface(
+        shape = RoundedCornerShape(12.dp),
+        color = backgroundColor,
+        modifier = Modifier
+            .clip(RoundedCornerShape(12.dp))
+            .clickable(onClick = onClick)
+    ) {
+        Row(
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(4.dp),
+            modifier = Modifier.padding(horizontal = 8.dp, vertical = 3.dp)
+        ) {
+            Icon(
+                painter = painterResource(iconRes),
+                contentDescription = text,
+                tint = contentColor,
+                modifier = Modifier.size(12.dp)
+            )
+            Text(
+                text = text,
+                style = MaterialTheme.typography.labelSmall,
+                fontWeight = FontWeight.Bold,
+                color = contentColor
+            )
         }
     }
 }

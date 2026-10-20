@@ -682,6 +682,7 @@ fun MainScreen(
             },
             onResumeIndexing = {
                 scope.launch(Dispatchers.IO) {
+                    status = "Resuming..."
                     IndexingWorker.resume(context)
                     withContext(Dispatchers.Main) {
                         Toast.makeText(context, "Indexing resumed", Toast.LENGTH_SHORT).show()

@@ -442,8 +442,9 @@ fun GalleryScreen(
                 it.indexingStatus == IndexingStatus.PENDING || it.indexingStatus == IndexingStatus.INDEXING
             }
             val isCancelledMessage = statusMessage.contains("cancelled", ignoreCase = true)
+            val isQueuePaused = indexingProgress.isPaused || (!isIndexing && !indexingProgress.isIndexing && hasPending)
             val showIndexingBanner = !isCancelledMessage && (
-                ((isIndexing || indexingProgress.isIndexing || indexingProgress.isPaused) && hasPending) ||
+                ((isIndexing || indexingProgress.isIndexing || isQueuePaused) && hasPending) ||
                 statusMessage.startsWith("Importing")
             )
             AnimatedVisibility(
@@ -466,9 +467,13 @@ fun GalleryScreen(
                         horizontalArrangement = Arrangement.SpaceBetween
                     ) {
                         Column(modifier = Modifier.weight(1f)) {
-                            val isPaused = indexingProgress.isPaused
+                            val isPaused = isQueuePaused
                             val bannerText = if (isPaused) {
-                                if (indexingProgress.message.isNotBlank()) indexingProgress.message else "Indexing paused"
+                                val pendingCount = importedFiles.count {
+                                    it.indexingStatus == IndexingStatus.PENDING || it.indexingStatus == IndexingStatus.INDEXING
+                                }
+                                if (indexingProgress.message.isNotBlank() && indexingProgress.isPaused) indexingProgress.message
+                                else "Indexing paused ($pendingCount pending)"
                             } else if (indexingProgress.message.isNotBlank()) {
                                 indexingProgress.message
                             } else {
@@ -513,7 +518,7 @@ fun GalleryScreen(
                             verticalAlignment = Alignment.CenterVertically,
                             horizontalArrangement = Arrangement.spacedBy(4.dp)
                         ) {
-                            if (indexingProgress.isPaused) {
+                            if (isQueuePaused) {
                                 if (onResumeIndexing != null) {
                                     Spacer(modifier = Modifier.width(6.dp))
                                     TextButton(
@@ -817,10 +822,13 @@ fun GalleryScreen(
                             file = file,
                             isActivelyIndexing = isActivelyIndexing,
                             activeProgressFraction = activeFraction,
-                            isQueuePaused = indexingProgress.isPaused,
+                            isQueuePaused = isQueuePaused,
                             onClick = { onFileClick(file) },
                             onLongClick = { inspectedFile = file },
-                            onCancelIndex = onCancelIndexFile?.let { { it(file) } }
+                            onCancelIndex = onCancelIndexFile?.let { { it(file) } },
+                            onRetryIndex = onRetryIndexFile?.let { { it(file) } },
+                            onPauseIndex = onPauseIndexing,
+                            onResumeIndex = onResumeIndexing
                         )
                     }
                 }
