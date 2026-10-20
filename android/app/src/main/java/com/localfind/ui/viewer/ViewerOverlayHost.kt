@@ -228,7 +228,8 @@ fun rememberViewerState(): ViewerState = remember { ViewerState() }
 fun ViewerOverlayHost(
     viewerState: ViewerState,
     importedFiles: List<ImportedFile>,
-    onSearchInFile: (ImportedFile) -> Unit
+    onSearchInFile: (ImportedFile) -> Unit,
+    onSearchSimilarImage: ((uri: String, fileName: String) -> Unit)? = null
 ) {
     // 1. Image Viewer: Gallery app style popup transition
     AnimatedVisibility(
@@ -246,6 +247,12 @@ fun ViewerOverlayHost(
             ImageViewerScreen(
                 params = params,
                 onClose = { viewerState.activeImageViewer = null },
+                onSearchSimilar = if (onSearchSimilarImage != null) {
+                    { uri, name ->
+                        viewerState.activeImageViewer = null
+                        onSearchSimilarImage(uri, name)
+                    }
+                } else null,
                 backHandlerEnabled = viewerState.activeImageViewer != null
             )
         }

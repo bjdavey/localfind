@@ -268,7 +268,12 @@ internal fun FileDetailsDialog(
                     }
                 }
 
-                // Secondary actions: Search in File and Move to Folder
+                // Secondary actions: Search in File (or Find similar for photos) and Move to Folder
+                val isPhoto = ThumbnailHelper.categorizeFile(file.displayName, file.mimeType) == GalleryCategory.PHOTOS
+                val searchActionLabel = if (isPhoto) "Find similar" else "Search in file"
+                val searchActionShortLabel = if (isPhoto) "Similar" else "Search"
+                val searchActionIcon = if (isPhoto) R.drawable.ic_image else R.drawable.ic_search
+
                 if (file.indexingStatus == IndexingStatus.INDEXED && onSearchInFile != null && onMoveToFolder != null) {
                     Row(
                         modifier = Modifier.fillMaxWidth(),
@@ -279,12 +284,12 @@ internal fun FileDetailsDialog(
                             modifier = Modifier.weight(1f)
                         ) {
                             Icon(
-                                painter = painterResource(R.drawable.ic_search),
+                                painter = painterResource(searchActionIcon),
                                 contentDescription = null,
                                 modifier = Modifier.size(18.dp)
                             )
                             Spacer(modifier = Modifier.width(6.dp))
-                            Text("Search", maxLines = 1)
+                            Text(searchActionShortLabel, maxLines = 1)
                         }
                         FilledTonalButton(
                             onClick = onMoveToFolder,
@@ -306,12 +311,12 @@ internal fun FileDetailsDialog(
                             modifier = Modifier.fillMaxWidth()
                         ) {
                             Icon(
-                                painter = painterResource(R.drawable.ic_search),
+                                painter = painterResource(searchActionIcon),
                                 contentDescription = null,
                                 modifier = Modifier.size(18.dp)
                             )
                             Spacer(modifier = Modifier.width(6.dp))
-                            Text("Search in file")
+                            Text(searchActionLabel)
                         }
                     }
                     if (onMoveToFolder != null) {

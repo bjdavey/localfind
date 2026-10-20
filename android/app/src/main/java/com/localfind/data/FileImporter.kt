@@ -62,6 +62,31 @@ object FileImporter {
         Indexer.isSupported(displayName, mimeType)
 
     /**
+     * Resolves the human-readable display name for a given [Uri] from its content provider,
+     * falling back to the last path segment or "image".
+     */
+    fun resolveDisplayName(contentResolver: ContentResolver, uri: Uri): String {
+        try {
+            contentResolver.query(
+                uri,
+                arrayOf(OpenableColumns.DISPLAY_NAME),
+                null,
+                null,
+                null
+            )?.use { cursor ->
+                if (cursor.moveToFirst()) {
+                    val nameIdx = cursor.getColumnIndex(OpenableColumns.DISPLAY_NAME)
+                    if (nameIdx != -1) {
+                        val name = cursor.getStringOrNull(nameIdx)
+                        if (!name.isNullOrBlank()) return name
+                    }
+                }
+            }
+        } catch (_: Exception) {}
+        return uri.lastPathSegment?.substringAfterLast('/')?.ifBlank { "Image" } ?: "Image"
+    }
+
+    /**
      * Resolves metadata for a picked document URI, verifies that it is supported by LocalFind's
      * indexers and builtin viewers, and acquires persistable read permission.
      *

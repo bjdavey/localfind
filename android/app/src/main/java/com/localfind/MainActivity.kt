@@ -159,6 +159,10 @@ fun MainScreen(
     var hasSearched by remember { mutableStateOf(false) }
     var searchResults by remember { mutableStateOf<List<SearchResult>>(emptyList()) }
     var searchError by remember { mutableStateOf<String?>(null) }
+    var searchImageUri by remember { mutableStateOf<android.net.Uri?>(null) }
+    var searchImageName by remember { mutableStateOf<String?>(null) }
+    var searchImageEmbedding by remember { mutableStateOf<FloatArray?>(null) }
+    var excludeSourceUri by remember { mutableStateOf<String?>(null) }
 
     // Modality categories with at least one imported file in the app (plus ALL).
     // Hides filter chips for categories with 0 files in the app.
@@ -386,16 +390,115 @@ fun MainScreen(
     }
 
     /**
+     * Executes a visual similarity search given a query image URI.
+     *
+     * Decodes the image bitmap, computes its 768-dimensional normalized embedding via [EngineManager],
+     * caches the embedding for instant filter chip switching, and searches nearest visual neighbors.
+     */
+    fun performImageSearch(
+        imageUri: android.net.Uri,
+        imageName: String? = null,
+        category: GalleryCategory = searchCategory,
+        excludeUri: String? = null,
+        useCachedEmbedding: Boolean = false
+    ) {
+        if (isSearching) return
+        if (modelStatus is ModelStatus.Error) {
+            searchError = "Search unavailable: Embedding model is not loaded."
+            hasSearched = true
+            return
+        }
+
+        searchImageUri = imageUri
+        searchImageName = imageName ?: FileImporter.resolveDisplayName(context.contentResolver, imageUri)
+        searchQuery = ""
+        excludeSourceUri = excludeUri
+        val categoryTypes = category.types
+
+        scope.launch {
+            isSearching = true
+            searchError = null
+            try {
+                val results = withContext(Dispatchers.Default) {
+                    val embedding = if (useCachedEmbedding && searchImageEmbedding != null) {
+                        searchImageEmbedding!!
+                    } else {
+                        val bitmap = withContext(Dispatchers.IO) {
+                            com.localfind.index.image.ImageIndexer.decodeNormalizedBitmap(
+                                context,
+                                imageUri,
+                                maxDimension = settings.maxImageDimension
+                            )
+                        }
+                        val emb = try {
+                            EngineManager.withSearcher(context) { searcher ->
+                                searcher.embedImage(bitmap)
+                            }
+                        } finally {
+                            bitmap.recycle()
+                        }
+                        emb
+                    }
+
+                    searchImageEmbedding = embedding
+
+                    EngineManager.withSearcher(context) { searcher ->
+                        searcher.searchByEmbedding(
+                            queryEmbedding = embedding,
+                            topK = settings.topK,
+                            threshold = settings.similarityThreshold,
+                            fileTypes = categoryTypes,
+                            excludeFileUri = excludeUri
+                        )
+                    }
+                }
+                searchResults = results
+                hasSearched = true
+                scope.launch {
+                    try {
+                        searchListState.scrollToItem(0)
+                    } catch (_: Exception) {}
+                }
+            } catch (e: Exception) {
+                searchError = e.message ?: "Visual similarity search failed"
+                searchResults = emptyList()
+                hasSearched = true
+            } finally {
+                isSearching = false
+            }
+        }
+    }
+
+    /**
      * Prepares and navigates to the search view scoped to a specific [target] file.
+     * If the target is an image, initiates visual similarity search to find similar photos.
      */
     fun startSearchInFile(target: ImportedFile) {
         if (!FileAvailability.isFileAvailable(context, target.uri)) {
             missingFileToDelete = target
             return
         }
+        val isPhoto = ThumbnailHelper.categorizeFile(target.displayName, target.mimeType) == GalleryCategory.PHOTOS
+        if (isPhoto) {
+            activeSearchFile = null
+            searchCategory = GalleryCategory.PHOTOS
+            viewerState.closeAll()
+            isSearchOpen = true
+            performImageSearch(
+                imageUri = target.uri.toUri(),
+                imageName = target.displayName,
+                category = GalleryCategory.PHOTOS,
+                excludeUri = target.uri
+            )
+            return
+        }
         activeSearchFile = target
         searchCategory = GalleryCategory.ALL
         searchQuery = ""
+        searchImageUri = null
+        searchImageName = null
+        searchImageEmbedding = null
+        excludeSourceUri = null
         hasSearched = false
         searchResults = emptyList()
         searchError = null
@@ -803,10 +906,22 @@ fun MainScreen(
         ) {
             SearchScreen(
                 query = searchQuery,
-                onQueryChange = { searchQuery = it },
+                onQueryChange = {
+                    searchQuery = it
+                    if (searchImageUri != null) {
+                        searchImageUri = null
+                        searchImageName = null
+                        searchImageEmbedding = null
+                        excludeSourceUri = null
+                    }
+                },
                 onSearch = { performSearch(searchQuery, searchCategory) },
                 onClear = {
                     searchQuery = ""
+                    searchImageUri = null
+                    searchImageName = null
+                    searchImageEmbedding = null
+                    excludeSourceUri = null
                     hasSearched = false
                     searchResults = emptyList()
                     searchError = null
@@ -824,7 +939,15 @@ fun MainScreen(
                 selectedCategory = searchCategory,
                 onCategoryChange = { newCategory ->
                     searchCategory = newCategory
-                    if (searchQuery.isNotBlank() && hasSearched) {
+                    if (searchImageUri != null && hasSearched) {
+                        performImageSearch(
+                            imageUri = searchImageUri!!,
+                            imageName = searchImageName,
+                            category = newCategory,
+                            excludeUri = excludeSourceUri,
+                            useCachedEmbedding = true
+                        )
+                    } else if (searchQuery.isNotBlank() && hasSearched) {
                         performSearch(searchQuery, newCategory)
                     }
                 },
@@ -840,7 +963,15 @@ fun MainScreen(
                 onClearTargetFile = {
                     activeSearchFile = null
                     searchCategory = GalleryCategory.ALL
-                    if (searchQuery.isNotBlank()) {
+                    if (searchImageUri != null) {
+                        performImageSearch(
+                            imageUri = searchImageUri!!,
+                            imageName = searchImageName,
+                            category = GalleryCategory.ALL,
+                            excludeUri = excludeSourceUri,
+                            useCachedEmbedding = true
+                        )
+                    } else if (searchQuery.isNotBlank()) {
                         performSearch(searchQuery, GalleryCategory.ALL)
                     }
                 },
@@ -850,6 +981,24 @@ fun MainScreen(
                     isSearchOpen = false
                     activeSearchFile = null
                     searchCategory = GalleryCategory.ALL
+                    searchImageUri = null
+                    searchImageName = null
+                    searchImageEmbedding = null
+                    excludeSourceUri = null
+                },
+                queryImageUri = searchImageUri,
+                queryImageName = searchImageName,
+                onSelectQueryImage = { uri ->
+                    performImageSearch(uri)
+                },
+                onClearQueryImage = {
+                    searchImageUri = null
+                    searchImageName = null
+                    searchImageEmbedding = null
+                    excludeSourceUri = null
+                    hasSearched = false
+                    searchResults = emptyList()
+                    searchError = null
                 }
             )
         }
@@ -893,7 +1042,23 @@ fun MainScreen(
         ViewerOverlayHost(
             viewerState = viewerState,
             importedFiles = importedFiles,
-            onSearchInFile = { file -> startSearchInFile(file) }
+            onSearchInFile = { file -> startSearchInFile(file) },
+            onSearchSimilarImage = { uriStr, name ->
+                if (!FileAvailability.isFileAvailable(context, uriStr)) {
+                    val matchedFile = importedFiles.firstOrNull { it.uri == uriStr }
+                    if (matchedFile != null) missingFileToDelete = matchedFile
+                } else {
+                    activeSearchFile = null
+                    searchCategory = GalleryCategory.PHOTOS
+                    isSearchOpen = true
+                    performImageSearch(
+                        imageUri = uriStr.toUri(),
+                        imageName = name,
+                        category = GalleryCategory.PHOTOS,
+                        excludeUri = uriStr
+                    )
+                }
+            }
         )
 
         // 5. Model Loading Splash / Modal Progress Overlay (Blocks user interactions while LiteRT engine loads)

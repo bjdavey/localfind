@@ -526,5 +526,112 @@ class SearcherTest {
         val emptyFilterResults = searcher.search("test", fileTypes = emptyList())
         assertEquals(2, emptyFilterResults.size)
     }
+
+    @Test
+    fun searchByEmbeddingDirectlyRetrievesNearestNeighbors() {
+        val fakeStore = FakeVectorStore()
+        val embeddingStore = EmbeddingStore(fakeStore)
+
+        val targetVec = floatArrayOf(1f, 0f, 0f)
+        val rec1 = RetrievalRecord("img_1", emptyList(), floatArrayOf(0.95f, 0.31f, 0f), mapOf("name" to "similar.jpg", "type" to "image"))
+        val rec2 = RetrievalRecord("img_2", emptyList(), floatArrayOf(0.1f, 0.99f, 0f), mapOf("name" to "different.jpg", "type" to "image"))
+        fakeStore.upsert(listOf(rec1, rec2))
+
+        val searcher = Searcher(embeddingStore) { floatArrayOf(0f, 0f, 0f) }
+
+        val results = searcher.searchByEmbedding(targetVec, topK = 5)
+        assertEquals(2, results.size)
+        assertEquals("img_1", results[0].chunkId)
+        assertTrue(results[0].score > results[1].score)
+    }
+
+    @Test
+    fun searchByEmbeddingExcludesSourceFileUriWhenSpecified() {
+        val fakeStore = FakeVectorStore()
+        val embeddingStore = EmbeddingStore(fakeStore)
+
+        val queryVec = floatArrayOf(1f, 0f, 0f)
+        val sourceUri = "content://com.localfind/source_photo.jpg"
+
+        // Exact match with score 1.0 is the query file itself
+        val sourceRec = RetrievalRecord(
+            "source_0",
+            emptyList(),
+            floatArrayOf(1f, 0f, 0f),
+            mapOf("uri" to sourceUri, "name" to "source_photo.jpg", "type" to "image")
+        )
+        // Similar photo with score ~0.9
+        val similarRec = RetrievalRecord(
+            "other_0",
+            emptyList(),
+            floatArrayOf(0.9f, 0.43f, 0f),
+            mapOf("uri" to "content://com.localfind/other.jpg", "name" to "other.jpg", "type" to "image")
+        )
+        fakeStore.upsert(listOf(sourceRec, similarRec))
+
+        val searcher = Searcher(embeddingStore) { floatArrayOf(0f, 0f, 0f) }
+
+        // When excludeFileUri is null, source photo is returned at #1
+        val withSource = searcher.searchByEmbedding(queryVec, topK = 5, excludeFileUri = null)
+        assertEquals(2, withSource.size)
+        assertEquals("source_0", withSource[0].chunkId)
+
+        // When excludeFileUri is set to sourceUri, source photo is filtered out and similar photo becomes #1
+        val withoutSource = searcher.searchByEmbedding(queryVec, topK = 5, excludeFileUri = sourceUri)
+        assertEquals(1, withoutSource.size)
+        assertEquals("other_0", withoutSource[0].chunkId)
+        assertEquals("other.jpg", withoutSource[0].fileName)
+    }
+
+    @Test
+    fun searchImageInvokesEmbedImageQueryAndRanksMatches() {
+        val fakeStore = FakeVectorStore()
+        val embeddingStore = EmbeddingStore(fakeStore)
+
+        val rec = RetrievalRecord(
+            "img_match",
+            emptyList(),
+            floatArrayOf(1f, 0f),
+            mapOf("name" to "beach.jpg", "type" to "image")
+        )
+        fakeStore.upsert(listOf(rec))
+
+        var imageEmbedderInvoked = false
+        val searcher = Searcher(
+            embeddingStore = embeddingStore,
+            embedQuery = { floatArrayOf(0f, 1f) },
+            embedImageQuery = { _ ->
+                imageEmbedderInvoked = true
+                floatArrayOf(1f, 0f)
+            }
+        )
+
+        // Allocate a dummy Bitmap instance without invoking Android native methods
+        val unsafeField = sun.misc.Unsafe::class.java.getDeclaredField("theUnsafe")
+        unsafeField.isAccessible = true
+        val unsafe = unsafeField.get(null) as sun.misc.Unsafe
+        val dummyBitmap = unsafe.allocateInstance(android.graphics.Bitmap::class.java) as android.graphics.Bitmap
+
+        val results = searcher.searchImage(dummyBitmap, topK = 5)
+        assertTrue(imageEmbedderInvoked)
+        assertEquals(1, results.size)
+        assertEquals("img_match", results[0].chunkId)
+        assertEquals(1.0f, results[0].score, 0.001f)
+    }
+
+    @Test(expected = IllegalStateException::class)
+    fun searchImageThrowsWhenEmbedImageQueryNotConfigured() {
+        val fakeStore = FakeVectorStore()
+        val embeddingStore = EmbeddingStore(fakeStore)
+
+        val searcher = Searcher(embeddingStore) { floatArrayOf(1f, 0f) }
+
+        val unsafeField = sun.misc.Unsafe::class.java.getDeclaredField("theUnsafe")
+        unsafeField.isAccessible = true
+        val unsafe = unsafeField.get(null) as sun.misc.Unsafe
+        val dummyBitmap = unsafe.allocateInstance(android.graphics.Bitmap::class.java) as android.graphics.Bitmap
+
+        searcher.searchImage(dummyBitmap)
+    }
 }
 

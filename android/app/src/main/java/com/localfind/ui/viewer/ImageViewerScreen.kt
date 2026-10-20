@@ -73,6 +73,7 @@ data class ImageViewerParams(
 fun ImageViewerScreen(
     params: ImageViewerParams,
     onClose: () -> Unit,
+    onSearchSimilar: ((uri: String, fileName: String) -> Unit)? = null,
     backHandlerEnabled: Boolean = true,
     modifier: Modifier = Modifier
 ) {
@@ -143,6 +144,15 @@ fun ImageViewerScreen(
                             Icon(
                                 painter = painterResource(R.drawable.ic_refresh),
                                 contentDescription = "Reset zoom",
+                                tint = Color.White
+                            )
+                        }
+                    }
+                    if (onSearchSimilar != null) {
+                        IconButton(onClick = { onSearchSimilar(params.uri, params.fileName) }) {
+                            Icon(
+                                painter = painterResource(R.drawable.ic_search),
+                                contentDescription = "Find visually similar",
                                 tint = Color.White
                             )
                         }

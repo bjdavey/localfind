@@ -53,7 +53,7 @@
 - [x] Simplify UI for non-tech people and keep advanced mode option in settings
 - [x] Button to retry All for failed or in queue 
 - [x] Enhance UI/UX
-- Search by image (visual similarity query)
+- [x] Search by image (visual similarity query)
 - Support GIF
 - Support import by share from other apps
 - Better PDF viewer

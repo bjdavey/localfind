@@ -1,6 +1,9 @@
 package com.localfind.ui.search
 
+import android.net.Uri
 import androidx.activity.compose.BackHandler
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.background
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
@@ -59,16 +62,17 @@ import com.localfind.ui.gallery.ThumbnailHelper
 import com.localfind.ui.gallery.iconResId
 
 /**
- * Dedicated Full-Screen Semantic Search View.
+ * Dedicated Full-Screen Semantic and Visual Search View.
  *
  * Opened when the user taps the bottom floating search bar in [com.localfind.ui.gallery.GalleryScreen]
- * or triggers a search inside a specific file from file details / viewers.
+ * or triggers a search inside a specific file from file details / viewers, or visual similarity search.
  *
  * Features:
- * - Top search bar with back navigation (`←`), auto-focused query input, and clear button.
+ * - Top search bar with back navigation (`←`), auto-focused query input, image search picker, and clear button.
+ * - Visual similarity query pill ([VisualQueryBar]) when searching with an image.
  * - Optional scoped search banner when searching within a specific [targetFile].
  * - Modality filter chips (`All`, `Photos`, `Videos`, `Docs`, `Audio`) to filter ranked hits.
- * - Interactive example suggestion pills when idle.
+ * - Interactive example suggestion pills and photo picker suggestion when idle.
  * - Ranked result cards via [SearchResultsList] and [SearchResultCard].
  */
 @Composable
@@ -91,10 +95,23 @@ fun SearchScreen(
     indexedChunksCount: Int = 0,
     listState: LazyListState = rememberLazyListState(),
     backHandlerEnabled: Boolean = true,
-    onClose: (() -> Unit)? = null
+    onClose: (() -> Unit)? = null,
+    queryImageUri: Uri? = null,
+    queryImageName: String? = null,
+    onSelectQueryImage: (Uri) -> Unit = {},
+    onClearQueryImage: () -> Unit = {}
 ) {
     val focusManager = LocalFocusManager.current
     val focusRequester = remember { FocusRequester() }
+
+    // System image picker launcher for visual similarity search
+    val imagePickerLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.GetContent()
+    ) { uri: Uri? ->
+        if (uri != null) {
+            onSelectQueryImage(uri)
+        }
+    }
 
     // Intercept system back button to return to the Gallery
     if (onClose != null) {
@@ -103,9 +120,9 @@ fun SearchScreen(
         }
     }
 
-    // Automatically focus the search box when entering the dedicated search screen if query is empty
+    // Automatically focus the search box when entering the dedicated search screen if query is empty and no image query
     LaunchedEffect(Unit) {
-        if (query.isEmpty() && !hasSearched) {
+        if (query.isEmpty() && queryImageUri == null && !hasSearched) {
             try {
                 focusRequester.requestFocus()
             } catch (_: Exception) {
@@ -144,53 +161,76 @@ fun SearchScreen(
                 }
             }
 
-            OutlinedTextField(
-                value = query,
-                onValueChange = onQueryChange,
-                modifier = Modifier
-                    .weight(1f)
-                    .focusRequester(focusRequester),
-                placeholder = {
-                    Text(
-                        text = if (targetFile != null) "Search inside ${targetFile.displayName}..." else "Search files by meaning...",
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis
-                    )
-                },
-                shape = RoundedCornerShape(26.dp),
-                leadingIcon = {
-                    Icon(
-                        painter = painterResource(R.drawable.ic_search),
-                        contentDescription = "Search",
-                        tint = MaterialTheme.colorScheme.onSurfaceVariant,
-                        modifier = Modifier
-                            .padding(start = 12.dp)
-                            .size(20.dp)
-                    )
-                },
-                trailingIcon = {
-                    if (query.isNotEmpty()) {
-                        IconButton(onClick = onClear) {
-                            Icon(
-                                painter = painterResource(R.drawable.ic_close),
-                                contentDescription = "Clear search",
-                                tint = MaterialTheme.colorScheme.onSurfaceVariant,
-                                modifier = Modifier.size(20.dp)
-                            )
-                        }
-                    }
-                },
-                singleLine = true,
-                keyboardOptions = KeyboardOptions(imeAction = ImeAction.Search),
-                keyboardActions = KeyboardActions(
-                    onSearch = {
-                        focusManager.clearFocus()
-                        if (query.isNotBlank() && !isSearching) {
-                            onSearch()
-                        }
-                    }
+            if (queryImageUri != null) {
+                VisualQueryBar(
+                    imageUri = queryImageUri,
+                    imageName = queryImageName,
+                    onChangeImage = { imagePickerLauncher.launch("image/*") },
+                    onClear = onClearQueryImage,
+                    modifier = Modifier.weight(1f)
                 )
-            )
+            } else {
+                OutlinedTextField(
+                    value = query,
+                    onValueChange = onQueryChange,
+                    modifier = Modifier
+                        .weight(1f)
+                        .focusRequester(focusRequester),
+                    placeholder = {
+                        Text(
+                            text = if (targetFile != null) "Search inside ${targetFile.displayName}..." else "Search files by meaning...",
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis
+                        )
+                    },
+                    shape = RoundedCornerShape(26.dp),
+                    leadingIcon = {
+                        Icon(
+                            painter = painterResource(R.drawable.ic_search),
+                            contentDescription = "Search",
+                            tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                            modifier = Modifier
+                                .padding(start = 12.dp)
+                                .size(20.dp)
+                        )
+                    },
+                    trailingIcon = {
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            modifier = Modifier.padding(end = 4.dp)
+                        ) {
+                            if (query.isNotEmpty()) {
+                                IconButton(onClick = onClear) {
+                                    Icon(
+                                        painter = painterResource(R.drawable.ic_close),
+                                        contentDescription = "Clear search",
+                                        tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                                        modifier = Modifier.size(20.dp)
+                                    )
+                                }
+                            }
+                            IconButton(onClick = { imagePickerLauncher.launch("image/*") }) {
+                                Icon(
+                                    painter = painterResource(R.drawable.ic_image),
+                                    contentDescription = "Search by image",
+                                    tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                                    modifier = Modifier.size(20.dp)
+                                )
+                            }
+                        }
+                    },
+                    singleLine = true,
+                    keyboardOptions = KeyboardOptions(imeAction = ImeAction.Search),
+                    keyboardActions = KeyboardActions(
+                        onSearch = {
+                            focusManager.clearFocus()
+                            if (query.isNotBlank() && !isSearching) {
+                                onSearch()
+                            }
+                        }
+                    )
+                )
+            }
         }
 
         // =====================================================================
@@ -332,7 +372,7 @@ fun SearchScreen(
                     ) {
                         CircularProgressIndicator()
                         Text(
-                            text = "Searching your files offline...",
+                            text = if (queryImageUri != null) "Comparing visual similarity offline..." else "Searching your files offline...",
                             style = MaterialTheme.typography.bodyMedium,
                             color = MaterialTheme.colorScheme.onSurfaceVariant
                         )
@@ -376,7 +416,9 @@ fun SearchScreen(
                             tint = MaterialTheme.colorScheme.onSurfaceVariant
                         )
                         Text(
-                            text = if (selectedCategory == GalleryCategory.ALL) {
+                            text = if (queryImageUri != null) {
+                                "No visually similar content found"
+                            } else if (selectedCategory == GalleryCategory.ALL) {
                                 "No matching content found"
                             } else {
                                 "No matching ${selectedCategory.label.lowercase()} found"
@@ -385,7 +427,11 @@ fun SearchScreen(
                             fontWeight = FontWeight.Bold
                         )
                         Text(
-                            text = "Try describing the concept differently, switching the category filter above, or lowering the Similarity Threshold in Settings.",
+                            text = if (queryImageUri != null) {
+                                "Try picking a different image, switching the category filter above, or lowering the Similarity Threshold in Settings."
+                            } else {
+                                "Try describing the concept differently, switching the category filter above, or lowering the Similarity Threshold in Settings."
+                            },
                             style = MaterialTheme.typography.bodyMedium,
                             color = MaterialTheme.colorScheme.onSurfaceVariant,
                             textAlign = TextAlign.Center
@@ -395,8 +441,13 @@ fun SearchScreen(
             }
 
             hasSearched && searchResults.isNotEmpty() -> {
+                val headerText = if (queryImageUri != null) {
+                    "Showing ${searchResults.size} visually similar match(es)"
+                } else {
+                    "Showing ${searchResults.size} ranked match(es)"
+                }
                 Text(
-                    text = "Showing ${searchResults.size} ranked match(es)",
+                    text = headerText,
                     style = MaterialTheme.typography.labelLarge,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                     modifier = Modifier.padding(horizontal = 18.dp, vertical = 4.dp)
@@ -437,7 +488,7 @@ fun SearchScreen(
                             textAlign = TextAlign.Center
                         )
                         Text(
-                            text = "Describe a scene in a photo or video, a topic in a PDF or note, or a sound in an audio clip.",
+                            text = "Describe a scene in a photo or video, a topic in a PDF or note, or pick an image to find visually similar files.",
                             style = MaterialTheme.typography.bodyMedium,
                             color = MaterialTheme.colorScheme.onSurfaceVariant,
                             textAlign = TextAlign.Center
@@ -462,6 +513,21 @@ fun SearchScreen(
                             horizontalAlignment = Alignment.CenterHorizontally,
                             verticalArrangement = Arrangement.spacedBy(4.dp)
                         ) {
+                            // Visual similarity search shortcut chip
+                            SuggestionChip(
+                                onClick = { imagePickerLauncher.launch("image/*") },
+                                icon = {
+                                    Icon(
+                                        painter = painterResource(R.drawable.ic_image),
+                                        contentDescription = null,
+                                        modifier = Modifier.size(16.dp),
+                                        tint = MaterialTheme.colorScheme.primary
+                                    )
+                                },
+                                label = { Text("Pick an image (visual similarity)") },
+                                shape = RoundedCornerShape(18.dp)
+                            )
+
                             suggestions.forEach { sample ->
                                 SuggestionChip(
                                     onClick = {
