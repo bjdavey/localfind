@@ -3,6 +3,7 @@ package com.localfind.ui.settings
 import androidx.activity.compose.BackHandler
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -23,6 +24,7 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
+import androidx.compose.material3.RadioButton
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Slider
 import androidx.compose.material3.Switch
@@ -44,6 +46,7 @@ import androidx.compose.ui.unit.sp
 import com.localfind.R
 import com.localfind.data.AppSettings
 import com.localfind.data.ModelStatus
+import com.localfind.data.ThemeMode
 import java.util.Locale
 import kotlin.math.roundToInt
 
@@ -74,7 +77,57 @@ fun SettingsScreen(
 
     var showResetDialog by remember { mutableStateOf(false) }
     var showReindexDialog by remember { mutableStateOf(false) }
+    var showThemeDialog by remember { mutableStateOf(false) }
     var showAdvanced by rememberSaveable { mutableStateOf(false) }
+    val isSystemDark = isSystemInDarkTheme()
+
+    if (showThemeDialog) {
+        AlertDialog(
+            onDismissRequest = { showThemeDialog = false },
+            title = { Text("Choose theme") },
+            text = {
+                Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                    ThemeMode.values().forEach { mode ->
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .clickable {
+                                    onSettingsChange(
+                                        settings.copy(
+                                            themeMode = mode,
+                                            darkMode = when (mode) {
+                                                ThemeMode.SYSTEM -> isSystemDark
+                                                ThemeMode.LIGHT -> false
+                                                ThemeMode.DARK -> true
+                                            }
+                                        )
+                                    )
+                                    showThemeDialog = false
+                                }
+                                .padding(vertical = 8.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(12.dp)
+                        ) {
+                            RadioButton(
+                                selected = (settings.themeMode == mode),
+                                onClick = null // Handled by outer Row clickable
+                            )
+                            Text(
+                                text = mode.title,
+                                style = MaterialTheme.typography.bodyLarge,
+                                color = MaterialTheme.colorScheme.onSurface
+                            )
+                        }
+                    }
+                }
+            },
+            confirmButton = {
+                TextButton(onClick = { showThemeDialog = false }) {
+                    Text("Cancel")
+                }
+            }
+        )
+    }
 
     if (showReindexDialog) {
         AlertDialog(
@@ -161,14 +214,11 @@ fun SettingsScreen(
             // =================================================================
             SettingsCategoryHeader("APPEARANCE")
 
-            SettingSwitchRow(
+            SettingClickableRow(
                 title = "Dark mode",
-                subtitle = if (settings.darkMode) "On" else "Off",
-                description = "Switch between light and dark visual themes.",
-                checked = settings.darkMode,
-                onCheckedChange = { isChecked ->
-                    onSettingsChange(settings.copy(darkMode = isChecked))
-                }
+                subtitle = settings.themeMode.title,
+                description = "Choose between system default, light, or dark visual themes.",
+                onClick = { showThemeDialog = true }
             )
 
             SettingsSectionDivider()
@@ -525,6 +575,52 @@ private fun SettingsInfoRow(
             style = MaterialTheme.typography.bodyMedium,
             color = MaterialTheme.colorScheme.onSurfaceVariant
         )
+    }
+}
+
+@Composable
+private fun SettingClickableRow(
+    title: String,
+    subtitle: String,
+    description: String,
+    onClick: () -> Unit
+) {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clickable(onClick = onClick)
+            .padding(horizontal = 20.dp, vertical = 12.dp),
+        horizontalArrangement = Arrangement.SpaceBetween,
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        Column(
+            modifier = Modifier
+                .weight(1f)
+                .padding(end = 16.dp),
+            verticalArrangement = Arrangement.spacedBy(2.dp)
+        ) {
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                Text(
+                    text = title,
+                    style = MaterialTheme.typography.bodyLarge,
+                    color = MaterialTheme.colorScheme.onSurface
+                )
+                Text(
+                    text = subtitle,
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.primary,
+                    fontWeight = FontWeight.SemiBold
+                )
+            }
+            Text(
+                text = description,
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
+        }
     }
 }
 

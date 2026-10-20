@@ -53,6 +53,7 @@ import com.localfind.data.ImportedFile
 import com.localfind.data.IndexingStatus
 import com.localfind.data.ModelStatus
 import com.localfind.data.SettingsStore
+import com.localfind.data.ThemeMode
 import com.localfind.index.IndexingProgressState
 import com.localfind.index.IndexingResumeManager
 import com.localfind.index.IndexingWorker
@@ -87,9 +88,9 @@ class MainActivity : ComponentActivity() {
             val settingsStore = remember { SettingsStore(context) }
             var currentSettings by remember { mutableStateOf(settingsStore.load(defaultDarkMode = systemDark)) }
 
-            // If user hasn't explicitly set a preference, automatically follow the phone's system theme
-            LaunchedEffect(systemDark) {
-                if (!settingsStore.hasCustomTheme()) {
+            // If theme mode is SYSTEM, automatically follow the phone's system theme
+            LaunchedEffect(systemDark, currentSettings.themeMode) {
+                if (currentSettings.themeMode == ThemeMode.SYSTEM) {
                     currentSettings = currentSettings.copy(darkMode = systemDark)
                 }
             }

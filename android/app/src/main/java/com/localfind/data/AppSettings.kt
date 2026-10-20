@@ -7,6 +7,22 @@ import androidx.core.content.edit
 /** Default dark mode state (false = light mode, true = dark mode). */
 const val DEFAULT_DARK_MODE = false
 
+/** Default theme mode (SYSTEM = follow system setting). */
+val DEFAULT_THEME_MODE = ThemeMode.SYSTEM
+
+/**
+ * User preference for application visual theme.
+ *
+ * - [SYSTEM]: Automatically follow host device's dark/light system setting.
+ * - [LIGHT]: Force light theme across all screens.
+ * - [DARK]: Force dark theme across all screens.
+ */
+enum class ThemeMode(val title: String) {
+    SYSTEM("System default"),
+    LIGHT("Light"),
+    DARK("Dark")
+}
+
 /** Default minimum cosine similarity score required for search results (user-requested default: 0.6). */
 const val DEFAULT_SIMILARITY_THRESHOLD = 0.6f
 
@@ -48,6 +64,7 @@ const val DEFAULT_ENABLE_FOLDER_IMPORT = false
  *
  * All settings run 100% offline on-device and are persisted via Android [SharedPreferences].
  *
+ * @property themeMode Visual theme mode preference ([ThemeMode.SYSTEM], [ThemeMode.LIGHT], or [ThemeMode.DARK]).
  * @property darkMode Whether dark theme is enabled across the application.
  * @property similarityThreshold Minimum cosine similarity cutoff score (0.0 .. 1.0). Matches below
  *                               this threshold are filtered out from search results.
@@ -64,6 +81,7 @@ const val DEFAULT_ENABLE_FOLDER_IMPORT = false
  * @property enableFolderImport Whether importing entire directories is exposed in the gallery UI.
  */
 data class AppSettings(
+    val themeMode: ThemeMode = DEFAULT_THEME_MODE,
     val darkMode: Boolean = DEFAULT_DARK_MODE,
     val similarityThreshold: Float = DEFAULT_SIMILARITY_THRESHOLD,
     val topK: Int = DEFAULT_TOP_K,
@@ -84,6 +102,7 @@ data class AppSettings(
     fun sanitized(): AppSettings {
         val safeTextChunkSize = textChunkSize.coerceIn(100, 5000)
         return copy(
+            themeMode = themeMode,
             darkMode = darkMode,
             similarityThreshold = similarityThreshold.coerceIn(0.0f, 1.0f),
             topK = topK.coerceIn(1, 100),
@@ -116,7 +135,13 @@ class SettingsStore(private val prefs: SharedPreferences) {
     /**
      * Checks if the user has explicitly chosen an override for dark mode in settings.
      */
-    fun hasCustomTheme(): Boolean = prefs.contains(KEY_DARK_MODE)
+    fun hasCustomTheme(): Boolean {
+        if (prefs.contains(KEY_THEME_MODE)) {
+            val mode = prefs.getString(KEY_THEME_MODE, null)
+            return mode != null && mode != ThemeMode.SYSTEM.name
+        }
+        return prefs.contains(KEY_DARK_MODE)
+    }
 
     /**
      * Loads the current persisted settings, applying defaults for any unset keys and
@@ -126,12 +151,27 @@ class SettingsStore(private val prefs: SharedPreferences) {
      *                        to the host device's system dark mode setting.
      */
     fun load(defaultDarkMode: Boolean = false): AppSettings {
-        val isDarkMode = if (prefs.contains(KEY_DARK_MODE)) {
-            prefs.getBoolean(KEY_DARK_MODE, defaultDarkMode)
+        val themeMode = if (prefs.contains(KEY_THEME_MODE)) {
+            val modeName = prefs.getString(KEY_THEME_MODE, null)
+            try {
+                if (modeName != null) ThemeMode.valueOf(modeName) else ThemeMode.SYSTEM
+            } catch (_: Exception) {
+                ThemeMode.SYSTEM
+            }
+        } else if (prefs.contains(KEY_DARK_MODE)) {
+            if (prefs.getBoolean(KEY_DARK_MODE, defaultDarkMode)) ThemeMode.DARK else ThemeMode.LIGHT
         } else {
-            defaultDarkMode
+            ThemeMode.SYSTEM
         }
+
+        val isDarkMode = when (themeMode) {
+            ThemeMode.SYSTEM -> defaultDarkMode
+            ThemeMode.LIGHT -> false
+            ThemeMode.DARK -> true
+        }
+
         return AppSettings(
+            themeMode = themeMode,
             darkMode = isDarkMode,
             similarityThreshold = prefs.getFloat(KEY_SIMILARITY_THRESHOLD, DEFAULT_SIMILARITY_THRESHOLD),
             topK = prefs.getInt(KEY_TOP_K, DEFAULT_TOP_K),
@@ -153,8 +193,20 @@ class SettingsStore(private val prefs: SharedPreferences) {
      */
     fun save(settings: AppSettings) {
         val valid = settings.sanitized()
+        // If darkMode boolean was explicitly changed without touching themeMode (e.g. in legacy tests),
+        // resolve themeMode accordingly.
+        val resolvedThemeMode = when {
+            valid.themeMode == ThemeMode.SYSTEM && !prefs.contains(KEY_THEME_MODE) && valid.darkMode -> ThemeMode.DARK
+            else -> valid.themeMode
+        }
+        val isDark = when (resolvedThemeMode) {
+            ThemeMode.SYSTEM -> valid.darkMode
+            ThemeMode.LIGHT -> false
+            ThemeMode.DARK -> true
+        }
         prefs.edit {
-            putBoolean(KEY_DARK_MODE, valid.darkMode)
+            putString(KEY_THEME_MODE, resolvedThemeMode.name)
+            putBoolean(KEY_DARK_MODE, isDark)
             putFloat(KEY_SIMILARITY_THRESHOLD, valid.similarityThreshold)
             putInt(KEY_TOP_K, valid.topK)
             putInt(KEY_TEXT_CHUNK_SIZE, valid.textChunkSize)
@@ -183,6 +235,7 @@ class SettingsStore(private val prefs: SharedPreferences) {
 
     companion object {
         const val PREFS_NAME = "localfind_settings"
+        const val KEY_THEME_MODE = "theme_mode"
         const val KEY_DARK_MODE = "dark_mode"
         const val KEY_SIMILARITY_THRESHOLD = "similarity_threshold"
         const val KEY_TOP_K = "top_k"

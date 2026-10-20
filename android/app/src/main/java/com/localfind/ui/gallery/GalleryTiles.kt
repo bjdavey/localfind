@@ -463,47 +463,50 @@ fun MediaGalleryTile(
                 modifier = Modifier
                     .fillMaxWidth()
                     .padding(8.dp),
-                horizontalArrangement = Arrangement.SpaceBetween,
                 verticalAlignment = Alignment.Top
             ) {
-                // Modality Badge (Duration for video/audio, icon-only for others)
-                Surface(
-                    shape = RoundedCornerShape(8.dp),
-                    color = badgeColor.copy(alpha = 0.90f)
-                ) {
-                    if (durationText != null) {
-                        Row(
-                            verticalAlignment = Alignment.CenterVertically,
-                            horizontalArrangement = Arrangement.spacedBy(3.dp),
-                            modifier = Modifier.padding(horizontal = 6.dp, vertical = 3.dp)
-                        ) {
-                            Icon(
-                                painter = painterResource(badgeIconRes),
-                                contentDescription = null,
-                                tint = Color.White,
-                                modifier = Modifier.size(12.dp)
-                            )
-                            Text(
-                                text = durationText,
-                                style = MaterialTheme.typography.labelSmall,
-                                fontWeight = FontWeight.Bold,
-                                color = Color.White
-                            )
-                        }
-                    } else {
-                        Box(
-                            contentAlignment = Alignment.Center,
-                            modifier = Modifier.padding(horizontal = 6.dp, vertical = 4.dp)
-                        ) {
-                            Icon(
-                                painter = painterResource(badgeIconRes),
-                                contentDescription = null,
-                                tint = Color.White,
-                                modifier = Modifier.size(13.dp)
-                            )
+                // Modality Badge (Duration for video/audio, icon-only for others; omitted for photos)
+                if (category != GalleryCategory.PHOTOS) {
+                    Surface(
+                        shape = RoundedCornerShape(8.dp),
+                        color = badgeColor.copy(alpha = 0.90f)
+                    ) {
+                        if (durationText != null) {
+                            Row(
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.spacedBy(3.dp),
+                                modifier = Modifier.padding(horizontal = 6.dp, vertical = 3.dp)
+                            ) {
+                                Icon(
+                                    painter = painterResource(badgeIconRes),
+                                    contentDescription = null,
+                                    tint = Color.White,
+                                    modifier = Modifier.size(12.dp)
+                                )
+                                Text(
+                                    text = durationText,
+                                    style = MaterialTheme.typography.labelSmall,
+                                    fontWeight = FontWeight.Bold,
+                                    color = Color.White
+                                )
+                            }
+                        } else {
+                            Box(
+                                contentAlignment = Alignment.Center,
+                                modifier = Modifier.padding(horizontal = 6.dp, vertical = 4.dp)
+                            ) {
+                                Icon(
+                                    painter = painterResource(badgeIconRes),
+                                    contentDescription = null,
+                                    tint = Color.White,
+                                    modifier = Modifier.size(13.dp)
+                                )
+                            }
                         }
                     }
                 }
+
+                Spacer(modifier = Modifier.weight(1f))
 
                 // Quick actions menu button (opens file info / delete dialog)
                 Surface(
