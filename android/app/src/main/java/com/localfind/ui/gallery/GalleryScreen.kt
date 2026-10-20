@@ -40,6 +40,8 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
+import androidx.compose.material3.DropdownMenu
+import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.FilledTonalButton
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.FilterChipDefaults
@@ -125,7 +127,6 @@ fun GalleryScreen(
     var selectedCategory by remember { mutableStateOf(GalleryCategory.ALL) }
     var inspectedFile by remember { mutableStateOf<ImportedFile?>(null) }
     val context = LocalContext.current
-    var showImportMenu by remember { mutableStateOf(false) }
     var showCreateFolderDialog by remember { mutableStateOf(false) }
     var inspectedFolder by remember { mutableStateOf<Folder?>(null) }
     var folderToRename by remember { mutableStateOf<Folder?>(null) }
@@ -454,6 +455,7 @@ fun GalleryScreen(
                     }
 
                     Row(verticalAlignment = Alignment.CenterVertically) {
+                        // Multi-selection button (visible when current folder has files)
                         if (currentFolderFiles.isNotEmpty()) {
                             IconButton(onClick = { isSelectionMode = true }) {
                                 Icon(
@@ -463,12 +465,72 @@ fun GalleryScreen(
                                 )
                             }
                         }
+
+                        // When folder import is disabled: dedicated "New Folder" icon button
+                        if (!enableFolderImport) {
+                            IconButton(onClick = { showCreateFolderDialog = true }) {
+                                Icon(
+                                    painter = painterResource(R.drawable.ic_create_new_folder),
+                                    contentDescription = "New folder",
+                                    tint = MaterialTheme.colorScheme.onSurfaceVariant
+                                )
+                            }
+                        }
+
+                        // Settings button
                         IconButton(onClick = onOpenSettings) {
                             Icon(
                                 painter = painterResource(R.drawable.ic_settings),
                                 contentDescription = "Settings",
                                 tint = MaterialTheme.colorScheme.onSurfaceVariant
                             )
+                        }
+
+                        // When folder import is enabled in settings: top-right overflow menu ⋮ containing both "New folder" and "Import folder"
+                        if (enableFolderImport) {
+                            var showFolderMenu by remember { mutableStateOf(false) }
+                            Box {
+                                IconButton(onClick = { showFolderMenu = true }) {
+                                    Icon(
+                                        painter = painterResource(R.drawable.ic_more_vert),
+                                        contentDescription = "Folder options",
+                                        tint = MaterialTheme.colorScheme.onSurfaceVariant
+                                    )
+                                }
+                                DropdownMenu(
+                                    expanded = showFolderMenu,
+                                    onDismissRequest = { showFolderMenu = false }
+                                ) {
+                                    DropdownMenuItem(
+                                        text = { Text("New folder") },
+                                        leadingIcon = {
+                                            Icon(
+                                                painter = painterResource(R.drawable.ic_create_new_folder),
+                                                contentDescription = null,
+                                                modifier = Modifier.size(20.dp)
+                                            )
+                                        },
+                                        onClick = {
+                                            showFolderMenu = false
+                                            showCreateFolderDialog = true
+                                        }
+                                    )
+                                    DropdownMenuItem(
+                                        text = { Text("Import folder") },
+                                        leadingIcon = {
+                                            Icon(
+                                                painter = painterResource(R.drawable.ic_folder_open),
+                                                contentDescription = null,
+                                                modifier = Modifier.size(20.dp)
+                                            )
+                                        },
+                                        onClick = {
+                                            showFolderMenu = false
+                                            onImportFolder()
+                                        }
+                                    )
+                                }
+                            }
                         }
                     }
                 }
@@ -1003,7 +1065,7 @@ fun GalleryScreen(
                             fontWeight = FontWeight.SemiBold
                         )
                         Text(
-                            text = "Tap the + button in the bottom dock to import files or create a subfolder.",
+                            text = "Tap the + button in the bottom dock to import files, or use the folder icon at the top to create a subfolder.",
                             style = MaterialTheme.typography.bodyMedium,
                             color = MaterialTheme.colorScheme.onSurfaceVariant,
                             textAlign = TextAlign.Center
@@ -1142,7 +1204,7 @@ fun GalleryScreen(
         }
 
         // =====================================================================
-        // 6. OPTION C UNIFIED BOTTOM FLOATING DOCK (Search Pill + Import Action Menu)
+        // 6. OPTION C UNIFIED BOTTOM FLOATING DOCK (Search Pill + Direct Import Files)
         // =====================================================================
         AnimatedVisibility(
             visible = !isSelectionMode,
@@ -1158,31 +1220,9 @@ fun GalleryScreen(
         ) {
             FloatingSearchAndImportDock(
                 onSearchClick = onOpenSearch,
-                onImportClick = { showImportMenu = true }
+                onImportClick = onImportFiles
             )
         }
-
-        // =====================================================================
-        // 7. SPEED-DIAL FLOATING ACTION MENU FROM ADD FAB
-        // =====================================================================
-        ImportOptionsMenu(
-            expanded = showImportMenu,
-            onDismiss = { showImportMenu = false },
-            onImportFiles = {
-                showImportMenu = false
-                onImportFiles()
-            },
-            onImportFolder = {
-                showImportMenu = false
-                onImportFolder()
-            },
-            onCreateFolder = {
-                showImportMenu = false
-                showCreateFolderDialog = true
-            },
-            enableFolderImport = enableFolderImport,
-            bottomPadding = 16.dp + navBarPadding.calculateBottomPadding()
-        )
     }
 }
 
@@ -1270,7 +1310,7 @@ fun FloatingSearchAndImportDock(
                 Box(contentAlignment = Alignment.Center) {
                     Icon(
                         painter = painterResource(R.drawable.ic_add),
-                        contentDescription = "Import",
+                        contentDescription = "Import files",
                         tint = MaterialTheme.colorScheme.onPrimary,
                         modifier = Modifier.size(24.dp)
                     )

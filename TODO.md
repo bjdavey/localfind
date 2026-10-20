@@ -52,12 +52,11 @@
 ## Milestone 5: First release
 - [x] Simplify UI for non-tech people and keep advanced mode option in settings
 - [x] Button to retry All for failed or in queue 
-- Enhance UI/UX
+- [x] Enhance UI/UX
 - Search by image (visual similarity query)
 - Support GIF
-- Better PDF viewer
 - Support import by share from other apps
-- Top bar should hide on scrolling
+- Better PDF viewer
 - Support landscape orientation in file viewer
 - [x] Show file details and open in phone gallery or its own app
 - [x] Multi select
@@ -85,6 +84,7 @@
 - Import from URL without saving the file (streaming keyframe indexing)
 - Export / Backup index and "Clear Database" reset
 - Allow other media files format
+- Top bar should hide on scrolling
 
 ### Search Experience
 - Hybrid search (Vector + SQLite FTS5 keyword search)
