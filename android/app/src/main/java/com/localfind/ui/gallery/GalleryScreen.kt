@@ -36,6 +36,7 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
+import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.FilledTonalButton
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.FilterChipDefaults
@@ -105,6 +106,7 @@ fun GalleryScreen(
     onFileClick: (ImportedFile) -> Unit,
     onRequestDeleteFile: (ImportedFile) -> Unit,
     onRetryIndexFile: ((ImportedFile) -> Unit)? = null,
+    onRetryAllFailed: (() -> Unit)? = null,
     onPauseIndexing: (() -> Unit)? = null,
     onResumeIndexing: (() -> Unit)? = null,
     onCancelIndexing: (() -> Unit)? = null,
@@ -459,6 +461,208 @@ fun GalleryScreen(
                     shape = RoundedCornerShape(12.dp),
                     color = MaterialTheme.colorScheme.secondaryContainer
                 ) {
+                    Column(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(horizontal = 14.dp, vertical = 10.dp)
+                    ) {
+                        val isPaused = isQueuePaused
+                        val statusHeader = if (isPaused) {
+                            val pendingCount = importedFiles.count {
+                                it.indexingStatus == IndexingStatus.PENDING || it.indexingStatus == IndexingStatus.INDEXING
+                            }
+                            if (indexingProgress.message.isNotBlank() && indexingProgress.isPaused) indexingProgress.message
+                            else "Indexing paused ($pendingCount pending)"
+                        } else if (indexingProgress.totalFiles > 0) {
+                            "Indexing ${indexingProgress.fileIndex}/${indexingProgress.totalFiles}"
+                        } else if (statusMessage.startsWith("Importing")) {
+                            statusMessage
+                        } else if (indexingProgress.message.isNotBlank() && !indexingProgress.message.startsWith("Indexing ")) {
+                            indexingProgress.message
+                        } else {
+                            "Indexing files..."
+                        }
+
+                        val showPercent = !isPaused && (indexingProgress.progressFraction > 0f || indexingProgress.currentChunk > 0)
+                        val percentText = if (showPercent) "${(indexingProgress.progressFraction * 100).toInt()}%" else ""
+
+                        val activeFileName = indexingProgress.currentFileName
+                            ?: importedFiles.firstOrNull { it.uri == indexingProgress.currentUri }?.displayName
+                            ?: if (indexingProgress.message.startsWith("Indexing ") && indexingProgress.message.contains(": ")) {
+                                indexingProgress.message.substringAfter(": ").substringBeforeLast(" (").trim().takeIf { it.isNotBlank() }
+                            } else null
+
+                        // Row 1: Status header on left, action controls on right
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.SpaceBetween
+                        ) {
+                            Row(
+                                modifier = Modifier.weight(1f, fill = false),
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.spacedBy(6.dp)
+                            ) {
+                                Text(
+                                    text = statusHeader,
+                                    style = MaterialTheme.typography.labelMedium,
+                                    fontWeight = FontWeight.SemiBold,
+                                    color = MaterialTheme.colorScheme.onSecondaryContainer,
+                                    maxLines = 1,
+                                    overflow = TextOverflow.Ellipsis
+                                )
+                                if (percentText.isNotBlank()) {
+                                    Surface(
+                                        shape = RoundedCornerShape(4.dp),
+                                        color = MaterialTheme.colorScheme.onSecondaryContainer.copy(alpha = 0.12f)
+                                    ) {
+                                        Text(
+                                            text = percentText,
+                                            style = MaterialTheme.typography.labelSmall,
+                                            fontWeight = FontWeight.Bold,
+                                            color = MaterialTheme.colorScheme.onSecondaryContainer,
+                                            modifier = Modifier.padding(horizontal = 4.dp, vertical = 1.dp)
+                                        )
+                                    }
+                                }
+                            }
+
+                            Row(
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.spacedBy(4.dp)
+                            ) {
+                                if (isQueuePaused) {
+                                    if (onResumeIndexing != null) {
+                                        TextButton(
+                                            onClick = onResumeIndexing,
+                                            contentPadding = PaddingValues(horizontal = 8.dp, vertical = 4.dp),
+                                            modifier = Modifier.height(32.dp)
+                                        ) {
+                                            Icon(
+                                                painter = painterResource(R.drawable.ic_play_arrow),
+                                                contentDescription = null,
+                                                modifier = Modifier.size(16.dp),
+                                                tint = MaterialTheme.colorScheme.primary
+                                            )
+                                            Spacer(modifier = Modifier.width(4.dp))
+                                            Text(
+                                                text = "Resume",
+                                                style = MaterialTheme.typography.labelSmall,
+                                                fontWeight = FontWeight.Bold,
+                                                color = MaterialTheme.colorScheme.primary
+                                            )
+                                        }
+                                    }
+                                } else {
+                                    if (onPauseIndexing != null) {
+                                        TextButton(
+                                            onClick = onPauseIndexing,
+                                            contentPadding = PaddingValues(horizontal = 8.dp, vertical = 4.dp),
+                                            modifier = Modifier.height(32.dp)
+                                        ) {
+                                            Icon(
+                                                painter = painterResource(R.drawable.ic_pause),
+                                                contentDescription = null,
+                                                modifier = Modifier.size(16.dp),
+                                                tint = MaterialTheme.colorScheme.secondary
+                                            )
+                                            Spacer(modifier = Modifier.width(4.dp))
+                                            Text(
+                                                text = "Pause",
+                                                style = MaterialTheme.typography.labelSmall,
+                                                fontWeight = FontWeight.Bold,
+                                                color = MaterialTheme.colorScheme.secondary
+                                            )
+                                        }
+                                    }
+                                }
+                                if (onCancelIndexing != null) {
+                                    TextButton(
+                                        onClick = onCancelIndexing,
+                                        contentPadding = PaddingValues(horizontal = 8.dp, vertical = 4.dp),
+                                        modifier = Modifier.height(32.dp)
+                                    ) {
+                                        Icon(
+                                            painter = painterResource(R.drawable.ic_close),
+                                            contentDescription = null,
+                                            modifier = Modifier.size(16.dp),
+                                            tint = MaterialTheme.colorScheme.error
+                                        )
+                                        Spacer(modifier = Modifier.width(4.dp))
+                                        Text(
+                                            text = "Cancel",
+                                            style = MaterialTheme.typography.labelSmall,
+                                            fontWeight = FontWeight.Bold,
+                                            color = MaterialTheme.colorScheme.error
+                                        )
+                                    }
+                                }
+                            }
+                        }
+
+                        // Row 2: File name on its own row (spans full width, never overflows or collides with buttons)
+                        if (!activeFileName.isNullOrBlank()) {
+                            Spacer(modifier = Modifier.height(4.dp))
+                            Text(
+                                text = activeFileName,
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSecondaryContainer.copy(alpha = 0.85f),
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis,
+                                modifier = Modifier.fillMaxWidth()
+                            )
+                        }
+
+                        // Row 3: Full-width progress bar
+                        Spacer(modifier = Modifier.height(6.dp))
+                        if (isPaused) {
+                            LinearProgressIndicator(
+                                progress = { indexingProgress.progressFraction.coerceIn(0f, 1f) },
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .height(4.dp)
+                                    .clip(RoundedCornerShape(2.dp)),
+                                color = MaterialTheme.colorScheme.outline
+                            )
+                        } else if (indexingProgress.isIndexing && indexingProgress.progressFraction > 0f) {
+                            LinearProgressIndicator(
+                                progress = { indexingProgress.progressFraction },
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .height(4.dp)
+                                    .clip(RoundedCornerShape(2.dp))
+                            )
+                        } else {
+                            LinearProgressIndicator(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .height(4.dp)
+                                    .clip(RoundedCornerShape(2.dp))
+                            )
+                        }
+                    }
+                }
+            }
+
+            // =====================================================================
+            // 2.5. FAILED INDEXING BANNER (With Retry All button)
+            // =====================================================================
+            val failedFiles = remember(importedFiles) {
+                importedFiles.filter { it.indexingStatus == IndexingStatus.FAILED }
+            }
+            val failedCount = failedFiles.size
+            AnimatedVisibility(
+                visible = failedCount > 0,
+                enter = fadeIn() + expandVertically(),
+                exit = fadeOut() + shrinkVertically()
+            ) {
+                Surface(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 16.dp, vertical = 4.dp),
+                    shape = RoundedCornerShape(12.dp),
+                    color = MaterialTheme.colorScheme.errorContainer
+                ) {
                     Row(
                         modifier = Modifier
                             .fillMaxWidth()
@@ -466,126 +670,55 @@ fun GalleryScreen(
                         verticalAlignment = Alignment.CenterVertically,
                         horizontalArrangement = Arrangement.SpaceBetween
                     ) {
-                        Column(modifier = Modifier.weight(1f)) {
-                            val isPaused = isQueuePaused
-                            val bannerText = if (isPaused) {
-                                val pendingCount = importedFiles.count {
-                                    it.indexingStatus == IndexingStatus.PENDING || it.indexingStatus == IndexingStatus.INDEXING
-                                }
-                                if (indexingProgress.message.isNotBlank() && indexingProgress.isPaused) indexingProgress.message
-                                else "Indexing paused ($pendingCount pending)"
-                            } else if (indexingProgress.message.isNotBlank()) {
-                                indexingProgress.message
-                            } else {
-                                "Indexing files..."
-                            }
-                            Text(
-                                text = bannerText,
-                                style = MaterialTheme.typography.labelMedium,
-                                fontWeight = FontWeight.SemiBold,
-                                color = MaterialTheme.colorScheme.onSecondaryContainer,
-                                maxLines = 1,
-                                overflow = TextOverflow.Ellipsis
+                        Row(
+                            modifier = Modifier.weight(1f),
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(10.dp)
+                        ) {
+                            Icon(
+                                painter = painterResource(R.drawable.ic_warning),
+                                contentDescription = null,
+                                tint = MaterialTheme.colorScheme.error,
+                                modifier = Modifier.size(20.dp)
                             )
-                            Spacer(modifier = Modifier.height(6.dp))
-                            if (isPaused) {
-                                LinearProgressIndicator(
-                                    progress = { indexingProgress.progressFraction.coerceIn(0f, 1f) },
-                                    modifier = Modifier
-                                        .fillMaxWidth()
-                                        .height(4.dp)
-                                        .clip(RoundedCornerShape(2.dp)),
-                                    color = MaterialTheme.colorScheme.outline
+                            Column(modifier = Modifier.weight(1f)) {
+                                Text(
+                                    text = if (failedCount == 1) "1 file failed indexing" else "$failedCount files failed indexing",
+                                    style = MaterialTheme.typography.labelMedium,
+                                    fontWeight = FontWeight.SemiBold,
+                                    color = MaterialTheme.colorScheme.onErrorContainer
                                 )
-                            } else if (indexingProgress.isIndexing && indexingProgress.progressFraction > 0f) {
-                                LinearProgressIndicator(
-                                    progress = { indexingProgress.progressFraction },
-                                    modifier = Modifier
-                                        .fillMaxWidth()
-                                        .height(4.dp)
-                                        .clip(RoundedCornerShape(2.dp))
-                                )
-                            } else {
-                                LinearProgressIndicator(
-                                    modifier = Modifier
-                                        .fillMaxWidth()
-                                        .height(4.dp)
-                                        .clip(RoundedCornerShape(2.dp))
+                                Text(
+                                    text = "Tap Retry All to try again",
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = MaterialTheme.colorScheme.onErrorContainer.copy(alpha = 0.8f),
+                                    maxLines = 1,
+                                    overflow = TextOverflow.Ellipsis
                                 )
                             }
                         }
-                        Row(
-                            verticalAlignment = Alignment.CenterVertically,
-                            horizontalArrangement = Arrangement.spacedBy(4.dp)
-                        ) {
-                            if (isQueuePaused) {
-                                if (onResumeIndexing != null) {
-                                    Spacer(modifier = Modifier.width(6.dp))
-                                    TextButton(
-                                        onClick = onResumeIndexing,
-                                        contentPadding = PaddingValues(horizontal = 8.dp, vertical = 4.dp),
-                                        modifier = Modifier.height(34.dp)
-                                    ) {
-                                        Icon(
-                                            painter = painterResource(R.drawable.ic_play_arrow),
-                                            contentDescription = null,
-                                            modifier = Modifier.size(16.dp),
-                                            tint = MaterialTheme.colorScheme.primary
-                                        )
-                                        Spacer(modifier = Modifier.width(4.dp))
-                                        Text(
-                                            text = "Resume",
-                                            style = MaterialTheme.typography.labelSmall,
-                                            fontWeight = FontWeight.Bold,
-                                            color = MaterialTheme.colorScheme.primary
-                                        )
-                                    }
-                                }
-                            } else {
-                                if (onPauseIndexing != null) {
-                                    Spacer(modifier = Modifier.width(6.dp))
-                                    TextButton(
-                                        onClick = onPauseIndexing,
-                                        contentPadding = PaddingValues(horizontal = 8.dp, vertical = 4.dp),
-                                        modifier = Modifier.height(34.dp)
-                                    ) {
-                                        Icon(
-                                            painter = painterResource(R.drawable.ic_pause),
-                                            contentDescription = null,
-                                            modifier = Modifier.size(16.dp),
-                                            tint = MaterialTheme.colorScheme.secondary
-                                        )
-                                        Spacer(modifier = Modifier.width(4.dp))
-                                        Text(
-                                            text = "Pause",
-                                            style = MaterialTheme.typography.labelSmall,
-                                            fontWeight = FontWeight.Bold,
-                                            color = MaterialTheme.colorScheme.secondary
-                                        )
-                                    }
-                                }
-                            }
-                            if (onCancelIndexing != null) {
+                        if (onRetryAllFailed != null) {
+                            Spacer(modifier = Modifier.width(8.dp))
+                            FilledTonalButton(
+                                onClick = onRetryAllFailed,
+                                colors = ButtonDefaults.filledTonalButtonColors(
+                                    containerColor = MaterialTheme.colorScheme.error,
+                                    contentColor = MaterialTheme.colorScheme.onError
+                                ),
+                                contentPadding = PaddingValues(horizontal = 12.dp, vertical = 4.dp),
+                                modifier = Modifier.height(34.dp)
+                            ) {
+                                Icon(
+                                    painter = painterResource(R.drawable.ic_refresh),
+                                    contentDescription = null,
+                                    modifier = Modifier.size(16.dp)
+                                )
                                 Spacer(modifier = Modifier.width(4.dp))
-                                TextButton(
-                                    onClick = onCancelIndexing,
-                                    contentPadding = PaddingValues(horizontal = 8.dp, vertical = 4.dp),
-                                    modifier = Modifier.height(34.dp)
-                                ) {
-                                    Icon(
-                                        painter = painterResource(R.drawable.ic_close),
-                                        contentDescription = null,
-                                        modifier = Modifier.size(16.dp),
-                                        tint = MaterialTheme.colorScheme.error
-                                    )
-                                    Spacer(modifier = Modifier.width(4.dp))
-                                    Text(
-                                        text = "Cancel",
-                                        style = MaterialTheme.typography.labelSmall,
-                                        fontWeight = FontWeight.Bold,
-                                        color = MaterialTheme.colorScheme.error
-                                    )
-                                }
+                                Text(
+                                    text = "Retry All",
+                                    style = MaterialTheme.typography.labelSmall,
+                                    fontWeight = FontWeight.Bold
+                                )
                             }
                         }
                     }

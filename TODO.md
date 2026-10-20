@@ -51,6 +51,8 @@
 
 ## Milestone 5: First release
 - [x] Simplify UI for non-tech people and keep advanced mode option in settings
+- [x] Button to retry All for failed or in queue 
+- Enhance UI/UX
 - Search by image (visual similarity query)
 - Support GIF
 - Better PDF viewer
@@ -59,7 +61,6 @@
 - Support landscape orientation in file viewer
 - Show file details and open in phone gallery or its own app
 - Multi select
-- Button to retry All for failed or in queue 
 - Good test samples
 - What else?
 - Final E2E test with edge cases

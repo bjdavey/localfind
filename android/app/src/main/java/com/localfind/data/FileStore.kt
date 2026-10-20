@@ -341,6 +341,17 @@ class FileStore(context: Context) : SQLiteOpenHelper(
     }
 
     /**
+     * Marks all failed files as [IndexingStatus.PENDING].
+     * Used when the user initiates "Retry All" from the failed indexing banner.
+     */
+    fun markFailedAsPending() {
+        val values = ContentValues().apply {
+            put("indexing_status", IndexingStatus.PENDING.name)
+        }
+        writableDatabase.update(TABLE_FILES, values, "indexing_status = ?", arrayOf(IndexingStatus.FAILED.name))
+    }
+
+    /**
      * Retrieves all files that are pending or were interrupted during indexing.
      * Ordered by [ImportedFile.addedAt] ascending so earlier imports are indexed first.
      */

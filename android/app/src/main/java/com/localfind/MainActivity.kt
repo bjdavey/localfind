@@ -671,6 +671,17 @@ fun MainScreen(
                     }
                 }
             },
+            onRetryAllFailed = {
+                scope.launch(Dispatchers.IO) {
+                    val store = FileStore.getInstance(context)
+                    store.markFailedAsPending()
+                    importedFiles = store.getAll()
+                    IndexingWorker.enqueue(context, replace = true)
+                    withContext(Dispatchers.Main) {
+                        Toast.makeText(context, "Retrying failed files...", Toast.LENGTH_SHORT).show()
+                    }
+                }
+            },
             onPauseIndexing = {
                 scope.launch(Dispatchers.IO) {
                     IndexingWorker.pause(context)

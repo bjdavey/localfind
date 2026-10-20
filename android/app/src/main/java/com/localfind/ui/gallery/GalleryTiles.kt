@@ -707,22 +707,9 @@ fun FolderGalleryTile(
             ),
         shape = RoundedCornerShape(16.dp),
         color = MaterialTheme.colorScheme.surfaceVariant,
-        tonalElevation = 3.dp
+        tonalElevation = 2.dp
     ) {
         Box(modifier = Modifier.fillMaxSize()) {
-            Box(
-                modifier = Modifier
-                    .fillMaxSize()
-                    .background(
-                        Brush.verticalGradient(
-                            listOf(
-                                MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.40f),
-                                MaterialTheme.colorScheme.surfaceVariant
-                            )
-                        )
-                    )
-            )
-
             // Top-right quick actions 3-dot button
             Surface(
                 modifier = Modifier
@@ -748,14 +735,14 @@ fun FolderGalleryTile(
             Column(
                 modifier = Modifier
                     .fillMaxSize()
-                    .padding(14.dp),
+                    .padding(horizontal = 12.dp, vertical = 10.dp),
                 horizontalAlignment = Alignment.CenterHorizontally,
                 verticalArrangement = Arrangement.Center
             ) {
                 Icon(
                     painter = painterResource(R.drawable.ic_folder),
                     contentDescription = null,
-                    modifier = Modifier.size(48.dp),
+                    modifier = Modifier.size(64.dp),
                     tint = MaterialTheme.colorScheme.primary
                 )
                 Spacer(modifier = Modifier.height(8.dp))
