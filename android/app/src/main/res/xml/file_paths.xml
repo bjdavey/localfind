@@ -1,0 +1,17 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- FileProvider path specifications for LocalFind -->
+<!-- Allows sharing internally-stored files (such as imports copied from temporary share intents) -->
+<!-- safely with external apps via content:// URIs with FLAG_GRANT_READ_URI_PERMISSION -->
+<paths>
+    <!-- App private files directory, including shared_imports/ -->
+    <files-path
+        name="shared_imports"
+        path="shared_imports" />
+    <files-path
+        name="internal_files"
+        path="." />
+    <!-- App private cache directory for temporary preview exports -->
+    <cache-path
+        name="internal_cache"
+        path="." />
+</paths>

@@ -6,8 +6,10 @@ import android.content.Intent
 import android.net.Uri
 import android.webkit.MimeTypeMap
 import android.widget.Toast
+import androidx.core.content.FileProvider
 import androidx.core.net.toUri
 import com.localfind.index.Indexer
+import java.io.File
 
 /**
  * Utility to launch external viewer or editor intents, allowing users to open any file
@@ -128,8 +130,24 @@ object FileOpener {
 
         val resolvedMime = resolveMimeType(context, uri, displayName, mimeType)
 
+        // For internal file:// URIs (e.g. shared imports), use FileProvider to prevent FileUriExposedException
+        val shareableUri = if (uri.scheme.equals("file", ignoreCase = true)) {
+            try {
+                val path = uri.path ?: uriString.removePrefix("file://")
+                FileProvider.getUriForFile(
+                    context,
+                    "${context.packageName}.fileprovider",
+                    File(path)
+                )
+            } catch (_: Exception) {
+                uri
+            }
+        } else {
+            uri
+        }
+
         val viewIntent = Intent(Intent.ACTION_VIEW).apply {
-            setDataAndType(uri, resolvedMime)
+            setDataAndType(shareableUri, resolvedMime)
             addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
             addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
         }

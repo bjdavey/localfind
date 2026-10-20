@@ -53,6 +53,7 @@ import com.localfind.data.ImportedFile
 import com.localfind.data.IndexingStatus
 import com.localfind.data.ModelStatus
 import com.localfind.data.SettingsStore
+import com.localfind.data.ShareImporter
 import com.localfind.data.ThemeMode
 import com.localfind.index.IndexingProgressState
 import com.localfind.index.IndexingResumeManager
@@ -80,8 +81,18 @@ import kotlinx.coroutines.withContext
  * All operations run completely offline with no network permissions or broad storage permissions.
  */
 class MainActivity : ComponentActivity() {
+    /** Observable pending share intent received from an external application */
+    private var pendingShareIntent by mutableStateOf<Intent?>(null)
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        // If launched via ACTION_SEND or ACTION_SEND_MULTIPLE, stage intent for processing
+        if (ShareImporter.isShareIntent(intent)) {
+            pendingShareIntent = intent
+            // Consume action on activity's main intent so configuration changes (e.g. rotation) don't re-trigger import
+            intent = Intent(this, MainActivity::class.java).setAction(Intent.ACTION_MAIN)
+        }
+
         // Enable edge-to-edge drawing for modern Android system bars
         enableEdgeToEdge()
         setContent {
@@ -100,6 +111,8 @@ class MainActivity : ComponentActivity() {
             LocalFindTheme(darkTheme = currentSettings.darkMode) {
                 MainScreen(
                     settings = currentSettings,
+                    pendingShareIntent = pendingShareIntent,
+                    onShareIntentHandled = { pendingShareIntent = null },
                     onSettingsChange = { updated ->
                         currentSettings = updated
                         settingsStore.save(updated)
@@ -110,6 +123,16 @@ class MainActivity : ComponentActivity() {
                     }
                 )
             }
+        }
+    }
+
+    override fun onNewIntent(intent: Intent) {
+        super.onNewIntent(intent)
+        setIntent(intent)
+        // Handle share intents delivered while MainActivity was already alive
+        if (ShareImporter.isShareIntent(intent)) {
+            pendingShareIntent = intent
+            setIntent(Intent(this, MainActivity::class.java).setAction(Intent.ACTION_MAIN))
         }
     }
 }
@@ -126,6 +149,8 @@ class MainActivity : ComponentActivity() {
 @Composable
 fun MainScreen(
     settings: AppSettings = AppSettings(),
+    pendingShareIntent: Intent? = null,
+    onShareIntentHandled: () -> Unit = {},
     onSettingsChange: (AppSettings) -> Unit = {},
     onResetDefaults: () -> Unit = {}
 ) {
@@ -290,6 +315,46 @@ fun MainScreen(
         }
     }
 
+    // Process incoming shared files or notes from other apps (ACTION_SEND / ACTION_SEND_MULTIPLE)
+    LaunchedEffect(pendingShareIntent) {
+        val shareIntent = pendingShareIntent ?: return@LaunchedEffect
+        status = "Importing shared content..."
+        val result = withContext(Dispatchers.IO) {
+            val res = ShareImporter.processShareIntent(context, shareIntent, folderId = currentFolderId)
+            if (res.importedFiles.isNotEmpty()) {
+                val store = FileStore.getInstance(context)
+                store.insertAll(res.importedFiles)
+            }
+            res
+        }
+        reloadFiles()
+
+        if (result.importedFiles.isNotEmpty()) {
+            if (IndexingWorker.isPaused(context)) {
+                val pendingCount = withContext(Dispatchers.IO) { FileStore.getInstance(context).getPendingFiles().size }
+                IndexingProgressState.setPaused(true, "Paused ($pendingCount pending)")
+            } else {
+                IndexingWorker.enqueue(context)
+            }
+
+            val msg = if (result.isTextNote) {
+                "Imported shared note"
+            } else if (result.unsupportedCount > 0) {
+                "Imported ${result.importedFiles.size} file(s) from share. Skipped ${result.unsupportedCount} unsupported file(s)."
+            } else {
+                "Imported ${result.importedFiles.size} file(s) from share"
+            }
+            status = msg
+            Toast.makeText(context, msg, Toast.LENGTH_SHORT).show()
+        } else if (result.unsupportedCount > 0) {
+            val msg = "Cannot import unsupported file(s). Only files with builtin viewers (text, PDF, image, audio, video) are supported."
+            status = msg
+            Toast.makeText(context, msg, Toast.LENGTH_LONG).show()
+        }
+
+        onShareIntentHandled()
+    }
+
     /**
      * Removes an imported file from the local library:
      * 1. Releases persistable SAF URI read grant (if held) and evicts cached thumbnail preview.
@@ -304,6 +369,7 @@ fun MainScreen(
                 // If file is actively indexing or queued, abort it immediately
                 IndexingWorker.cancelFile(context, file.uri)
                 ThumbnailHelper.evictPreview(file.uri)
+                ShareImporter.deleteInternalFileIfShared(context, file.uri)
 
                 try {
                     context.contentResolver.releasePersistableUriPermission(
@@ -355,6 +421,7 @@ fun MainScreen(
                 for (file in files) {
                     IndexingWorker.cancelFile(context, file.uri)
                     ThumbnailHelper.evictPreview(file.uri)
+                    ShareImporter.deleteInternalFileIfShared(context, file.uri)
                     try {
                         context.contentResolver.releasePersistableUriPermission(
                             file.uri.toUri(),
@@ -712,6 +779,7 @@ fun MainScreen(
                         // Cancel any in-flight indexing and clear resume checkpoints
                         IndexingWorker.cancelFile(context, uri)
                         ThumbnailHelper.evictPreview(uri)
+                        ShareImporter.deleteInternalFileIfShared(context, uri)
                         try {
                             context.contentResolver.releasePersistableUriPermission(
                                 uri.toUri(),
