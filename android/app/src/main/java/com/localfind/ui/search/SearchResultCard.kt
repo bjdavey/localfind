@@ -261,7 +261,7 @@ fun SearchResultCard(
                                     .fillMaxSize()
                                     .background(
                                         Brush.linearGradient(
-                                            listOf(Color(0xFF4A148C), Color(0xFF7B1FA2))
+                                            listOf(Color(0xFF1E293B), Color(0xFF2A3B4F))
                                         )
                                     ),
                                 contentAlignment = Alignment.Center

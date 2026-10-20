@@ -660,7 +660,7 @@ internal fun AudioWaveformPlaceholder() {
             .fillMaxSize()
             .background(
                 Brush.linearGradient(
-                    listOf(Color(0xFF311B92), Color(0xFF6A1B9A), Color(0xFF4A148C))
+                    listOf(Color(0xFF1E293B), Color(0xFF2A3B4F), Color(0xFF1E293B))
                 )
             ),
         contentAlignment = Alignment.Center
