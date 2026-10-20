@@ -15,12 +15,19 @@ import org.junit.Test
 class ImageIndexingLogicTest {
 
     @Test
-    fun isImageNameOrMime_recognizesSupportedJpgAndPngFormats() {
+    fun isImageNameOrMime_recognizesSupportedImageFormats() {
         assertTrue(Indexer.isImageNameOrMime("sunset.jpg", null))
         assertTrue(Indexer.isImageNameOrMime("PHOTO.JPEG", null))
         assertTrue(Indexer.isImageNameOrMime("diagram.png", null))
+        assertTrue(Indexer.isImageNameOrMime("animation.gif", null))
+        assertTrue(Indexer.isImageNameOrMime("MEME.GIF", null))
         assertTrue(Indexer.isImageNameOrMime("document_without_ext", "image/jpeg"))
         assertTrue(Indexer.isImageNameOrMime("document_without_ext", "image/png"))
+        assertTrue(Indexer.isImageNameOrMime("document_without_ext", "image/gif"))
+
+        assertTrue(Indexer.isGifNameOrMime("reaction.gif", null))
+        assertTrue(Indexer.isGifNameOrMime("reaction_no_ext", "image/gif"))
+        assertFalse(Indexer.isGifNameOrMime("photo.jpg", "image/jpeg"))
 
         assertFalse(Indexer.isImageNameOrMime("notes.txt", "text/plain"))
         assertFalse(Indexer.isImageNameOrMime("report.pdf", "application/pdf"))

@@ -41,6 +41,7 @@ class FileOpenerTest {
         assertEquals("image/jpeg", FileOpener.resolveMimeTypeFromExtension("sunset.jpg"))
         assertEquals("image/jpeg", FileOpener.resolveMimeTypeFromExtension("landscape.jpeg"))
         assertEquals("image/png", FileOpener.resolveMimeTypeFromExtension("screenshot.png"))
+        assertEquals("image/gif", FileOpener.resolveMimeTypeFromExtension("animation.gif"))
 
         // PDFs
         assertEquals("application/pdf", FileOpener.resolveMimeTypeFromExtension("report.pdf"))

@@ -75,6 +75,8 @@ class FileUtilTest {
         assertTrue(FileImporter.isSupported("photo.jpg", "image/jpeg"))
         assertTrue(FileImporter.isSupported("photo.jpeg", "image/jpeg"))
         assertTrue(FileImporter.isSupported("chart.png", "image/png"))
+        assertTrue(FileImporter.isSupported("animation.gif", "image/gif"))
+        assertTrue(FileImporter.isSupported("meme.gif", null))
 
         // Audio (Builtin viewer: MediaPlayerScreen)
         assertTrue(FileImporter.isSupported("voice.mp3", "audio/mpeg"))
@@ -108,7 +110,7 @@ class FileUtilTest {
         assertFalse(FileImporter.isSupported("movie.mkv", "video/x-matroska"))
         assertFalse(FileImporter.isSupported("movie.avi", "video/x-msvideo"))
         assertFalse(FileImporter.isSupported("image.webp", "image/webp"))
-        assertFalse(FileImporter.isSupported("animation.gif", "image/gif"))
+        assertFalse(FileImporter.isSupported("image.bmp", "image/bmp"))
 
         // Unknown / extensionless
         assertFalse(FileImporter.isSupported("unknown", null))
@@ -122,6 +124,7 @@ class FileUtilTest {
         assertTrue(mimeList.contains("application/pdf"))
         assertTrue(mimeList.contains("image/jpeg"))
         assertTrue(mimeList.contains("image/png"))
+        assertTrue(mimeList.contains("image/gif"))
         assertTrue(mimeList.contains("video/mp4"))
         assertTrue(mimeList.contains("text/plain"))
         assertTrue(mimeList.contains("text/markdown"))

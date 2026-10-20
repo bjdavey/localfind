@@ -536,6 +536,20 @@ fun MediaGalleryTile(
                             }
                         }
                     }
+                } else if (Indexer.isGifNameOrMime(file.displayName, file.mimeType)) {
+                    // Modality Badge for GIF images
+                    Surface(
+                        shape = RoundedCornerShape(8.dp),
+                        color = Color.Black.copy(alpha = 0.65f)
+                    ) {
+                        Text(
+                            text = "GIF",
+                            style = MaterialTheme.typography.labelSmall,
+                            fontWeight = FontWeight.Bold,
+                            color = Color.White,
+                            modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
+                        )
+                    }
                 }
 
                 Spacer(modifier = Modifier.weight(1f))

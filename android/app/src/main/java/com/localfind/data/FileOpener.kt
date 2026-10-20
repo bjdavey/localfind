@@ -35,6 +35,7 @@ object FileOpener {
             "mp4" -> return "video/mp4"
             "jpg", "jpeg" -> return "image/jpeg"
             "png" -> return "image/png"
+            "gif" -> return "image/gif"
             "pdf" -> return "application/pdf"
             "mp3" -> return "audio/mpeg"
             "m4a" -> return "audio/mp4"

@@ -24,6 +24,14 @@ class ThumbnailHelperTest {
             ThumbnailHelper.categorizeFile("diagram.png", null)
         )
         assertEquals(
+            GalleryCategory.PHOTOS,
+            ThumbnailHelper.categorizeFile("animation.gif", "image/gif")
+        )
+        assertEquals(
+            GalleryCategory.PHOTOS,
+            ThumbnailHelper.categorizeFile("reaction.gif", null)
+        )
+        assertEquals(
             GalleryCategory.VIDEOS,
             ThumbnailHelper.categorizeFile("clip.mp4", "video/mp4")
         )

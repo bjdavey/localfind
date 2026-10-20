@@ -54,7 +54,7 @@
 - [x] Button to retry All for failed or in queue 
 - [x] Enhance UI/UX
 - [x] Search by image (visual similarity query)
-- Support GIF
+- [x] Support GIF
 - Support import by share from other apps
 - Better PDF viewer
 - Support landscape orientation in file viewer

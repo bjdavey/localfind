@@ -46,6 +46,7 @@ object FileImporter {
         "application/pdf",
         "image/jpeg",
         "image/png",
+        "image/gif",
         "audio/mpeg",
         "audio/mp4",
         "audio/x-m4a",

@@ -91,9 +91,13 @@ class Indexer(
     fun isPdfFile(file: ImportedFile): Boolean =
         isPdfNameOrMime(file.displayName, file.mimeType)
 
-    /** Determines whether an imported file is a supported image file (.jpg, .jpeg, .png). */
+    /** Determines whether an imported file is a supported image file (.jpg, .jpeg, .png, .gif). */
     fun isImageFile(file: ImportedFile): Boolean =
         isImageNameOrMime(file.displayName, file.mimeType)
+
+    /** Determines whether an imported file is a GIF image (.gif). */
+    fun isGifFile(file: ImportedFile): Boolean =
+        isGifNameOrMime(file.displayName, file.mimeType)
 
     /** Determines whether an imported file is a supported audio file (.mp3, .m4a, .wav). */
     fun isAudioFile(file: ImportedFile): Boolean =
@@ -279,16 +283,25 @@ class Indexer(
                 mimeType?.lowercase()?.startsWith("audio/") == true
         }
 
-        /** Checks whether a file name or MIME type corresponds to a supported image format (.jpg, .jpeg, .png). */
+        /** Checks whether a file name or MIME type corresponds to a supported image format (.jpg, .jpeg, .png, .gif). */
         fun isImageNameOrMime(displayName: String, mimeType: String?): Boolean {
             val name = displayName.lowercase()
             val mime = mimeType?.lowercase() ?: ""
             return name.endsWith(".jpg") ||
                 name.endsWith(".jpeg") ||
                 name.endsWith(".png") ||
+                name.endsWith(".gif") ||
                 mime == "image/jpeg" ||
                 mime == "image/jpg" ||
-                mime == "image/png"
+                mime == "image/png" ||
+                mime == "image/gif"
+        }
+
+        /** Checks whether a file name or MIME type specifically corresponds to a GIF image (.gif, image/gif). */
+        fun isGifNameOrMime(displayName: String, mimeType: String?): Boolean {
+            val name = displayName.lowercase()
+            val mime = mimeType?.lowercase() ?: ""
+            return name.endsWith(".gif") || mime == "image/gif"
         }
 
         /** Delegates to [ImageIndexer.calculateTargetDimensions]. */
