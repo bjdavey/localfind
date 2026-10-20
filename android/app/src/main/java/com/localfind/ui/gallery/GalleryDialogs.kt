@@ -268,10 +268,10 @@ internal fun FileDetailsDialog(
                     }
                 }
 
-                // Secondary actions: Search in File (or Find similar for photos) and Move to Folder
+                // Secondary actions: Search in File (or Search by image for photos) and Move to Folder
                 val isPhoto = ThumbnailHelper.categorizeFile(file.displayName, file.mimeType) == GalleryCategory.PHOTOS
-                val searchActionLabel = if (isPhoto) "Find similar" else "Search in file"
-                val searchActionShortLabel = if (isPhoto) "Similar" else "Search"
+                val searchActionLabel = if (isPhoto) "Search by image" else "Search in file"
+                val searchActionShortLabel = "Search"
                 val searchActionIcon = if (isPhoto) R.drawable.ic_image else R.drawable.ic_search
 
                 if (file.indexingStatus == IndexingStatus.INDEXED && onSearchInFile != null && onMoveToFolder != null) {

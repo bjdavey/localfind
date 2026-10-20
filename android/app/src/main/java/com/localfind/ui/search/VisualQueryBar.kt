@@ -32,9 +32,9 @@ import com.localfind.R
 /**
  * Top visual search query header pill.
  *
- * Displays when a user executes a "Search by image (visual similarity query)":
+ * Displays when a user executes a "Search by image":
  * - Left: Thumbnail preview of the query image decoded via Coil.
- * - Center: "Visual similarity query" badge and file display name.
+ * - Center: "Search by image" badge and file display name.
  * - Right: Action buttons to change query image or clear visual search back to text search.
  *
  * Designed according to AGENTS.md §2 for modular, focused UI architecture.
@@ -75,7 +75,7 @@ fun VisualQueryBar(
             )
             Column(modifier = Modifier.weight(1f)) {
                 Text(
-                    text = "Visual similarity query",
+                    text = "Search by image",
                     style = MaterialTheme.typography.labelSmall,
                     fontWeight = FontWeight.Bold,
                     color = MaterialTheme.colorScheme.primary

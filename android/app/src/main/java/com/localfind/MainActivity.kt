@@ -593,7 +593,7 @@ fun MainScreen(
             } catch (_: CancellationException) {
                 // Cancelled by a newer search request; do not show error
             } catch (e: Exception) {
-                searchError = e.message ?: "Visual similarity search failed"
+                searchError = e.message ?: "Search by image failed"
                 searchResults = emptyList()
                 hasSearched = true
             } finally {
@@ -943,11 +943,15 @@ fun MainScreen(
             modelStatus = modelStatus,
             folders = folders,
             currentFolderId = currentFolderId,
-            onNavigateFolder = { currentFolderId = it },
+            onNavigateFolder = {
+                if (!isSearchOpen && !isSettingsOpen && !viewerState.isAnyViewerOpen) currentFolderId = it
+            },
             onCreateFolder = { createFolder(it) },
             onRenameFolder = { folder, newName -> renameFolder(folder, newName) },
             onDeleteFolder = { folder -> deleteFolder(folder) },
-            onImportFolder = { folderPickerLauncher.launch(null) },
+            onImportFolder = {
+                if (!isSearchOpen && !isSettingsOpen && !viewerState.isAnyViewerOpen) folderPickerLauncher.launch(null)
+            },
             enableFolderImport = settings.enableFolderImport,
             onMoveFileToFolder = { file, targetFolderId -> moveFileToFolder(file, targetFolderId) },
             onMoveMultipleFiles = { files, targetFolderId -> moveFilesToFolder(files, targetFolderId) },
@@ -955,17 +959,37 @@ fun MainScreen(
             gridState = galleryGridState,
             onRetryLoadModel = { retryLoadModel() },
             onOpenSearch = {
-                activeSearchFile = null
-                searchCategory = GalleryCategory.ALL
-                isSearchOpen = true
+                if (!isSearchOpen && !isSettingsOpen && !viewerState.isAnyViewerOpen) {
+                    activeSearchFile = null
+                    searchCategory = GalleryCategory.ALL
+                    isSearchOpen = true
+                }
             },
-            onSearchInFile = { file -> startSearchInFile(file) },
-            onImportFiles = { pickerLauncher.launch(FileImporter.SUPPORTED_MIME_TYPES) },
-            onOpenSettings = { isSettingsOpen = true },
+            onSearchInFile = { file ->
+                if (!isSearchOpen && !isSettingsOpen && !viewerState.isAnyViewerOpen) {
+                    startSearchInFile(file)
+                }
+            },
+            onImportFiles = {
+                if (!isSearchOpen && !isSettingsOpen && !viewerState.isAnyViewerOpen) {
+                    pickerLauncher.launch(FileImporter.SUPPORTED_MIME_TYPES)
+                }
+            },
+            onOpenSettings = {
+                if (!isSearchOpen && !isSettingsOpen && !viewerState.isAnyViewerOpen) {
+                    isSettingsOpen = true
+                }
+            },
             onFileClick = { file ->
-                viewerState.openLibraryFile(context, file) { missingFileToDelete = it }
+                if (!isSearchOpen && !isSettingsOpen && !viewerState.isAnyViewerOpen) {
+                    viewerState.openLibraryFile(context, file) { missingFileToDelete = it }
+                }
             },
-            onRequestDeleteFile = { file -> filePendingDeletion = file },
+            onRequestDeleteFile = { file ->
+                if (!isSearchOpen && !isSettingsOpen && !viewerState.isAnyViewerOpen) {
+                    filePendingDeletion = file
+                }
+            },
             onRetryIndexFile = { file ->
                 if (!FileAvailability.isFileAvailable(context, file.uri)) {
                     missingFileToDelete = file
@@ -1043,6 +1067,7 @@ fun MainScreen(
             )
         ) {
             SearchScreen(
+                modifier = Modifier.fillMaxSize(),
                 query = searchQuery,
                 onQueryChange = {
                     searchQuery = it

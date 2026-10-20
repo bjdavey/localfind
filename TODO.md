@@ -53,11 +53,11 @@
 - [x] Simplify UI for non-tech people and keep advanced mode option in settings
 - [x] Button to retry All for failed or in queue 
 - [x] Enhance UI/UX
-- [x] Search by image (visual similarity query)
+- [x] Search by image
 - [x] Support GIF
 - [x] Support import by share from other apps
 - [x] Better PDF viewer
-- Support landscape orientation in file viewer
+- Support landscape orientation in file viewer only
 - [x] Show file details and open in phone gallery or its own app
 - [x] Multi select
 - Refactor, optimize, check dead code
@@ -67,7 +67,7 @@
 
 ## Bugs / Issues
 - [x] App-wide crash resilience: defensive gallery grid keys, viewer fallbacks, and global crash guard
-- [ ] Anything under search view is still clickable
+- [x] Anything under search view is still clickable
 - [x] Fix app crash due to duplicate keys in search results list (LazyColumn crash on device)
 - [x] Can not cancel stuck sync file
 - [x] Should not allow import files other than supported that has builtin viewer

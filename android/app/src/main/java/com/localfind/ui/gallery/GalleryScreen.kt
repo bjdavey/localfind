@@ -12,6 +12,7 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.horizontalScroll
+import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -1245,7 +1246,14 @@ fun FloatingSearchAndImportDock(
                 elevation = 12.dp,
                 shape = RoundedCornerShape(30.dp),
                 clip = false
-            ),
+            )
+            .clickable(
+                indication = null,
+                interactionSource = remember { MutableInteractionSource() }
+            ) {
+                // Consume clicks on dock body/dividers/spacers so they don't fall through to scrolling tiles underneath
+                onSearchClick()
+            },
         shape = RoundedCornerShape(30.dp),
         color = MaterialTheme.colorScheme.surfaceVariant,
         tonalElevation = 6.dp

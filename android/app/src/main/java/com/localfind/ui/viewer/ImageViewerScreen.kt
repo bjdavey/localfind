@@ -207,7 +207,7 @@ fun ImageViewerScreen(
                         IconButton(onClick = { onSearchSimilar(params.uri, params.fileName) }) {
                             Icon(
                                 painter = painterResource(R.drawable.ic_search),
-                                contentDescription = "Find visually similar",
+                                contentDescription = "Search by image",
                                 tint = Color.White
                             )
                         }

@@ -5,7 +5,9 @@ import androidx.activity.compose.BackHandler
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.horizontalScroll
+import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -69,7 +71,7 @@ import com.localfind.ui.gallery.iconResId
  *
  * Features:
  * - Top search bar with back navigation (`←`), auto-focused query input, image search picker, and clear button.
- * - Visual similarity query pill ([VisualQueryBar]) when searching with an image.
+ * - Search by image query pill ([VisualQueryBar]) when searching with an image.
  * - Optional scoped search banner when searching within a specific [targetFile].
  * - Modality filter chips (`All`, `Photos`, `Videos`, `Docs`, `Audio`) to filter ranked hits.
  * - Interactive example suggestion pills and photo picker suggestion when idle.
@@ -104,7 +106,7 @@ fun SearchScreen(
     val focusManager = LocalFocusManager.current
     val focusRequester = remember { FocusRequester() }
 
-    // System image picker launcher for visual similarity search
+    // System image picker launcher for searching by image
     val imagePickerLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.GetContent()
     ) { uri: Uri? ->
@@ -137,6 +139,14 @@ fun SearchScreen(
         modifier = modifier
             .fillMaxSize()
             .background(MaterialTheme.colorScheme.background)
+            .clickable(
+                indication = null,
+                interactionSource = remember { MutableInteractionSource() }
+            ) {
+                // Consume taps on the search view background to prevent clicks falling through
+                // to underlying screens (e.g. gallery tiles or bottom dock), and clear focus from the search input.
+                focusManager.clearFocus()
+            }
             .padding(
                 top = statusBarPadding.calculateTopPadding() + 8.dp,
                 bottom = navBarPadding.calculateBottomPadding()
@@ -372,7 +382,7 @@ fun SearchScreen(
                     ) {
                         CircularProgressIndicator()
                         Text(
-                            text = if (queryImageUri != null) "Comparing visual similarity offline..." else "Searching your files offline...",
+                            text = if (queryImageUri != null) "Searching by image offline..." else "Searching your files offline...",
                             style = MaterialTheme.typography.bodyMedium,
                             color = MaterialTheme.colorScheme.onSurfaceVariant
                         )
@@ -416,9 +426,7 @@ fun SearchScreen(
                             tint = MaterialTheme.colorScheme.onSurfaceVariant
                         )
                         Text(
-                            text = if (queryImageUri != null) {
-                                "No visually similar content found"
-                            } else if (selectedCategory == GalleryCategory.ALL) {
+                            text = if (selectedCategory == GalleryCategory.ALL) {
                                 "No matching content found"
                             } else {
                                 "No matching ${selectedCategory.label.lowercase()} found"
@@ -441,10 +449,11 @@ fun SearchScreen(
             }
 
             hasSearched && searchResults.isNotEmpty() -> {
+                val matchWord = if (searchResults.size == 1) "match" else "matches"
                 val headerText = if (queryImageUri != null) {
-                    "Showing ${searchResults.size} visually similar match(es)"
+                    "Showing ${searchResults.size} $matchWord"
                 } else {
-                    "Showing ${searchResults.size} ranked match(es)"
+                    "Showing ${searchResults.size} ranked $matchWord"
                 }
                 Text(
                     text = headerText,
@@ -488,7 +497,7 @@ fun SearchScreen(
                             textAlign = TextAlign.Center
                         )
                         Text(
-                            text = "Describe a scene in a photo or video, a topic in a PDF or note, or pick an image to find visually similar files.",
+                            text = "Describe a scene in a photo or video, a topic in a PDF or note, or pick an image to find matching files.",
                             style = MaterialTheme.typography.bodyMedium,
                             color = MaterialTheme.colorScheme.onSurfaceVariant,
                             textAlign = TextAlign.Center
@@ -513,7 +522,7 @@ fun SearchScreen(
                             horizontalAlignment = Alignment.CenterHorizontally,
                             verticalArrangement = Arrangement.spacedBy(4.dp)
                         ) {
-                            // Visual similarity search shortcut chip
+                            // Search by image shortcut chip
                             SuggestionChip(
                                 onClick = { imagePickerLauncher.launch("image/*") },
                                 icon = {
@@ -524,7 +533,7 @@ fun SearchScreen(
                                         tint = MaterialTheme.colorScheme.primary
                                     )
                                 },
-                                label = { Text("Pick an image (visual similarity)") },
+                                label = { Text("Search by image") },
                                 shape = RoundedCornerShape(18.dp)
                             )
 
