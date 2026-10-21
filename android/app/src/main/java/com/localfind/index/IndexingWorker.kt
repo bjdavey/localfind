@@ -669,6 +669,13 @@ class IndexingWorker(
                             EngineManager.withStore(context) { it.deleteByFileUri(file.uri) }
                         } catch (_: Exception) {}
                     }
+
+                    // Micro-pacing / Frame yielding: brief pause between consecutive files
+                    // yields GPU and CPU time slices to SurfaceFlinger and HWUI compositor,
+                    // keeping the phone's UI buttery smooth even during bulk image/file indexing.
+                    if (idx < pending.lastIndex && !isStopped && !isPaused(context) && !IndexingCancellationState.isPaused()) {
+                        kotlinx.coroutines.delay(com.localfind.index.video.DEFAULT_MICRO_PACING_DELAY_MS)
+                    }
                 }
             }
 

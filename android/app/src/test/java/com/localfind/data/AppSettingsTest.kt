@@ -30,6 +30,7 @@ class AppSettingsTest {
         assertEquals(true, settings.videoSkipSimilarChunks)
         assertEquals(0.85f, settings.videoSimilarityThreshold, 0.0001f)
         assertEquals(false, settings.enableFolderImport)
+        assertEquals(HardwareAccelerator.GPU, settings.accelerator)
     }
 
     @Test
@@ -79,6 +80,7 @@ class AppSettingsTest {
         assertEquals(false, initial.videoIncludeAudio)
         assertEquals(true, initial.videoSkipSimilarChunks)
         assertEquals(0.85f, initial.videoSimilarityThreshold, 0.0001f)
+        assertEquals(HardwareAccelerator.GPU, initial.accelerator)
 
         // 2. Save modified settings
         val modified = AppSettings(
@@ -94,7 +96,8 @@ class AppSettingsTest {
             videoIncludeAudio = true,
             videoSkipSimilarChunks = false,
             videoSimilarityThreshold = 0.9f,
-            enableFolderImport = true
+            enableFolderImport = true,
+            accelerator = HardwareAccelerator.CPU
         )
         store.save(modified)
 
@@ -112,6 +115,7 @@ class AppSettingsTest {
         assertEquals(false, reloaded.videoSkipSimilarChunks)
         assertEquals(0.9f, reloaded.videoSimilarityThreshold, 0.0001f)
         assertEquals(true, reloaded.enableFolderImport)
+        assertEquals(HardwareAccelerator.CPU, reloaded.accelerator)
 
         // 3. Reset settings to default
         val reset = store.reset()
@@ -123,10 +127,12 @@ class AppSettingsTest {
         assertEquals(true, reset.videoSkipSimilarChunks)
         assertEquals(false, reset.enableFolderImport)
         assertEquals(0.85f, reset.videoSimilarityThreshold, 0.0001f)
+        assertEquals(HardwareAccelerator.GPU, reset.accelerator)
 
         val afterReset = store.load()
         assertEquals(false, afterReset.darkMode)
         assertEquals(DEFAULT_SIMILARITY_THRESHOLD, afterReset.similarityThreshold, 0.0001f)
+        assertEquals(HardwareAccelerator.GPU, afterReset.accelerator)
     }
 
     @Test
@@ -179,6 +185,23 @@ class AppSettingsTest {
         assertEquals(0.6f, reset.similarityThreshold, 0.0001f)
         assertEquals(10, reset.topK)
         assertEquals(false, reset.darkMode)
+    }
+
+    @Test
+    fun settingsStore_savesAndLoadsHardwareAccelerator() {
+        val fakePrefs = FakeSharedPreferences()
+        val store = SettingsStore(fakePrefs)
+
+        // Default should be GPU
+        assertEquals(HardwareAccelerator.GPU, store.load().accelerator)
+
+        // Switch to CPU
+        store.save(AppSettings(accelerator = HardwareAccelerator.CPU))
+        assertEquals(HardwareAccelerator.CPU, store.load().accelerator)
+
+        // Corrupted/unknown value in SharedPreferences gracefully defaults to GPU
+        fakePrefs.edit().putString(SettingsStore.KEY_HARDWARE_ACCELERATOR, "NON_EXISTENT_ACCELERATOR").apply()
+        assertEquals(HardwareAccelerator.GPU, store.load().accelerator)
     }
 
     /**

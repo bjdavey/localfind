@@ -46,6 +46,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.localfind.R
 import com.localfind.data.AppSettings
+import com.localfind.data.HardwareAccelerator
 import com.localfind.data.ModelStatus
 import com.localfind.data.ThemeMode
 import java.util.Locale
@@ -434,7 +435,28 @@ fun SettingsScreen(
                     SettingsSectionDivider()
 
                     // =================================================================
-                    // SECTION 5: LIBRARY & REINDEXING
+                    // SECTION 5: HARDWARE ACCELERATION
+                    // =================================================================
+                    SettingsCategoryHeader("HARDWARE ACCELERATION")
+
+                    SettingSwitchRow(
+                        title = "GPU acceleration",
+                        subtitle = if (settings.accelerator == HardwareAccelerator.GPU) "GPU (Faster indexing)" else "CPU (Smoother UI / Less heat)",
+                        description = "Accelerates image and video frame analysis using mobile GPU shaders. Turn off to switch to CPU (XNNPack) to keep the device cool and prevent UI lag while multitasking.",
+                        checked = settings.accelerator == HardwareAccelerator.GPU,
+                        onCheckedChange = { isGpu ->
+                            onSettingsChange(
+                                settings.copy(
+                                    accelerator = if (isGpu) HardwareAccelerator.GPU else HardwareAccelerator.CPU
+                                )
+                            )
+                        }
+                    )
+
+                    SettingsSectionDivider()
+
+                    // =================================================================
+                    // SECTION 6: LIBRARY & REINDEXING
                     // =================================================================
                     SettingsCategoryHeader("LIBRARY & REINDEXING")
 

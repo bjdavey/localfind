@@ -23,6 +23,20 @@ enum class ThemeMode(val title: String) {
     DARK("Dark")
 }
 
+/**
+ * Hardware accelerator choice for multimodal vision indexing (images and video keyframes).
+ *
+ * - [GPU]: Uses mobile GPU compute shaders for maximum indexing speed.
+ * - [CPU]: Uses CPU (XNNPack) to keep the device cool, save power, and avoid UI frame contention.
+ */
+enum class HardwareAccelerator(val title: String) {
+    GPU("GPU (Faster)"),
+    CPU("CPU (Smoother UI)")
+}
+
+/** Default hardware accelerator for vision indexing. */
+val DEFAULT_HARDWARE_ACCELERATOR = HardwareAccelerator.GPU
+
 /** Default minimum cosine similarity score required for search results (user-requested default: 0.6). */
 const val DEFAULT_SIMILARITY_THRESHOLD = 0.6f
 
@@ -79,6 +93,7 @@ const val DEFAULT_ENABLE_FOLDER_IMPORT = false
  * @property videoSkipSimilarChunks Whether to skip consecutive video windows with visually redundant content.
  * @property videoSimilarityThreshold Similarity cutoff (0.5 .. 1.0) for detecting redundant video windows.
  * @property enableFolderImport Whether importing entire directories is exposed in the gallery UI.
+ * @property accelerator Preferred hardware accelerator for vision indexing ([HardwareAccelerator.GPU] or [HardwareAccelerator.CPU]).
  */
 data class AppSettings(
     val themeMode: ThemeMode = DEFAULT_THEME_MODE,
@@ -94,7 +109,8 @@ data class AppSettings(
     val videoIncludeAudio: Boolean = DEFAULT_VIDEO_INCLUDE_AUDIO,
     val videoSkipSimilarChunks: Boolean = DEFAULT_VIDEO_SKIP_SIMILAR,
     val videoSimilarityThreshold: Float = DEFAULT_VIDEO_SIMILARITY_THRESHOLD,
-    val enableFolderImport: Boolean = DEFAULT_ENABLE_FOLDER_IMPORT
+    val enableFolderImport: Boolean = DEFAULT_ENABLE_FOLDER_IMPORT,
+    val accelerator: HardwareAccelerator = DEFAULT_HARDWARE_ACCELERATOR
 ) {
     /**
      * Returns a copy of [AppSettings] with all values clamped to valid and safe ranges.
@@ -115,7 +131,8 @@ data class AppSettings(
             videoIncludeAudio = videoIncludeAudio,
             videoSkipSimilarChunks = videoSkipSimilarChunks,
             videoSimilarityThreshold = videoSimilarityThreshold.coerceIn(0.5f, 1.0f),
-            enableFolderImport = enableFolderImport
+            enableFolderImport = enableFolderImport,
+            accelerator = accelerator
         )
     }
 }
@@ -170,6 +187,17 @@ class SettingsStore(private val prefs: SharedPreferences) {
             ThemeMode.DARK -> true
         }
 
+        val accelerator = if (prefs.contains(KEY_HARDWARE_ACCELERATOR)) {
+            val name = prefs.getString(KEY_HARDWARE_ACCELERATOR, null)
+            try {
+                if (name != null) HardwareAccelerator.valueOf(name) else DEFAULT_HARDWARE_ACCELERATOR
+            } catch (_: Exception) {
+                DEFAULT_HARDWARE_ACCELERATOR
+            }
+        } else {
+            DEFAULT_HARDWARE_ACCELERATOR
+        }
+
         return AppSettings(
             themeMode = themeMode,
             darkMode = isDarkMode,
@@ -184,7 +212,8 @@ class SettingsStore(private val prefs: SharedPreferences) {
             videoIncludeAudio = prefs.getBoolean(KEY_VIDEO_INCLUDE_AUDIO, DEFAULT_VIDEO_INCLUDE_AUDIO),
             videoSkipSimilarChunks = prefs.getBoolean(KEY_VIDEO_SKIP_SIMILAR, DEFAULT_VIDEO_SKIP_SIMILAR),
             videoSimilarityThreshold = prefs.getFloat(KEY_VIDEO_SIMILARITY_THRESHOLD, DEFAULT_VIDEO_SIMILARITY_THRESHOLD),
-            enableFolderImport = prefs.getBoolean(KEY_ENABLE_FOLDER_IMPORT, DEFAULT_ENABLE_FOLDER_IMPORT)
+            enableFolderImport = prefs.getBoolean(KEY_ENABLE_FOLDER_IMPORT, DEFAULT_ENABLE_FOLDER_IMPORT),
+            accelerator = accelerator
         ).sanitized()
     }
 
@@ -219,6 +248,7 @@ class SettingsStore(private val prefs: SharedPreferences) {
             putBoolean(KEY_VIDEO_SKIP_SIMILAR, valid.videoSkipSimilarChunks)
             putFloat(KEY_VIDEO_SIMILARITY_THRESHOLD, valid.videoSimilarityThreshold)
             putBoolean(KEY_ENABLE_FOLDER_IMPORT, valid.enableFolderImport)
+            putString(KEY_HARDWARE_ACCELERATOR, valid.accelerator.name)
         }
     }
 
@@ -249,6 +279,7 @@ class SettingsStore(private val prefs: SharedPreferences) {
         const val KEY_VIDEO_SKIP_SIMILAR = "video_skip_similar"
         const val KEY_VIDEO_SIMILARITY_THRESHOLD = "video_similarity_threshold"
         const val KEY_ENABLE_FOLDER_IMPORT = "enable_folder_import"
+        const val KEY_HARDWARE_ACCELERATOR = "hardware_accelerator"
     }
 }
 

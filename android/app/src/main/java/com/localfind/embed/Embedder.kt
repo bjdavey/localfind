@@ -10,6 +10,7 @@ import com.google.mediapipe.tasks.core.BaseOptions
 import com.google.mediapipe.tasks.core.Part
 import com.google.mediapipe.tasks.retrieval.universalembedder.UniversalEmbedder
 import com.google.mediapipe.tasks.retrieval.universalembedder.UniversalEmbedderOptions
+import com.localfind.data.HardwareAccelerator
 import java.io.File
 
 /**
@@ -41,12 +42,13 @@ const val DEFAULT_VISION_TOKENS_PER_IMAGE = 70
  * 2. Configuring L2 normalization so that cosine similarity can be computed via dot product.
  * 3. Setting the 70-token vision budget for fast image encoding.
  * 4. Producing 768-dimensional float embeddings for input text strings, passages, and images.
- * 5. Providing automatic GPU vision acceleration with graceful CPU fallback.
+ * 5. Providing configurable GPU vision acceleration with graceful CPU fallback.
  *
  * Implements [AutoCloseable] to ensure underlying native C++ LiteRT resources are promptly freed.
  */
 class Embedder(
-    context: Context
+    context: Context,
+    val accelerator: HardwareAccelerator = HardwareAccelerator.GPU
 ) : AutoCloseable {
     private val embedder: UniversalEmbedder
 
@@ -78,26 +80,28 @@ class Embedder(
         var createdEmbedder: UniversalEmbedder? = null
         var gpuSuccess = false
 
-        try {
-            // Attempt GPU acceleration for vision encoding (images and video frame indexing).
-            val gpuOptions = UniversalEmbedderOptions.builder()
-                .setBaseOptions(baseOptions)
-                .setL2Normalize(true)
-                .setVisionTokensPerImage(DEFAULT_VISION_TOKENS_PER_IMAGE)
-                .setTextDelegate(com.google.mediapipe.tasks.core.Delegate.CPU)
-                .setAudioDelegate(com.google.mediapipe.tasks.core.Delegate.CPU)
-                .setVisionDelegate(com.google.mediapipe.tasks.core.Delegate.GPU)
-                .build()
+        if (accelerator == HardwareAccelerator.GPU) {
+            try {
+                // Attempt GPU acceleration for vision encoding (images and video frame indexing).
+                val gpuOptions = UniversalEmbedderOptions.builder()
+                    .setBaseOptions(baseOptions)
+                    .setL2Normalize(true)
+                    .setVisionTokensPerImage(DEFAULT_VISION_TOKENS_PER_IMAGE)
+                    .setTextDelegate(com.google.mediapipe.tasks.core.Delegate.CPU)
+                    .setAudioDelegate(com.google.mediapipe.tasks.core.Delegate.CPU)
+                    .setVisionDelegate(com.google.mediapipe.tasks.core.Delegate.GPU)
+                    .build()
 
-            createdEmbedder = UniversalEmbedder.createFromOptions(context, gpuOptions)
-            gpuSuccess = true
-            Log.i(TAG, "UniversalEmbedder initialized with GPU vision acceleration.")
-        } catch (t: Throwable) {
-            Log.w(TAG, "GPU vision acceleration unavailable or failed to initialize (${t.message}). Falling back to CPU vision.", t)
+                createdEmbedder = UniversalEmbedder.createFromOptions(context, gpuOptions)
+                gpuSuccess = true
+                Log.i(TAG, "UniversalEmbedder initialized with GPU vision acceleration.")
+            } catch (t: Throwable) {
+                Log.w(TAG, "GPU vision acceleration unavailable or failed to initialize (${t.message}). Falling back to CPU vision.", t)
+            }
         }
 
         if (createdEmbedder == null) {
-            // CPU fallback: All modalities execute via CPU (XNNPack).
+            // CPU mode or GPU fallback: All modalities execute via CPU (XNNPack).
             val cpuOptions = UniversalEmbedderOptions.builder()
                 .setBaseOptions(baseOptions)
                 .setL2Normalize(true)

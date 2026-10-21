@@ -9,6 +9,7 @@ import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.fragment.app.FragmentActivity
+import androidx.lifecycle.lifecycleScope
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.core.FastOutSlowInEasing
 import androidx.compose.animation.core.tween
@@ -143,12 +144,24 @@ class MainActivity : FragmentActivity() {
                     pendingShareIntent = pendingShareIntent,
                     onShareIntentHandled = { pendingShareIntent = null },
                     onSettingsChange = { updated ->
+                        val acceleratorChanged = updated.accelerator != currentSettings.accelerator
                         currentSettings = updated
                         settingsStore.save(updated)
+                        if (acceleratorChanged) {
+                            lifecycleScope.launch(Dispatchers.IO) {
+                                EngineManager.updateAccelerator(applicationContext, updated.accelerator)
+                            }
+                        }
                     },
                     onResetDefaults = {
+                        val previousAccelerator = currentSettings.accelerator
                         val defaults = settingsStore.reset(defaultDarkMode = systemDark)
                         currentSettings = defaults
+                        if (defaults.accelerator != previousAccelerator) {
+                            lifecycleScope.launch(Dispatchers.IO) {
+                                EngineManager.updateAccelerator(applicationContext, defaults.accelerator)
+                            }
+                        }
                     }
                 )
             }

@@ -122,18 +122,54 @@ object EngineManager {
 
     /**
      * Obtains or creates the singleton [Embedder] instance.
-     * Automatically uses GPU for vision with automatic CPU fallback.
+     * Uses [accelerator] (or persisted setting if null) for vision inference.
      * Note: Initializing loads the ~485MB model file from filesDir.
      */
-    fun getEmbedder(context: Context): Embedder {
-        return embedder ?: synchronized(this) {
-            embedder ?: Embedder(context.applicationContext).also {
-                Log.i(TAG, "Initialized singleton Embedder instance.")
-                embedder = it
-                val f = File(context.filesDir, MODEL_FILE_NAME)
-                if (f.exists()) {
-                    _modelStatus.value = ModelStatus.Loaded(f.absolutePath, f.length())
+    fun getEmbedder(
+        context: Context,
+        accelerator: HardwareAccelerator? = null
+    ): Embedder {
+        val targetAccelerator = accelerator ?: SettingsStore(context).load().accelerator
+        val current = embedder
+        if (current != null && current.accelerator == targetAccelerator) {
+            return current
+        }
+        return synchronized(this) {
+            val existing = embedder
+            if (existing != null && existing.accelerator == targetAccelerator) {
+                existing
+            } else {
+                try {
+                    existing?.close()
+                } catch (e: Exception) {
+                    Log.w(TAG, "Error closing previous embedder: ${e.message}")
                 }
+                Embedder(context.applicationContext, targetAccelerator).also {
+                    Log.i(TAG, "Initialized singleton Embedder instance with $targetAccelerator.")
+                    embedder = it
+                    val f = File(context.filesDir, MODEL_FILE_NAME)
+                    if (f.exists()) {
+                        _modelStatus.value = ModelStatus.Loaded(f.absolutePath, f.length())
+                    }
+                }
+            }
+        }
+    }
+
+    /**
+     * Updates the active hardware accelerator for the singleton [Embedder], recreating the
+     * embedder instance if the accelerator setting has changed.
+     */
+    fun updateAccelerator(context: Context, accelerator: HardwareAccelerator) {
+        synchronized(this) {
+            if (embedder?.accelerator != accelerator) {
+                try {
+                    embedder?.close()
+                } catch (e: Exception) {
+                    Log.w(TAG, "Error closing previous embedder during accelerator switch: ${e.message}")
+                }
+                embedder = null
+                getEmbedder(context, accelerator)
             }
         }
     }
@@ -161,7 +197,7 @@ object EngineManager {
         settings: AppSettings = AppSettings(),
         block: suspend (indexer: Indexer) -> T
     ): T {
-        val emb = getEmbedder(context)
+        val emb = getEmbedder(context, settings.accelerator)
         val st = getStore(context)
         val indexer = Indexer(context.applicationContext, emb, st, settings)
         return block(indexer)

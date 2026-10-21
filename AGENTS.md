@@ -29,7 +29,7 @@ Instructions for AI assistants working on this repository. Read this before ever
 3. **Verify:**
    - Run unit tests: `.\gradlew test` (or targeted: `.\gradlew testDebugUnitTest --tests com.localfind...`)
    - Verify build: `.\gradlew assembleDebug`
-   - Verify on device/emulator to verify end-to-end.
+   - Test on emulator to verify end-to-end.
 4. **Complete:** Mark `[x]` in [TODO.md](TODO.md) and stop.
 
 ## 5. Ask Before Acting

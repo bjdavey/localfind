@@ -82,6 +82,7 @@
 - [x] Search after filter, not filter search results
 - [x] Fix PDF indexing progress bar repeating after 15%
 - [x] Fix: PDF search result doesn't open at that page
+- [x] GPU vs. CPU switch in Advanced Settings and micro-pacing frame yielding to prevent UI lag
 
 
 ## Backlog
