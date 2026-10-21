@@ -61,6 +61,7 @@
 - [x] Show file details and open in phone gallery or its own app
 - [x] Show original file path in file details view
 - [x] Multi select
+- [x] Smart Mode in Advanced Settings: dynamic GPU/CPU switching based on screen and battery saver state
 - Refactor, optimize, check dead code, technical debt, folder/files structure and design decisions
 - What else?
 - Final E2E test with edge cases
@@ -83,7 +84,6 @@
 - [x] Fix PDF indexing progress bar repeating after 15%
 - [x] Fix: PDF search result doesn't open at that page
 - [x] GPU vs. CPU switch in Advanced Settings and micro-pacing frame yielding to prevent UI lag
-- [x] Smart Mode in Advanced Settings: dynamic GPU/CPU switching based on screen and battery saver state
 
 
 ## Backlog
@@ -92,6 +92,7 @@
 - Import from URL without saving the file (streaming keyframe indexing)
 - Export / Backup index and "Clear Database" reset
 - Allow other media files format
+- Support code files import
 - Top bar should hide on scrolling
 
 ### Search Experience
@@ -99,7 +100,8 @@
 - Recent searches history
 
 ### Indexing & Performance
-- Real NPU support: Dynamic SoC-specific NPU runtime & model delivery: detect device chipset (Qualcomm SM8650/SM8550, MediaTek, Google Tensor) and dynamically download only the matching pre-compiled model and vendor .so runtime split (like Google AI Edge Gallery)
+- Hardware NPU acceleration for additional chipsets
+- Dynamic SoC-specific NPU runtime & model delivery: Play Feature Delivery / split APKs to deliver only the matching pre-compiled model and vendor `.so` runtime without bloating base APK size
 - Battery / thermal-friendly indexing (pause on low battery / charging-only option)
 - Vector quantization (FP16 / INT8 embeddings)
 - PDF OCR (ML Kit / on-device OCR for scanned documents)

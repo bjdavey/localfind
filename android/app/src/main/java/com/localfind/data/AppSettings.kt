@@ -29,11 +29,13 @@ enum class ThemeMode(val title: String) {
  * - [SMART]: Dynamically routes between GPU and CPU based on device state.
  *   Uses GPU when the screen is OFF and not in Battery Saver mode for maximum speed.
  *   Switches to CPU when the screen is ON or Battery Saver is ON to keep the UI smooth and cool.
+ * - [NPU]: Uses dedicated on-device Neural Processing Unit (NPU) on supported chipsets (Qualcomm Hexagon, MediaTek, Tensor) for maximum speed and energy efficiency.
  * - [GPU]: Always uses mobile GPU compute shaders for maximum indexing speed.
  * - [CPU]: Always uses CPU (XNNPack) to keep the device cool, save power, and avoid UI frame contention.
  */
 enum class HardwareAccelerator(val title: String) {
     SMART("Smart (Auto)"),
+    NPU("NPU (Neural Processing Unit)"),
     GPU("GPU (Faster)"),
     CPU("CPU (Smoother UI)")
 }

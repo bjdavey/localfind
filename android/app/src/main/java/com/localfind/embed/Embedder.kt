@@ -15,7 +15,7 @@ import com.localfind.data.resolveEffective
 import java.io.File
 
 /**
- * File name for the on-device embedding model.
+ * Default base on-device embedding model file name.
  *
  * Model details:
  * - EmbeddingGemma 2 740M multimodal (text, image, audio)
@@ -43,13 +43,14 @@ const val DEFAULT_VISION_TOKENS_PER_IMAGE = 70
  * 2. Configuring L2 normalization so that cosine similarity can be computed via dot product.
  * 3. Setting the 70-token vision budget for fast image encoding.
  * 4. Producing 768-dimensional float embeddings for input text strings, passages, and images.
- * 5. Providing configurable GPU vision acceleration with graceful CPU fallback.
+ * 5. Providing configurable NPU / GPU vision acceleration with graceful CPU fallback.
  *
  * Implements [AutoCloseable] to ensure underlying native C++ LiteRT resources are promptly freed.
  */
 class Embedder(
     context: Context,
-    val configuredAccelerator: HardwareAccelerator = HardwareAccelerator.SMART
+    val configuredAccelerator: HardwareAccelerator = HardwareAccelerator.SMART,
+    preferredModelName: String? = null
 ) : AutoCloseable {
     private val embedder: UniversalEmbedder
 
@@ -60,19 +61,25 @@ class Embedder(
     val accelerator: HardwareAccelerator get() = configuredAccelerator
 
     /**
+     * Whether NPU acceleration is actively enabled for the vision encoder.
+     * When true, vision encoding executes via dedicated hardware NPU (e.g. Qualcomm Hexagon HTP).
+     */
+    val isNpuVisionEnabled: Boolean
+
+    /**
      * Whether GPU acceleration is actively enabled for the vision encoder.
      * When false, vision encoding executes via CPU (XNNPack).
      */
     val isGpuVisionEnabled: Boolean
 
     init {
-        // Locate the model file in the application's internal files directory,
-        // copying from fallback emulator/dev paths if missing.
-        val model = ensureModelFile(context)
+        // Locate the model file in internal storage, copying from staging paths if missing.
+        val model = SocDetector.ensureModelFile(context, effectiveAccelerator, preferredModelName)
+
         require(model.exists() && model.length() > 0L) {
             "Embedding model not found at ${model.absolutePath}. " +
                     "For development on emulator or device, push the model file using:\n" +
-                    "adb push .local/models/$MODEL_FILE_NAME /data/local/tmp/"
+                    "adb push .local/models/${model.name} /data/local/tmp/"
         }
 
         // Set L2 normalization to true so vectors have unit length (norm = 1.0),
@@ -85,9 +92,34 @@ class Embedder(
             .build()
 
         var createdEmbedder: UniversalEmbedder? = null
+        var npuSuccess = false
         var gpuSuccess = false
 
-        if (effectiveAccelerator == HardwareAccelerator.GPU) {
+        if (effectiveAccelerator == HardwareAccelerator.NPU) {
+            try {
+                // Ensure Qualcomm QNN and LiteRT dispatch runtime libraries are staged in filesDir
+                SocDetector.ensureDispatchLibraries(context)
+
+                // Attempt NPU acceleration for vision encoding via Qualcomm Hexagon HTP v75
+                val npuOptions = UniversalEmbedderOptions.builder()
+                    .setBaseOptions(baseOptions)
+                    .setL2Normalize(true)
+                    .setVisionTokensPerImage(DEFAULT_VISION_TOKENS_PER_IMAGE)
+                    .setCacheDir(context.cacheDir.absolutePath)
+                    .setTextDelegate(com.google.mediapipe.tasks.core.Delegate.CPU)
+                    .setAudioDelegate(com.google.mediapipe.tasks.core.Delegate.CPU)
+                    .setVisionDelegate(com.google.mediapipe.tasks.core.Delegate.NPU)
+                    .build()
+
+                createdEmbedder = UniversalEmbedder.createFromOptions(context, npuOptions)
+                npuSuccess = true
+                Log.i(TAG, "UniversalEmbedder successfully initialized with Qualcomm Hexagon NPU vision acceleration (configured=$configuredAccelerator, effective=$effectiveAccelerator).")
+            } catch (t: Throwable) {
+                Log.w(TAG, "NPU vision acceleration unavailable or failed to initialize (${t.message}). Falling back to GPU/CPU.", t)
+            }
+        }
+
+        if (createdEmbedder == null && (effectiveAccelerator == HardwareAccelerator.GPU || effectiveAccelerator == HardwareAccelerator.NPU)) {
             try {
                 // Attempt GPU acceleration for vision encoding (images and video frame indexing).
                 val gpuOptions = UniversalEmbedderOptions.builder()
@@ -108,7 +140,7 @@ class Embedder(
         }
 
         if (createdEmbedder == null) {
-            // CPU mode or GPU fallback: All modalities execute via CPU (XNNPack).
+            // CPU mode or fallback: All modalities execute via CPU (XNNPack).
             val cpuOptions = UniversalEmbedderOptions.builder()
                 .setBaseOptions(baseOptions)
                 .setL2Normalize(true)
@@ -123,6 +155,7 @@ class Embedder(
         }
 
         embedder = createdEmbedder
+        isNpuVisionEnabled = npuSuccess
         isGpuVisionEnabled = gpuSuccess
     }
 
@@ -213,53 +246,10 @@ class Embedder(
 
         /**
          * Ensures that the on-device model file exists in [context.filesDir].
-         *
-         * If missing from internal storage, checks fallback emulator development locations:
-         * 1. `/data/local/tmp/embeddinggemma-2-740m.litertlm` (destination of adb push)
-         * 2. `/sdcard/Download/embeddinggemma-2-740m.litertlm`
-         * 3. `/sdcard/embeddinggemma-2-740m.litertlm`
-         *
-         * If found in any of those locations, copies it into internal app storage via an intermediate
-         * `.tmp` file and atomic rename, ensuring clean self-healing on emulator startup.
-         *
-         * @return [File] pointing to the target model in [context.filesDir].
+         * Delegates to [SocDetector.ensureModelFile].
          */
-        fun ensureModelFile(context: Context): File {
-            val target = File(context.filesDir, MODEL_FILE_NAME)
-            if (target.exists() && target.length() > 0L) {
-                return target
-            }
-
-            // Check candidate development locations (emulator / adb push destination)
-            val candidateSources = listOf(
-                File("/data/local/tmp", MODEL_FILE_NAME),
-                File("/sdcard/Download", MODEL_FILE_NAME),
-                File("/sdcard", MODEL_FILE_NAME)
-            )
-
-            val source = candidateSources.firstOrNull { it.exists() && it.canRead() && it.length() > 0L }
-            if (source != null) {
-                val tempFile = File(context.filesDir, "$MODEL_FILE_NAME.tmp")
-                try {
-                    Log.i(TAG, "Found model at ${source.absolutePath} (${source.length()} bytes). Copying to internal storage ${target.absolutePath}...")
-                    source.inputStream().use { input ->
-                        tempFile.outputStream().use { output ->
-                            input.copyTo(output, bufferSize = 64 * 1024)
-                        }
-                    }
-                    if (tempFile.renameTo(target)) {
-                        Log.i(TAG, "Successfully copied model to ${target.absolutePath} (${target.length()} bytes)")
-                    } else {
-                        Log.w(TAG, "Failed to rename temp file to ${target.name}; deleting partial temp file")
-                        tempFile.delete()
-                    }
-                } catch (e: Exception) {
-                    tempFile.delete()
-                    Log.e(TAG, "Error copying model from ${source.absolutePath} to ${target.absolutePath}", e)
-                }
-            }
-
-            return target
+        fun ensureModelFile(context: Context, modelName: String = MODEL_FILE_NAME): File {
+            return SocDetector.ensureModelFile(context, modelName = modelName)
         }
     }
 }

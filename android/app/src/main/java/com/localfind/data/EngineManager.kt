@@ -3,7 +3,7 @@ package com.localfind.data
 import android.content.Context
 import android.util.Log
 import com.localfind.embed.Embedder
-import com.localfind.embed.MODEL_FILE_NAME
+import com.localfind.embed.SocDetector
 import com.localfind.index.Indexer
 import com.localfind.search.Searcher
 import kotlinx.coroutines.Dispatchers
@@ -75,11 +75,11 @@ object EngineManager {
     suspend fun ensureModelLoaded(context: Context): ModelStatus = withContext(Dispatchers.IO) {
         _modelStatus.value = ModelStatus.Loading
 
-        val modelFile = Embedder.ensureModelFile(context)
+        val modelFile = SocDetector.ensureModelFile(context)
         if (!modelFile.exists() || modelFile.length() == 0L) {
             val instructions = "To install the model on this emulator or device:\n" +
                     "1. Connect with ADB\n" +
-                    "2. Run: adb push .local/models/$MODEL_FILE_NAME /data/local/tmp/\n" +
+                    "2. Run: adb push .local/models/${modelFile.name} /data/local/tmp/\n" +
                     "3. Tap 'Retry Loading'"
             val err = ModelStatus.Error(
                 message = "Model file not found in internal storage (${modelFile.absolutePath})",
@@ -149,9 +149,9 @@ object EngineManager {
                 Embedder(context.applicationContext, configured).also {
                     Log.i(TAG, "Initialized singleton Embedder instance with configured=$configured (effective=$targetEffective).")
                     embedder = it
-                    val f = File(context.filesDir, MODEL_FILE_NAME)
-                    if (f.exists()) {
-                        _modelStatus.value = ModelStatus.Loaded(f.absolutePath, f.length())
+                    val activeFile = SocDetector.getActiveModelFile(context, targetEffective)
+                    if (activeFile.exists()) {
+                        _modelStatus.value = ModelStatus.Loaded(activeFile.absolutePath, activeFile.length())
                     }
                 }
             }

@@ -83,6 +83,9 @@ fun SettingsScreen(
     var showAcceleratorDialog by remember { mutableStateOf(false) }
     var showAdvanced by rememberSaveable { mutableStateOf(false) }
     val isSystemDark = isSystemInDarkTheme()
+    val context = androidx.compose.ui.platform.LocalContext.current
+    val detectedSoc = remember { com.localfind.embed.SocDetector.detectSoc() }
+    val isNpuReady = remember(detectedSoc) { com.localfind.embed.SocDetector.isNpuRuntimeAvailable(context) }
 
     if (showThemeDialog) {
         AlertDialog(
@@ -163,6 +166,11 @@ fun SettingsScreen(
                                 Text(
                                     text = when (mode) {
                                         HardwareAccelerator.SMART -> "Auto: Uses GPU when screen is off, CPU when screen is on or Battery Saver is on."
+                                        HardwareAccelerator.NPU -> if (isNpuReady) {
+                                            "NPU (${detectedSoc.marketingName}): Dedicated AI tensor cores for maximum indexing speed and lowest battery draw."
+                                        } else {
+                                            "NPU (${detectedSoc.marketingName}): Native runtime not packaged for this chip. Falls back to GPU OpenCL."
+                                        }
                                         HardwareAccelerator.GPU -> "Always use mobile GPU compute shaders for maximum indexing speed."
                                         HardwareAccelerator.CPU -> "Always use CPU (XNNPack) to keep phone cool and eliminate UI lag."
                                     },
@@ -365,6 +373,11 @@ fun SettingsScreen(
                         subtitle = settings.accelerator.title,
                         description = when (settings.accelerator) {
                             HardwareAccelerator.SMART -> "Smart: Uses GPU when screen is off, switches to CPU when screen is on or Battery Saver is on."
+                            HardwareAccelerator.NPU -> if (isNpuReady) {
+                                "NPU (${detectedSoc.marketingName}): Dedicated AI tensor cores for maximum indexing speed and lowest battery draw."
+                            } else {
+                                "NPU (${detectedSoc.marketingName}): Native runtime not packaged for this chip. Falls back to GPU OpenCL."
+                            }
                             HardwareAccelerator.GPU -> "GPU: Always uses mobile GPU compute shaders for maximum indexing speed."
                             HardwareAccelerator.CPU -> "CPU: Always uses CPU (XNNPack) to eliminate UI lag and reduce heat."
                         },

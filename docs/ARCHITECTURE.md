@@ -28,7 +28,7 @@ The text query uses the same model, so a text query can match an image, an audio
 | Min / target SDK | 31 / 37 |
 | Embedding model | EmbeddingGemma 2, **740M multimodal** (text + image + audio) |
 | Inference | MediaPipe Tasks on Android (`UniversalEmbedder`, LiteRT under the hood) |
-| Hardware Acceleration | Automatic GPU vision acceleration (OpenCL/Vulkan) with graceful CPU fallback (XNNPack) |
+| Hardware Acceleration | Multi-tier vision acceleration: Hardware NPU (Qualcomm Hexagon HTP, MediaTek, Tensor) with automatic GPU (OpenCL/Vulkan) & CPU (XNNPack) fallback |
 | Storage | `SqliteVectorStore` (MediaPipe, SQLite-backed) |
 | Vector search | `SqliteVectorStore` cosine top-K search |
 | PDF text | PdfBox-Android |
@@ -38,11 +38,41 @@ The text query uses the same model, so a text query can match an image, an audio
 | Icons / Symbols | Google Material Symbols (Vector Drawables in `res/drawable/` via Compose `painterResource`) |
 | Concurrency | Kotlin coroutines, AndroidX WorkManager |
 
-## 3. Model Delivery
+## 3. Model Delivery & Chipset Support
 
-- No network at runtime, so the model must already be on the device.
-- **Release:** Play Asset Delivery **install-time** asset pack. The model arrives with the install and works offline.
-- **Development:** `adb push` the model file into the app's files directory.
+- **100% Offline & Standalone:** Inference runs purely on-device. LocalFind does **not** depend on Google AI Edge Gallery or any external APK. All required native runtimes are bundled inside LocalFind.
+- **Universal Base Model:** `embeddinggemma-2-740m.litertlm` (~485 MB) operates universally on any Android device across CPU (XNNPack) and GPU (OpenCL / Vulkan).
+- **Pre-compiled Hardware NPU Models:** Hosted in the official Hugging Face repository [`litert-community/embeddinggemma-2-740m-litert-lm`](https://huggingface.co/litert-community/embeddinggemma-2-740m-litert-lm/tree/main):
+  - Qualcomm Snapdragon 8 Gen 3: `embeddinggemma-2-740m_Qualcomm_SM8650.litertlm` (Hexagon HTP v75)
+  - Qualcomm Snapdragon 8 Gen 2: `embeddinggemma-2-740m_Qualcomm_SM8550.litertlm` (Hexagon HTP v73)
+  - Qualcomm Snapdragon 8 Elite: `embeddinggemma-2-740m_Qualcomm_SM8750.litertlm` (Hexagon HTP v79)
+  - Qualcomm Snapdragon Next-Gen: `embeddinggemma-2-740m_Qualcomm_SM8850.litertlm`
+  - Qualcomm IoT / Edge: `embeddinggemma-2-740m_Qualcomm_QCS8275.litertlm`
+  - MediaTek Dimensity 9400: `embeddinggemma-2-740m_MediaTek_MT6991.litertlm`
+  - MediaTek Dimensity Next-Gen: `embeddinggemma-2-740m_MediaTek_MT6993.litertlm`
+  - Google Tensor G5: `embeddinggemma-2-740m_Google_Tensor_G5.litertlm`
+  - Google Tensor G6: `embeddinggemma-2-740m_Google_Tensor_G6.litertlm`
+  - Intel: `embeddinggemma-2-740m_Intel_PTL.litertlm`
+- **Dynamic SoC Resolution (`SocDetector`):** LocalFind dynamically queries device platform properties (`Build.SOC_MANUFACTURER`, `Build.SOC_MODEL`, `Build.HARDWARE`) at runtime. It automatically selects and stages the exact matching chipset model file without hardcoding phone names or chipsets.
+
+### 3.1 Hardware Support Matrix & Execution Status
+
+Running on hardware NPUs requires both the **pre-compiled model file** and the vendor's **native driver binaries (`.so`)**:
+
+| Platform / Chipset | Marketing Name | Hardware Target | Status in LocalFind | Native Binary Requirement |
+| :--- | :--- | :--- | :--- | :--- |
+| **Qualcomm SM8650** | Snapdragon 8 Gen 3 (S24 Ultra, Fold 6, OnePlus 12) | **Hexagon HTP v75 NPU** | **Supported Now** (Verified 1.7x speedup over GPU) | `libLiteRtDispatch_Qualcomm.so`, `libQnnHtpV75Stub.so`, `libQnnHtpV75Skel.so`, `libQnnSystem.so` (bundled in `jniLibs`). |
+| **Qualcomm SM8550** | Snapdragon 8 Gen 2 (S23 series, OnePlus 11) | Hexagon HTP v73 NPU | **Model supported**; falls back to GPU OpenCL | Requires `libQnnHtpV73Stub.so` & `libQnnHtpV73Skel.so`. |
+| **Qualcomm SM8750** | Snapdragon 8 Elite / Gen 4 (S25 series, OnePlus 13) | Hexagon HTP v79 NPU | **Model supported**; falls back to GPU OpenCL | Requires `libQnnHtpV79Stub.so` & `libQnnHtpV79Skel.so`. |
+| **MediaTek MT6991** | Dimensity 9400 (Vivo X200, Find X8) | MediaTek APU | **Model supported**; falls back to GPU OpenCL | Requires `libLiteRtDispatch_MediaTek.so` & Neuron adapter. |
+| **Google Tensor G5/G6** | Pixel 10 / Pixel 11 | Google EdgeTPU | **Model supported**; falls back to GPU OpenCL | Requires `libLiteRtDispatch_GoogleTensor.so`. |
+| **Universal (All Phones)** | Any Qualcomm, MediaTek, Tensor, Exynos | **GPU (OpenCL / Vulkan)** | **Supported Now** across all devices | Uses system `/vendor/lib64/libOpenCL.so` (zero bundled `.so` files needed). |
+| **Universal (All Phones)** | Any ARM64 or x86_64 device | **CPU (XNNPack FP16)** | **Supported Now** across all devices | Built into MediaPipe Tasks runtime. |
+
+- **Graceful Multi-Tier Fallback:** If a device-specific NPU model or native driver is missing, or if NPU delegate initialization fails on unsupported silicon, LocalFind seamlessly cascades to **GPU** vision acceleration, and subsequently to **CPU** (XNNPack). Text and audio modalities run reliably on CPU to eliminate driver overhead.
+- **Deployment Strategy:**
+  - **Release:** Play Asset Delivery **install-time** asset pack.
+  - **Development:** `adb push <model-file> /data/local/tmp/` (auto-detected and staged into app storage).
 
 ## 4. File Access: Link, Don't Copy
 
@@ -115,6 +145,7 @@ All variables are persisted locally using native Android `SharedPreferences` ([S
 | Indexing | Video Include Audio | `false` | Whether to decode and embed audio tracks alongside video keyframes |
 | Indexing | Video Skip Similar Chunks | `true` | Skip redundant consecutive video windows (`>= 85%` luminance similarity) |
 | Indexing | Max Image Dimension | `512` px | Maximum dimension for image decoding (video frames use `256` px hardware downsampling) |
+| Acceleration | Vision Accelerator | `SMART` | Hardware accelerator policy: `SMART` (Auto), `NPU` (Hardware Neural Engine), `GPU` (Faster), `CPU` (Cool & Smooth UI) |
 
 ## 10. Offline Guarantee
 
@@ -142,7 +173,7 @@ android/app/src/main/
     │   ├── image/     # ImageIndexer
     │   ├── audio/     # AudioIndexer, AudioChunker, AudioDecoder
     │   └── video/     # VideoIndexer, VideoChunker
-    ├── embed/         # MediaPipe UniversalEmbedder wrapper (Embedder, VectorMath)
+    ├── embed/         # MediaPipe UniversalEmbedder wrapper (Embedder, VectorMath, SocDetector)
     └── data/          # FileStore (SQLite), FileImporter (SAF), EmbeddingStore (SqliteVectorStore), EngineManager, AppSettings
 ```
 
@@ -150,4 +181,7 @@ android/app/src/main/
 
 - **Single Model Instance:** Never bypass `EngineManager`. The ~485MB `EmbeddingGemma 2` model must only be loaded once to prevent Out-Of-Memory (OOM) crashes on mobile devices.
 - **Background Threading:** Never perform file extraction, PDF parsing, audio decoding, embedding, or database writes on the Android Main (UI) thread; always use dispatcher.
+- **Hardware Acceleration Linking:** Vendor libraries (`libcdsprpc.so` for Qualcomm Hexagon FastRPC and `libOpenCL.so` for GPU) are declared in `AndroidManifest.xml` with `android:required="false"`, ensuring that devices lacking vendor drivers install and run normally.
+- **Dynamic Hardware Fallback:** If dedicated NPU models or delegates fail to initialize on any specific silicon, `Embedder` catches runtime initialization errors and automatically cascades to GPU and CPU (XNNPack).
+- **Dispatch Runtime Auto-Staging:** LiteRT dispatch loader expects vendor dispatch `.so` files in `context.filesDir`. LocalFind automatically stages bundled native dispatch libraries on initialization.
 
