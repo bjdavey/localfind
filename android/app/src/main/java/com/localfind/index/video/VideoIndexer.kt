@@ -3,6 +3,7 @@ package com.localfind.index.video
 import android.graphics.Bitmap
 import android.media.MediaMetadataRetriever
 import android.os.PowerManager
+import android.util.Log
 import androidx.core.net.toUri
 import com.google.mediapipe.tasks.core.ImagePart
 import com.google.mediapipe.tasks.core.Part
@@ -180,6 +181,9 @@ fun Indexer.indexVideoFile(
             val withAudio = pcm.isNotEmpty() &&
                 VideoChunker.estimateTokens(windowMs, allJpegs.size, true) <= MAX_INPUT_TOKENS
 
+            val currentEmbedder = getActiveEmbedder()
+            Log.i("VideoIndexer", "Chunk $index/${windows.size}: Active delegate=${currentEmbedder.effectiveAccelerator} (screenOn=${powerManager?.isInteractive})")
+
             // Interleave: [time] audio-slice [time] frame ... one pair per sampled frame
             val parts = mutableListOf<Part>()
             val sliceMs = windowMs / allJpegs.size
@@ -190,7 +194,7 @@ fun Indexer.indexVideoFile(
                     val range = VideoChunker.sampleRange(from, from + sliceMs, pcm.size)
                     if (!range.isEmpty()) {
                         parts.add(TextPart(label))
-                        parts.add(embedder.audioPart(pcm.copyOfRange(range.first, range.last + 1)))
+                        parts.add(currentEmbedder.audioPart(pcm.copyOfRange(range.first, range.last + 1)))
                     }
                 }
                 parts.add(TextPart(label))
@@ -207,7 +211,7 @@ fun Indexer.indexVideoFile(
             }
 
             val embedding = try {
-                embedder.embedVideoWindow(parts)
+                currentEmbedder.embedVideoWindow(parts)
             } catch (e: Exception) {
                 if (withAudio) {
                     // Multimodal audio fallback to vision-only keyframe parts
@@ -217,7 +221,7 @@ fun Indexer.indexVideoFile(
                         visionParts.add(TextPart(label))
                         visionParts.add(ImagePart(jpeg))
                     }
-                    embedder.embedVideoWindow(visionParts)
+                    currentEmbedder.embedVideoWindow(visionParts)
                 } else {
                     throw e
                 }

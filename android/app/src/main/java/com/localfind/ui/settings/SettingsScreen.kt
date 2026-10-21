@@ -80,6 +80,7 @@ fun SettingsScreen(
     var showResetDialog by remember { mutableStateOf(false) }
     var showReindexDialog by remember { mutableStateOf(false) }
     var showThemeDialog by remember { mutableStateOf(false) }
+    var showAcceleratorDialog by remember { mutableStateOf(false) }
     var showAdvanced by rememberSaveable { mutableStateOf(false) }
     val isSystemDark = isSystemInDarkTheme()
 
@@ -125,6 +126,56 @@ fun SettingsScreen(
             },
             confirmButton = {
                 TextButton(onClick = { showThemeDialog = false }) {
+                    Text("Cancel")
+                }
+            }
+        )
+    }
+
+    if (showAcceleratorDialog) {
+        AlertDialog(
+            onDismissRequest = { showAcceleratorDialog = false },
+            title = { Text("Vision hardware accelerator") },
+            text = {
+                Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                    HardwareAccelerator.values().forEach { mode ->
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .clickable {
+                                    onSettingsChange(settings.copy(accelerator = mode))
+                                    showAcceleratorDialog = false
+                                }
+                                .padding(vertical = 8.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(12.dp)
+                        ) {
+                            RadioButton(
+                                selected = (settings.accelerator == mode),
+                                onClick = null // Handled by outer Row clickable
+                            )
+                            Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                                Text(
+                                    text = mode.title,
+                                    style = MaterialTheme.typography.bodyLarge,
+                                    color = MaterialTheme.colorScheme.onSurface
+                                )
+                                Text(
+                                    text = when (mode) {
+                                        HardwareAccelerator.SMART -> "Auto: Uses GPU when screen is off, CPU when screen is on or Battery Saver is on."
+                                        HardwareAccelerator.GPU -> "Always use mobile GPU compute shaders for maximum indexing speed."
+                                        HardwareAccelerator.CPU -> "Always use CPU (XNNPack) to keep phone cool and eliminate UI lag."
+                                    },
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                                )
+                            }
+                        }
+                    }
+                }
+            },
+            confirmButton = {
+                TextButton(onClick = { showAcceleratorDialog = false }) {
                     Text("Cancel")
                 }
             }
@@ -305,7 +356,25 @@ fun SettingsScreen(
             AnimatedVisibility(visible = showAdvanced) {
                 Column {
                     // =================================================================
-                    // SECTION 3: DOCUMENTS & IMAGES
+                    // SECTION 3: HARDWARE ACCELERATION
+                    // =================================================================
+                    SettingsCategoryHeader("HARDWARE ACCELERATION")
+
+                    SettingClickableRow(
+                        title = "Vision indexing accelerator",
+                        subtitle = settings.accelerator.title,
+                        description = when (settings.accelerator) {
+                            HardwareAccelerator.SMART -> "Smart: Uses GPU when screen is off, switches to CPU when screen is on or Battery Saver is on."
+                            HardwareAccelerator.GPU -> "GPU: Always uses mobile GPU compute shaders for maximum indexing speed."
+                            HardwareAccelerator.CPU -> "CPU: Always uses CPU (XNNPack) to eliminate UI lag and reduce heat."
+                        },
+                        onClick = { showAcceleratorDialog = true }
+                    )
+
+                    SettingsSectionDivider()
+
+                    // =================================================================
+                    // SECTION 4: DOCUMENTS & IMAGES
                     // =================================================================
                     SettingsCategoryHeader("DOCUMENTS & IMAGES")
 
@@ -360,7 +429,7 @@ fun SettingsScreen(
                     SettingsSectionDivider()
 
                     // =================================================================
-                    // SECTION 4: AUDIO & VIDEO INDEXING
+                    // SECTION 5: AUDIO & VIDEO INDEXING
                     // =================================================================
                     SettingsCategoryHeader("AUDIO & VIDEO")
 
@@ -435,27 +504,6 @@ fun SettingsScreen(
                     SettingsSectionDivider()
 
                     // =================================================================
-                    // SECTION 5: HARDWARE ACCELERATION
-                    // =================================================================
-                    SettingsCategoryHeader("HARDWARE ACCELERATION")
-
-                    SettingSwitchRow(
-                        title = "GPU acceleration",
-                        subtitle = if (settings.accelerator == HardwareAccelerator.GPU) "GPU (Faster indexing)" else "CPU (Smoother UI / Less heat)",
-                        description = "Accelerates image and video frame analysis using mobile GPU shaders. Turn off to switch to CPU (XNNPack) to keep the device cool and prevent UI lag while multitasking.",
-                        checked = settings.accelerator == HardwareAccelerator.GPU,
-                        onCheckedChange = { isGpu ->
-                            onSettingsChange(
-                                settings.copy(
-                                    accelerator = if (isGpu) HardwareAccelerator.GPU else HardwareAccelerator.CPU
-                                )
-                            )
-                        }
-                    )
-
-                    SettingsSectionDivider()
-
-                    // =================================================================
                     // SECTION 6: LIBRARY & REINDEXING
                     // =================================================================
                     SettingsCategoryHeader("LIBRARY & REINDEXING")
@@ -484,7 +532,7 @@ fun SettingsScreen(
                     SettingsSectionDivider()
 
                     // =================================================================
-                    // SECTION 6: PRIVACY & OFFLINE ENGINE
+                    // SECTION 7: PRIVACY & OFFLINE ENGINE
                     // =================================================================
                     SettingsCategoryHeader("PRIVACY & OFFLINE ENGINE")
 

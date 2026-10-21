@@ -111,7 +111,7 @@ fun Indexer.indexImageFile(
 
     onProgress?.invoke(1, 1)
     val embedding = try {
-        embedder.embedImage(bitmap)
+        getActiveEmbedder().embedImage(bitmap)
     } catch (e: Exception) {
         return IndexResult(file.uri, 0, false, "Image embedding failed: ${e.message}")
     } finally {

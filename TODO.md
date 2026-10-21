@@ -61,7 +61,7 @@
 - [x] Show file details and open in phone gallery or its own app
 - [x] Show original file path in file details view
 - [x] Multi select
-- Refactor, optimize, check dead code, technical debt, and design decisions
+- Refactor, optimize, check dead code, technical debt, folder/files structure and design decisions
 - What else?
 - Final E2E test with edge cases
 - Publish
@@ -83,6 +83,7 @@
 - [x] Fix PDF indexing progress bar repeating after 15%
 - [x] Fix: PDF search result doesn't open at that page
 - [x] GPU vs. CPU switch in Advanced Settings and micro-pacing frame yielding to prevent UI lag
+- [x] Smart Mode in Advanced Settings: dynamic GPU/CPU switching based on screen and battery saver state
 
 
 ## Backlog

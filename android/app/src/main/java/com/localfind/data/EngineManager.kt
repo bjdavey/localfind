@@ -122,21 +122,23 @@ object EngineManager {
 
     /**
      * Obtains or creates the singleton [Embedder] instance.
-     * Uses [accelerator] (or persisted setting if null) for vision inference.
+     * Uses [accelerator] (or persisted setting if null) for vision inference,
+     * resolving dynamic policies like [HardwareAccelerator.SMART] against device state.
      * Note: Initializing loads the ~485MB model file from filesDir.
      */
     fun getEmbedder(
         context: Context,
         accelerator: HardwareAccelerator? = null
     ): Embedder {
-        val targetAccelerator = accelerator ?: SettingsStore(context).load().accelerator
+        val configured = accelerator ?: SettingsStore(context).load().accelerator
+        val targetEffective = configured.resolveEffective(context)
         val current = embedder
-        if (current != null && current.accelerator == targetAccelerator) {
+        if (current != null && current.effectiveAccelerator == targetEffective && current.configuredAccelerator == configured) {
             return current
         }
         return synchronized(this) {
             val existing = embedder
-            if (existing != null && existing.accelerator == targetAccelerator) {
+            if (existing != null && existing.effectiveAccelerator == targetEffective && existing.configuredAccelerator == configured) {
                 existing
             } else {
                 try {
@@ -144,8 +146,8 @@ object EngineManager {
                 } catch (e: Exception) {
                     Log.w(TAG, "Error closing previous embedder: ${e.message}")
                 }
-                Embedder(context.applicationContext, targetAccelerator).also {
-                    Log.i(TAG, "Initialized singleton Embedder instance with $targetAccelerator.")
+                Embedder(context.applicationContext, configured).also {
+                    Log.i(TAG, "Initialized singleton Embedder instance with configured=$configured (effective=$targetEffective).")
                     embedder = it
                     val f = File(context.filesDir, MODEL_FILE_NAME)
                     if (f.exists()) {
@@ -158,11 +160,12 @@ object EngineManager {
 
     /**
      * Updates the active hardware accelerator for the singleton [Embedder], recreating the
-     * embedder instance if the accelerator setting has changed.
+     * embedder instance if the accelerator setting or effective runtime target has changed.
      */
     fun updateAccelerator(context: Context, accelerator: HardwareAccelerator) {
         synchronized(this) {
-            if (embedder?.accelerator != accelerator) {
+            val targetEffective = accelerator.resolveEffective(context)
+            if (embedder?.effectiveAccelerator != targetEffective || embedder?.configuredAccelerator != accelerator) {
                 try {
                     embedder?.close()
                 } catch (e: Exception) {

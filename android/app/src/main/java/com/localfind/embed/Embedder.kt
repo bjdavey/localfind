@@ -11,6 +11,7 @@ import com.google.mediapipe.tasks.core.Part
 import com.google.mediapipe.tasks.retrieval.universalembedder.UniversalEmbedder
 import com.google.mediapipe.tasks.retrieval.universalembedder.UniversalEmbedderOptions
 import com.localfind.data.HardwareAccelerator
+import com.localfind.data.resolveEffective
 import java.io.File
 
 /**
@@ -48,9 +49,15 @@ const val DEFAULT_VISION_TOKENS_PER_IMAGE = 70
  */
 class Embedder(
     context: Context,
-    val accelerator: HardwareAccelerator = HardwareAccelerator.GPU
+    val configuredAccelerator: HardwareAccelerator = HardwareAccelerator.SMART
 ) : AutoCloseable {
     private val embedder: UniversalEmbedder
+
+    /** Concrete accelerator in use after resolving any dynamic policy (e.g. [HardwareAccelerator.SMART]). */
+    val effectiveAccelerator: HardwareAccelerator = configuredAccelerator.resolveEffective(context)
+
+    /** Backward-compatible property exposing the configured accelerator. */
+    val accelerator: HardwareAccelerator get() = configuredAccelerator
 
     /**
      * Whether GPU acceleration is actively enabled for the vision encoder.
@@ -80,7 +87,7 @@ class Embedder(
         var createdEmbedder: UniversalEmbedder? = null
         var gpuSuccess = false
 
-        if (accelerator == HardwareAccelerator.GPU) {
+        if (effectiveAccelerator == HardwareAccelerator.GPU) {
             try {
                 // Attempt GPU acceleration for vision encoding (images and video frame indexing).
                 val gpuOptions = UniversalEmbedderOptions.builder()
@@ -94,7 +101,7 @@ class Embedder(
 
                 createdEmbedder = UniversalEmbedder.createFromOptions(context, gpuOptions)
                 gpuSuccess = true
-                Log.i(TAG, "UniversalEmbedder initialized with GPU vision acceleration.")
+                Log.i(TAG, "UniversalEmbedder initialized with GPU vision acceleration (configured=$configuredAccelerator, effective=$effectiveAccelerator).")
             } catch (t: Throwable) {
                 Log.w(TAG, "GPU vision acceleration unavailable or failed to initialize (${t.message}). Falling back to CPU vision.", t)
             }
@@ -112,7 +119,7 @@ class Embedder(
                 .build()
 
             createdEmbedder = UniversalEmbedder.createFromOptions(context, cpuOptions)
-            Log.i(TAG, "UniversalEmbedder initialized with CPU vision delegate.")
+            Log.i(TAG, "UniversalEmbedder initialized with CPU vision delegate (configured=$configuredAccelerator, effective=$effectiveAccelerator).")
         }
 
         embedder = createdEmbedder

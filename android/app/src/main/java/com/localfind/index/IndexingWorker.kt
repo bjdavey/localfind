@@ -521,7 +521,8 @@ class IndexingWorker(
                                     if (isPaused(context) || IndexingCancellationState.isPaused()) return@indexFile
                                     val fraction = if (tot > 0) cur.toFloat() / tot.toFloat() else 0f
                                     val percent = (fraction * 100).toInt()
-                                    val msg = "Analyzing $fileIndex/$totalInBatch: ${file.displayName} ($percent%)"
+                                    val activeDelegate = indexer.getActiveEmbedder().effectiveAccelerator.name
+                                    val msg = "Analyzing $fileIndex/$totalInBatch: ${file.displayName} ($percent%) • $activeDelegate"
                                     IndexingProgressState.update(
                                         isIndexing = true,
                                         currentUri = file.uri,

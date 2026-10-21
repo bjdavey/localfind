@@ -26,16 +26,40 @@ enum class ThemeMode(val title: String) {
 /**
  * Hardware accelerator choice for multimodal vision indexing (images and video keyframes).
  *
- * - [GPU]: Uses mobile GPU compute shaders for maximum indexing speed.
- * - [CPU]: Uses CPU (XNNPack) to keep the device cool, save power, and avoid UI frame contention.
+ * - [SMART]: Dynamically routes between GPU and CPU based on device state.
+ *   Uses GPU when the screen is OFF and not in Battery Saver mode for maximum speed.
+ *   Switches to CPU when the screen is ON or Battery Saver is ON to keep the UI smooth and cool.
+ * - [GPU]: Always uses mobile GPU compute shaders for maximum indexing speed.
+ * - [CPU]: Always uses CPU (XNNPack) to keep the device cool, save power, and avoid UI frame contention.
  */
 enum class HardwareAccelerator(val title: String) {
+    SMART("Smart (Auto)"),
     GPU("GPU (Faster)"),
     CPU("CPU (Smoother UI)")
 }
 
 /** Default hardware accelerator for vision indexing. */
-val DEFAULT_HARDWARE_ACCELERATOR = HardwareAccelerator.GPU
+val DEFAULT_HARDWARE_ACCELERATOR = HardwareAccelerator.SMART
+
+/**
+ * Resolves the effective concrete hardware accelerator ([HardwareAccelerator.GPU] or [HardwareAccelerator.CPU])
+ * querying the system [android.os.PowerManager] from [context].
+ *
+ * Policy:
+ * - If [HardwareAccelerator.GPU] or [HardwareAccelerator.CPU] is explicitly chosen, returns that choice.
+ * - If [HardwareAccelerator.SMART], uses GPU only when the screen is off and Battery Saver is disabled.
+ */
+fun HardwareAccelerator.resolveEffective(context: Context): HardwareAccelerator {
+    if (this != HardwareAccelerator.SMART) return this
+    val powerManager = context.getSystemService(Context.POWER_SERVICE) as? android.os.PowerManager
+    val isScreenOn = powerManager?.isInteractive == true
+    val isPowerSaveMode = powerManager?.isPowerSaveMode == true
+    return if (!isScreenOn && !isPowerSaveMode) {
+        HardwareAccelerator.GPU
+    } else {
+        HardwareAccelerator.CPU
+    }
+}
 
 /** Default minimum cosine similarity score required for search results (user-requested default: 0.6). */
 const val DEFAULT_SIMILARITY_THRESHOLD = 0.6f
@@ -282,4 +306,3 @@ class SettingsStore(private val prefs: SharedPreferences) {
         const val KEY_HARDWARE_ACCELERATOR = "hardware_accelerator"
     }
 }
-

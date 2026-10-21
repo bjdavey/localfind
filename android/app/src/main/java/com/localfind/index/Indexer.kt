@@ -9,6 +9,8 @@ import com.google.mediapipe.tasks.retrieval.model.RetrievalRecord
 import com.localfind.data.AppSettings
 import com.localfind.data.DEFAULT_MAX_IMAGE_DIMENSION
 import com.localfind.data.EmbeddingStore
+import com.localfind.data.EngineManager
+import com.localfind.data.HardwareAccelerator
 import com.localfind.data.ImportedFile
 import com.localfind.embed.Embedder
 import com.localfind.index.audio.indexAudioFile
@@ -81,6 +83,18 @@ class Indexer(
 ) {
     internal val powerManager: PowerManager? by lazy {
         context.getSystemService(Context.POWER_SERVICE) as? PowerManager
+    }
+
+    /**
+     * Resolves the active [Embedder] instance. In [HardwareAccelerator.SMART] mode, queries
+     * [EngineManager] so changes in device interactivity (screen on/off) or battery saver
+     * dynamically adapt the active hardware delegate during long multi-chunk operations.
+     */
+    fun getActiveEmbedder(): Embedder {
+        if (settings.accelerator == HardwareAccelerator.SMART) {
+            return EngineManager.getEmbedder(context, settings.accelerator)
+        }
+        return embedder
     }
 
     /** Determines whether an imported file is supported by the text/markdown indexer (.txt, .md). */
