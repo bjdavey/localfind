@@ -44,6 +44,11 @@ import com.localfind.R
 import com.localfind.data.Folder
 import com.localfind.data.ImportedFile
 import com.localfind.data.IndexingStatus
+import android.widget.Toast
+import androidx.compose.foundation.text.selection.SelectionContainer
+import androidx.compose.material3.HorizontalDivider
+import androidx.compose.ui.platform.LocalContext
+import com.localfind.data.FilePathHelper
 import com.localfind.data.formatFileSize
 
 /**
@@ -62,6 +67,14 @@ internal fun FileDetailsDialog(
     onRetry: (() -> Unit)? = null,
     onCancelSync: (() -> Unit)? = null
 ) {
+    val context = LocalContext.current
+    val originalPath = remember(file.uri, file.displayName) {
+        FilePathHelper.resolveDisplayPath(context, file.uri, file.displayName)
+    }
+    val friendlyPath = remember(originalPath) {
+        FilePathHelper.formatUserFriendlyPath(originalPath)
+    }
+
     AlertDialog(
         onDismissRequest = onDismiss,
         title = {
@@ -202,6 +215,63 @@ internal fun FileDetailsDialog(
                                     fontWeight = FontWeight.SemiBold,
                                     color = statusColor
                                 )
+                            }
+                        }
+
+                        // Original Device File Path Section
+                        if (originalPath.isNotBlank()) {
+                            HorizontalDivider(
+                                modifier = Modifier.padding(vertical = 4.dp),
+                                color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f)
+                            )
+
+                            Column(
+                                verticalArrangement = Arrangement.spacedBy(4.dp)
+                            ) {
+                                Row(
+                                    modifier = Modifier.fillMaxWidth(),
+                                    horizontalArrangement = Arrangement.SpaceBetween,
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    Text(
+                                        text = "Original path",
+                                        style = MaterialTheme.typography.bodyMedium,
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                                    )
+                                    Row(
+                                        verticalAlignment = Alignment.CenterVertically,
+                                        modifier = Modifier
+                                            .clip(RoundedCornerShape(6.dp))
+                                            .clickable {
+                                                FilePathHelper.copyToClipboard(context, originalPath)
+                                                Toast.makeText(context, "Path copied to clipboard", Toast.LENGTH_SHORT).show()
+                                            }
+                                            .padding(horizontal = 6.dp, vertical = 2.dp)
+                                    ) {
+                                        Icon(
+                                            painter = painterResource(R.drawable.ic_content_copy),
+                                            contentDescription = "Copy original path",
+                                            tint = MaterialTheme.colorScheme.primary,
+                                            modifier = Modifier.size(14.dp)
+                                        )
+                                        Spacer(modifier = Modifier.width(4.dp))
+                                        Text(
+                                            text = "Copy",
+                                            style = MaterialTheme.typography.labelSmall,
+                                            color = MaterialTheme.colorScheme.primary,
+                                            fontWeight = FontWeight.SemiBold
+                                        )
+                                    }
+                                }
+
+                                SelectionContainer {
+                                    Text(
+                                        text = friendlyPath,
+                                        style = MaterialTheme.typography.bodySmall,
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                        modifier = Modifier.fillMaxWidth()
+                                    )
+                                }
                             }
                         }
                     }
