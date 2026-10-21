@@ -57,10 +57,10 @@
 - [x] Support GIF
 - [x] Support import by share from other apps
 - [x] Better PDF viewer
-- Support landscape orientation in file viewer only
+- [x] Support landscape orientation in file viewer only
 - [x] Show file details and open in phone gallery or its own app
 - [x] Multi select
-- Refactor, optimize, check dead code
+- Refactor, optimize, check dead code, and design decisions
 - What else?
 - Final E2E test with edge cases
 - Publish

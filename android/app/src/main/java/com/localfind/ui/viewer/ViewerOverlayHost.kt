@@ -13,11 +13,13 @@ import androidx.compose.animation.scaleOut
 import androidx.compose.animation.slideInVertically
 import androidx.compose.animation.slideOutVertically
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.Stable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
+import androidx.compose.ui.platform.LocalContext
 import androidx.core.net.toUri
 import com.localfind.data.FileAvailability
 import com.localfind.data.FileOpener
@@ -231,6 +233,18 @@ fun ViewerOverlayHost(
     onSearchInFile: (ImportedFile) -> Unit,
     onSearchSimilarImage: ((uri: String, fileName: String) -> Unit)? = null
 ) {
+    val context = LocalContext.current
+    val activity = remember(context) { ViewerOrientationHelper.findActivity(context) }
+
+    // Dynamically unlock landscape orientation when any builtin file viewer is open,
+    // and restore strictly to portrait orientation when viewing gallery, search, or settings.
+    DisposableEffect(viewerState.isAnyViewerOpen) {
+        ViewerOrientationHelper.applyOrientation(activity, viewerState.isAnyViewerOpen)
+        onDispose {
+            ViewerOrientationHelper.applyOrientation(activity, false)
+        }
+    }
+
     // 1. Image Viewer: Gallery app style popup transition
     AnimatedVisibility(
         visible = viewerState.activeImageViewer != null,
