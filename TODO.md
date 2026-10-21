@@ -59,6 +59,7 @@
 - [x] Better PDF viewer
 - [x] Support landscape orientation in file viewer only
 - [x] Show file details and open in phone gallery or its own app
+- [x] Show original file path in file details view
 - [x] Multi select
 - Refactor, optimize, check dead code, and design decisions
 - What else?
