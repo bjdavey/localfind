@@ -16,7 +16,9 @@ import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.key
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
@@ -79,7 +81,14 @@ fun PdfViewerScreen(
     // State for Jetpack PDF Viewer
     var fragmentRef by remember { mutableStateOf<LocalFindPdfViewerFragment?>(null) }
     var isTextSearchActive by remember { mutableStateOf(false) }
-    var isDocumentLoading by remember { mutableStateOf(true) }
+    var isDocumentLoading by remember(params.uri) { mutableStateOf(true) }
+
+    // Keep Jetpack PDF fragment's target page updated if params change
+    LaunchedEffect(params.initialPage, fragmentRef) {
+        fragmentRef?.let { fragment ->
+            fragment.initialPage = params.initialPage
+        }
+    }
 
     // Intercept back navigation: if in-document search is active, dismiss search first; otherwise close viewer
     BackHandler(enabled = backHandlerEnabled) {
@@ -184,22 +193,27 @@ fun PdfViewerScreen(
             if (!useFallbackRenderer && parsedDocUri != null) {
                 // Primary: Official AndroidX Jetpack PDF Viewer Fragment
                 Box(modifier = Modifier.fillMaxSize()) {
-                    AndroidFragment<LocalFindPdfViewerFragment>(
-                        modifier = Modifier.fillMaxSize(),
-                        arguments = remember(parsedDocUri) {
-                            bundleOf("documentUri" to parsedDocUri)
-                        }
-                    ) { fragment ->
-                        fragmentRef = fragment
-                        fragment.initialPage = params.initialPage
-                        fragment.documentUri = parsedDocUri
-                        fragment.onLoadSuccess = {
-                            isDocumentLoading = false
-                        }
-                        fragment.onLoadError = {
-                            isDocumentLoading = false
-                            // If Jetpack PDF fails on device, gracefully fall back to native PdfRenderer
-                            useFallbackRenderer = true
+                    key(params.uri) {
+                        AndroidFragment<LocalFindPdfViewerFragment>(
+                            modifier = Modifier.fillMaxSize(),
+                            arguments = remember(parsedDocUri, params.initialPage) {
+                                bundleOf(
+                                    "documentUri" to parsedDocUri,
+                                    "initialPage" to params.initialPage
+                                )
+                            }
+                        ) { fragment ->
+                            fragmentRef = fragment
+                            fragment.initialPage = params.initialPage
+                            fragment.documentUri = parsedDocUri
+                            fragment.onLoadSuccess = {
+                                isDocumentLoading = false
+                            }
+                            fragment.onLoadError = {
+                                isDocumentLoading = false
+                                // If Jetpack PDF fails on device, gracefully fall back to native PdfRenderer
+                                useFallbackRenderer = true
+                            }
                         }
                     }
 
@@ -224,10 +238,12 @@ fun PdfViewerScreen(
                 }
             } else {
                 // Fallback: Enhanced native Android SDK PdfRenderer with pinch-to-zoom
-                FallbackPdfRendererView(
-                    params = params,
-                    onClose = onClose
-                )
+                key(params.uri) {
+                    FallbackPdfRendererView(
+                        params = params,
+                        onClose = onClose
+                    )
+                }
             }
         }
     }

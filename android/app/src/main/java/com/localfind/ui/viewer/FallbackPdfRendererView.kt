@@ -66,7 +66,9 @@ fun FallbackPdfRendererView(
     modifier: Modifier = Modifier
 ) {
     val context = LocalContext.current
-    var currentPageNumber by remember { mutableIntStateOf(params.initialPage.coerceAtLeast(1)) }
+    var currentPageNumber by remember(params.uri, params.initialPage) {
+        mutableIntStateOf(params.initialPage.coerceAtLeast(1))
+    }
     var totalPages by remember { mutableIntStateOf(0) }
     var renderedBitmap by remember { mutableStateOf<Bitmap?>(null) }
     var isLoading by remember { mutableStateOf(true) }
@@ -85,6 +87,15 @@ fun FallbackPdfRendererView(
     LaunchedEffect(currentPageNumber) {
         scale = 1f
         offset = Offset.Zero
+    }
+
+    // Keep currentPageNumber synchronized if params.initialPage changes externally
+    LaunchedEffect(params.initialPage) {
+        if (totalPages > 0) {
+            currentPageNumber = PdfViewerHelper.clampPage(params.initialPage, totalPages)
+        } else {
+            currentPageNumber = params.initialPage.coerceAtLeast(1)
+        }
     }
 
     val transformState = rememberTransformableState { zoomChange, offsetChange, _ ->
@@ -149,7 +160,7 @@ fun FallbackPdfRendererView(
                 pdfRenderer = renderer
                 totalPages = renderer.pageCount
                 if (totalPages > 0) {
-                    currentPageNumber = PdfViewerHelper.clampPage(currentPageNumber, totalPages)
+                    currentPageNumber = PdfViewerHelper.clampPage(params.initialPage, totalPages)
                 }
             } catch (e: Exception) {
                 errorMessage = "Failed to open PDF: ${e.message}"

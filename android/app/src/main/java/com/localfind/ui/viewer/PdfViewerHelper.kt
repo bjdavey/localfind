@@ -46,6 +46,15 @@ object PdfViewerHelper {
     }
 
     /**
+     * Converts a 1-based page number (e.g. from search results or indexer) to a safe 0-based page index
+     * for framework or Jetpack PDF viewers clamped within [0, totalPages - 1].
+     */
+    fun toZeroBasedPage(oneBasedPage: Int, totalPages: Int): Int {
+        if (totalPages <= 0) return 0
+        return (oneBasedPage - 1).coerceIn(0, totalPages - 1)
+    }
+
+    /**
      * Calculates zoom scale clamped within [minScale, maxScale].
      */
     fun clampZoom(

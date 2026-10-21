@@ -59,8 +59,9 @@
 - [x] Better PDF viewer
 - [x] Support landscape orientation in file viewer only
 - [x] Show file details and open in phone gallery or its own app
+- [x] Show original file path in file details view
 - [x] Multi select
-- Refactor, optimize, check dead code, and design decisions
+- Refactor, optimize, check dead code, technical debt, and design decisions
 - What else?
 - Final E2E test with edge cases
 - Publish
@@ -80,6 +81,7 @@
 - [x] Check if original file is deleted when opening
 - [x] Search after filter, not filter search results
 - [x] Fix PDF indexing progress bar repeating after 15%
+- [x] Fix: PDF search result doesn't open at that page
 
 
 ## Backlog

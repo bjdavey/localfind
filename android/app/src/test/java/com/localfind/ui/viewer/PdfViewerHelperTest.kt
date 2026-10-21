@@ -39,6 +39,16 @@ class PdfViewerHelperTest {
     }
 
     @Test
+    fun toZeroBasedPage_boundsCorrectly() {
+        assertEquals(0, PdfViewerHelper.toZeroBasedPage(0, 10))
+        assertEquals(0, PdfViewerHelper.toZeroBasedPage(1, 10))
+        assertEquals(4, PdfViewerHelper.toZeroBasedPage(5, 10))
+        assertEquals(9, PdfViewerHelper.toZeroBasedPage(10, 10))
+        assertEquals(9, PdfViewerHelper.toZeroBasedPage(25, 10))
+        assertEquals(0, PdfViewerHelper.toZeroBasedPage(5, 0))
+    }
+
+    @Test
     fun clampZoom_boundsWithinMinAndMax() {
         assertEquals(1.5f, PdfViewerHelper.clampZoom(1f, 1.5f, 1f, 4f), 0.001f)
         assertEquals(1f, PdfViewerHelper.clampZoom(1f, 0.5f, 1f, 4f), 0.001f)
