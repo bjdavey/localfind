@@ -46,13 +46,11 @@ The text query uses the same model, so a text query can match an image, an audio
   - Qualcomm Snapdragon 8 Gen 3: `embeddinggemma-2-740m_Qualcomm_SM8650.litertlm` (Hexagon HTP v75)
   - Qualcomm Snapdragon 8 Gen 2: `embeddinggemma-2-740m_Qualcomm_SM8550.litertlm` (Hexagon HTP v73)
   - Qualcomm Snapdragon 8 Elite: `embeddinggemma-2-740m_Qualcomm_SM8750.litertlm` (Hexagon HTP v79)
-  - Qualcomm Snapdragon Next-Gen: `embeddinggemma-2-740m_Qualcomm_SM8850.litertlm`
-  - Qualcomm IoT / Edge: `embeddinggemma-2-740m_Qualcomm_QCS8275.litertlm`
+  - Qualcomm Snapdragon 8 Elite Gen 5: `embeddinggemma-2-740m_Qualcomm_SM8850.litertlm` (Hexagon HTP v81)
   - MediaTek Dimensity 9400: `embeddinggemma-2-740m_MediaTek_MT6991.litertlm`
   - MediaTek Dimensity Next-Gen: `embeddinggemma-2-740m_MediaTek_MT6993.litertlm`
   - Google Tensor G5: `embeddinggemma-2-740m_Google_Tensor_G5.litertlm`
   - Google Tensor G6: `embeddinggemma-2-740m_Google_Tensor_G6.litertlm`
-  - Intel: `embeddinggemma-2-740m_Intel_PTL.litertlm`
 - **Dynamic SoC Resolution (`SocDetector`):** LocalFind dynamically queries device platform properties (`Build.SOC_MANUFACTURER`, `Build.SOC_MODEL`, `Build.HARDWARE`) at runtime. It automatically selects and stages the exact matching chipset model file without hardcoding phone names or chipsets.
 
 ### 3.1 Hardware Support Matrix & Execution Status
@@ -61,13 +59,15 @@ Running on hardware NPUs requires both the **pre-compiled model file** and the v
 
 | Platform / Chipset | Marketing Name | Hardware Target | Status in LocalFind | Native Binary Requirement |
 | :--- | :--- | :--- | :--- | :--- |
-| **Qualcomm SM8650** | Snapdragon 8 Gen 3 (S24 Ultra, Fold 6, OnePlus 12) | **Hexagon HTP v75 NPU** | **Supported Now** (Verified 1.7x speedup over GPU) | `libLiteRtDispatch_Qualcomm.so`, `libQnnHtpV75Stub.so`, `libQnnHtpV75Skel.so`, `libQnnSystem.so` (bundled in `jniLibs`). |
-| **Qualcomm SM8550** | Snapdragon 8 Gen 2 (S23 series, OnePlus 11) | Hexagon HTP v73 NPU | **Model supported**; falls back to GPU OpenCL | Requires `libQnnHtpV73Stub.so` & `libQnnHtpV73Skel.so`. |
-| **Qualcomm SM8750** | Snapdragon 8 Elite / Gen 4 (S25 series, OnePlus 13) | Hexagon HTP v79 NPU | **Model supported**; falls back to GPU OpenCL | Requires `libQnnHtpV79Stub.so` & `libQnnHtpV79Skel.so`. |
-| **MediaTek MT6991** | Dimensity 9400 (Vivo X200, Find X8) | MediaTek APU | **Model supported**; falls back to GPU OpenCL | Requires `libLiteRtDispatch_MediaTek.so` & Neuron adapter. |
-| **Google Tensor G5/G6** | Pixel 10 / Pixel 11 | Google EdgeTPU | **Model supported**; falls back to GPU OpenCL | Requires `libLiteRtDispatch_GoogleTensor.so`. |
-| **Universal (All Phones)** | Any Qualcomm, MediaTek, Tensor, Exynos | **GPU (OpenCL / Vulkan)** | **Supported Now** across all devices | Uses system `/vendor/lib64/libOpenCL.so` (zero bundled `.so` files needed). |
-| **Universal (All Phones)** | Any ARM64 or x86_64 device | **CPU (XNNPack FP16)** | **Supported Now** across all devices | Built into MediaPipe Tasks runtime. |
+| **Qualcomm SM8550** | Snapdragon 8 Gen 2 (S23 series, OnePlus 11) | Hexagon HTP v73 NPU | **Model supported**; falls back to GPU OpenCL | Requires Qualcomm LiteRT dispatch, `libQnnHtpV73Stub.so`, `libQnnHtpV73Skel.so`, `libQnnHtp.so`, and `libQnnSystem.so`; not bundled. |
+| **Qualcomm SM8650** | Snapdragon 8 Gen 3 (S24 Ultra, Fold 6, OnePlus 12) | **Hexagon HTP v75 NPU** | **Supported Now** (Verified 1.7x speedup over GPU) | `libLiteRtDispatch_Qualcomm.so`, `libQnnHtpV75Stub.so`, `libQnnHtpV75Skel.so`, `libQnnHtp.so`, and `libQnnSystem.so` bundled in `jniLibs`. |
+| **Qualcomm SM8750** | Snapdragon 8 Elite / Gen 4 (S25 series, OnePlus 13) | Hexagon HTP v79 NPU | **Model supported**; falls back to GPU OpenCL | Requires Qualcomm LiteRT dispatch, `libQnnHtpV79Stub.so`, `libQnnHtpV79Skel.so`, `libQnnHtp.so`, and `libQnnSystem.so`; not bundled. |
+| **Qualcomm SM8850** | Snapdragon 8 Elite Gen 5 (Galaxy S26 series, OnePlus 14, Xiaomi 16) | Hexagon HTP v81 NPU | **Model supported**; falls back to GPU OpenCL | Requires Qualcomm LiteRT dispatch, `libQnnHtpV81Stub.so`, `libQnnHtpV81Skel.so`, `libQnnHtp.so`, and `libQnnSystem.so`; not bundled. |
+| **MediaTek MT6991** | Dimensity 9400 (Vivo X200, Find X8) | MediaTek APU | **Model supported**; falls back to GPU OpenCL | Requires `libLiteRtDispatch_MediaTek.so` and the device's Neuron adapter; not bundled. |
+| **MediaTek MT6993** | Dimensity Next-Gen (Vivo X300, Find X9) | MediaTek APU | **Model supported**; falls back to GPU OpenCL | Requires `libLiteRtDispatch_MediaTek.so` and the device's Neuron adapter; not bundled. |
+| **Google Tensor G5/G6** | Pixel 10 / Pixel 11 | Google EdgeTPU | **Model supported**; falls back to GPU OpenCL | Requires `libLiteRtDispatch_GoogleTensor.so` and the device's Edge TPU runtime; not bundled. |
+| **Universal (All Phones)** | Any Qualcomm, MediaTek, Tensor, Exynos | **GPU (OpenCL / Vulkan)** | **Supported Now** across all devices | Requires a compatible system GPU driver (`libOpenCL.so` or Vulkan driver); supplied by the device, not bundled. |
+| **Universal (All Phones)** | Any ARM64 or x86_64 device | **CPU (XNNPack FP16)** | **Supported Now** across all devices | No vendor binary required; XNNPack is included in the MediaPipe Tasks runtime. |
 
 - **Graceful Multi-Tier Fallback:** If a device-specific NPU model or native driver is missing, or if NPU delegate initialization fails on unsupported silicon, LocalFind seamlessly cascades to **GPU** vision acceleration, and subsequently to **CPU** (XNNPack). Text and audio modalities run reliably on CPU to eliminate driver overhead.
 - **Deployment Strategy:**
@@ -184,4 +184,3 @@ android/app/src/main/
 - **Hardware Acceleration Linking:** Vendor libraries (`libcdsprpc.so` for Qualcomm Hexagon FastRPC and `libOpenCL.so` for GPU) are declared in `AndroidManifest.xml` with `android:required="false"`, ensuring that devices lacking vendor drivers install and run normally.
 - **Dynamic Hardware Fallback:** If dedicated NPU models or delegates fail to initialize on any specific silicon, `Embedder` catches runtime initialization errors and automatically cascades to GPU and CPU (XNNPack).
 - **Dispatch Runtime Auto-Staging:** LiteRT dispatch loader expects vendor dispatch `.so` files in `context.filesDir`. LocalFind automatically stages bundled native dispatch libraries on initialization.
-

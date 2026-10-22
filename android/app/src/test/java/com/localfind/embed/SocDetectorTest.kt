@@ -59,19 +59,6 @@ class SocDetectorTest {
     }
 
     @Test
-    fun testQualcommQCS8275() {
-        val soc = SocDetector.parseSocInfo(
-            rawManufacturer = "Qualcomm",
-            rawModel = "QCS8275",
-            rawHardware = "qcom",
-            rawBoard = "qcs8275"
-        )
-        assertEquals("Qualcomm", soc.vendor)
-        assertEquals("QCS8275", soc.model)
-        assertEquals("embeddinggemma-2-740m_Qualcomm_QCS8275.litertlm", soc.expectedNpuModelName)
-    }
-
-    @Test
     fun testMediaTekDimensity9400() {
         val soc = SocDetector.parseSocInfo(
             rawManufacturer = "MediaTek",
@@ -97,19 +84,6 @@ class SocDetectorTest {
         assertEquals("Tensor_G5", soc.model)
         assertEquals("Google Tensor G5", soc.marketingName)
         assertEquals("embeddinggemma-2-740m_Google_Tensor_G5.litertlm", soc.expectedNpuModelName)
-    }
-
-    @Test
-    fun testIntelPantherLake() {
-        val soc = SocDetector.parseSocInfo(
-            rawManufacturer = "Intel",
-            rawModel = "PTL",
-            rawHardware = "intel",
-            rawBoard = "ptl_board"
-        )
-        assertEquals("Intel", soc.vendor)
-        assertEquals("PTL", soc.model)
-        assertEquals("embeddinggemma-2-740m_Intel_PTL.litertlm", soc.expectedNpuModelName)
     }
 
     @Test

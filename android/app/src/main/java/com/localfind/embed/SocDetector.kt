@@ -9,7 +9,7 @@ import java.io.File
 /**
  * Information about the host device's System-on-Chip (SoC) processor and Neural Processing Unit (NPU).
  *
- * @property vendor Standardized SoC manufacturer (e.g. "Qualcomm", "MediaTek", "Google", "Intel", or "Unknown").
+ * @property vendor Standardized SoC manufacturer (e.g. "Qualcomm", "MediaTek", "Google", or "Unknown").
  * @property model Standardized SoC chipset model (e.g. "SM8650", "SM8550", "SM8750", "MT6991", "Tensor_G5").
  * @property marketingName Human-readable marketing name (e.g. "Snapdragon 8 Gen 3", "Dimensity 9400").
  * @property expectedNpuModelName Expected pre-compiled model file name from Hugging Face LiteRT repository.
@@ -94,8 +94,6 @@ object SocDetector {
                     Triple("SM8750", "Snapdragon 8 Elite", "V79")
                 modelUpper.contains("SM8850") ->
                     Triple("SM8850", "Snapdragon Next-Gen", null)
-                modelUpper.contains("QCS8275") ->
-                    Triple("QCS8275", "Qualcomm QCS8275", "V73")
                 modelUpper.startsWith("SM") ->
                     Triple(modelUpper, "Snapdragon ($modelUpper)", null)
                 else ->
@@ -137,14 +135,6 @@ object SocDetector {
             }
             val expectedModel = "embeddinggemma-2-740m_Google_$chipModel.litertlm"
             return SocInfo(vendor, chipModel, marketing, expectedModel)
-        }
-
-        // 4. Intel
-        if (mfgLower.contains("intel") || modelUpper.contains("PTL")) {
-            val vendor = "Intel"
-            val chipModel = if (modelUpper.contains("PTL")) "PTL" else modelUpper
-            val expectedModel = "embeddinggemma-2-740m_Intel_$chipModel.litertlm"
-            return SocInfo(vendor, chipModel, "Intel Panther Lake", expectedModel)
         }
 
         // Generic / Unknown SoC
