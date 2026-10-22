@@ -17,6 +17,11 @@ android {
         versionName = "1.0"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
+
+        // NPU hardware acceleration targets 64-bit ARM
+        ndk {
+            abiFilters.add("arm64-v8a")
+        }
     }
 
     buildTypes {
@@ -68,9 +73,6 @@ android {
         }
     }
 }
-
-// Wire SM8650 (Hexagon V75) NPU runtime libraries for standalone local debug APK builds
-apply(from = "../litert_npu_runtime_libraries/debug_sm8650_npu.gradle")
 
 kotlin {
     compilerOptions {

@@ -60,7 +60,7 @@ Running on hardware NPUs requires both the **pre-compiled model file** (delivere
 | Platform / Chipset | Marketing Name | Hardware Target | Delivery Module(s) | Native Binary Requirement |
 | :--- | :--- | :--- | :--- | :--- |
 | **Qualcomm SM8550** | Snapdragon 8 Gen 2 (S23 series, OnePlus 11) | Hexagon HTP v73 NPU | `qualcomm_runtime_common` + `htp` + `v73` | Maven `litert-npu-runtime-qualcomm` (`libLiteRtDispatch_Qualcomm.so`) + QAIRT `libQnnSystem.so`, `libQnnHtp.so`, `libQnnHtpV73Stub.so`, `libQnnHtpV73Skel.so` (`fetch_qualcomm_library.sh`). |
-| **Qualcomm SM8650** | Snapdragon 8 Gen 3 (S24 Ultra, Fold 6, OnePlus 12) | **Hexagon HTP v75 NPU** | `qualcomm_runtime_common` + `htp` + `v75` | Verified 1.7x speedup over GPU. Bundled in `qualcomm_runtime_v75` (and wired for local `assembleDebug` via `debug_sm8650_npu.gradle`). |
+| **Qualcomm SM8650** | Snapdragon 8 Gen 3 (S24 Ultra, Fold 6, OnePlus 12) | **Hexagon HTP v75 NPU** | `qualcomm_runtime_common` + `htp` + `v75` | Verified 1.7x speedup over GPU. Bundled in `qualcomm_runtime_v75` and installed automatically via `deploy-bundle.ps1` / `deploy-bundle.sh`. |
 | **Qualcomm SM8750** | Snapdragon 8 Elite / Gen 4 (S25 series, OnePlus 13) | Hexagon HTP v79 NPU | `qualcomm_runtime_common` + `htp` + `v79` | Maven `litert-npu-runtime-qualcomm` + QAIRT `libQnnHtpV79Stub.so`, `libQnnHtpV79Skel.so` (`fetch_qualcomm_library.sh`). |
 | **Qualcomm SM8850** | Snapdragon 8 Elite Gen 5 (Galaxy S26 series, OnePlus 14, Xiaomi 16) | Hexagon HTP v81 NPU | `qualcomm_runtime_common` + `htp` + `v81` | Maven `litert-npu-runtime-qualcomm` + QAIRT `libQnnHtpV81Stub.so`, `libQnnHtpV81Skel.so` (`fetch_qualcomm_library.sh`). |
 | **MediaTek MT6991** | Dimensity 9400 (Vivo X200, Find X8) | MediaTek APU v8 | `mediatek_runtime_common` + `v8` | Maven `litert-npu-runtime-mediatek` (`libLiteRtDispatch_MediaTek.so`) + NeuroPilot `libneuronusdk_adapter.mtk.so` (`fetch_mediatek_library.sh`). |
@@ -72,9 +72,10 @@ Running on hardware NPUs requires both the **pre-compiled model file** (delivere
 - **Default NPU Policy & Smart Fallback:**
   - `HardwareAccelerator.NPU` is the default setting on supported devices and never auto-switches on screen/battery state so all indexed vectors stay in a consistent vector space.
   - On devices that do not support NPU (`SocDetector.isNpuRuntimeAvailable(context) == false`), LocalFind disables the NPU option in Settings and automatically falls back to **`SMART` mode** (`GPU` when screen is off and Battery Saver is off, `CPU` when screen is on).
-- **Deployment Strategy:**
-  - **Release (`.aab`):** Google Play AI Pack (`:ai_pack:embedding_model`, `fast-follow` delivery extracted directly to disk) + Play Feature Delivery (`:litert_npu_runtime_libraries:*`, `install-time` split APKs conditioned on `device_targeting_configuration.xml`).
-  - **Development (`assembleDebug`):** `debug_sm8650_npu.gradle` wires the `SM8650` (`v75`) libraries for standalone debug APKs, and `SocDetector` stages models from `/data/local/tmp/` when not installed via Play AI Pack.
+- **Deployment & Multi-Device Testing Strategy:**
+  - **Google Play:** Google Play AI Pack (`:ai_pack:embedding_model`, `fast-follow` delivery extracted directly to disk) + Play Feature Delivery (`:litert_npu_runtime_libraries:*`, `install-time` split APKs conditioned on `device_targeting_configuration.xml`).
+  - **Local Development & Multi-Device Testing (`deploy-bundle.ps1` / `deploy-bundle.sh`):** Automates Google's official `bundletool` workflow. Detects the connected device SoC via ADB, builds the App Bundle (`:app:bundleDebug`), extracts the matching split APKs for the device's targeting group (Qualcomm SM8550/SM8650/SM8750/SM8850, MediaTek MT6991/MT6993, Google Tensor G5/G6), installs base and NPU splits, and launches the app.
+  - **Fallback Model Staging:** When models are not installed via Play AI Pack, `SocDetector` automatically stages them from `/data/local/tmp/` to `context.filesDir`.
 
 ## 4. File Access: Link, Don't Copy
 

@@ -62,7 +62,10 @@
 - [x] Show original file path in file details view
 - [x] Multi select
 - [x] Smart Mode in Advanced Settings: dynamic GPU/CPU switching based on screen and battery saver state
-- [x] Play AI Pack, Play Feature Delivery & NPU default with Smart Mode fallback on unsupported devices
+
+## Milestone 6: First publish
+- [x] Hardware NPU acceleration support
+- [x] Dynamic SoC-specific NPU runtime & model delivery: Play AI Pack, Play Feature Delivery & NPU default
 - Refactor, optimize, check dead code, technical debt, folder/files structure and design decisions
 - What else?
 - Final E2E test with edge cases
@@ -101,8 +104,6 @@
 - Recent searches history
 
 ### Indexing & Performance
-- Hardware NPU acceleration for additional chipsets
-- Dynamic SoC-specific NPU runtime & model delivery: Play Feature Delivery / split APKs to deliver only the matching pre-compiled model and vendor `.so` runtime without bloating base APK size
 - Battery / thermal-friendly indexing (pause on low battery / charging-only option)
 - Vector quantization (FP16 / INT8 embeddings)
 - PDF OCR (ML Kit / on-device OCR for scanned documents)
