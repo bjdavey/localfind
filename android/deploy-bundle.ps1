@@ -1,16 +1,18 @@
 <#
 .SYNOPSIS
     Automated Play Feature Delivery & Play AI Pack APK deployment script using bundletool.
-    Simulates Google Play Store install-time dynamic delivery for LiteRT NPU hardware acceleration.
+    Simulates Google Play Store install-time dynamic delivery for LiteRT NPU hardware acceleration
+    and automatically downloads and stages the matching on-device LiteRT-LM model.
 
 .DESCRIPTION
     1. Downloads standalone bundletool.jar (if not already cached in android/.tools/).
     2. Identifies connected target device via ADB (or accepts -DeviceId).
-    3. Queries device SoC (ro.soc.manufacturer & ro.soc.model) to determine conditional Device Group.
+    3. Queries device SoC (ro.soc.manufacturer & ro.soc.model) to determine conditional Device Group and target model file.
     4. Builds the Android App Bundle (.aab) via Gradle.
     5. Extracts split APKs with bundletool targeting the specific Device Group.
-    6. Installs base and matching NPU runtime splits (HTP/v65/v66/v68/v69/v73/v75) onto the device.
-    7. Launches com.localfind/.MainActivity.
+    6. Installs base and matching NPU runtime splits (HTP/v73/v75/v79/v81 or MediaTek/Tensor) onto the device.
+    7. Verifies and stages the matching LiteRT-LM model to /data/local/tmp/ (downloading from Hugging Face if needed).
+    8. Launches com.localfind/.MainActivity.
 
 .PARAMETER DeviceId
     Optional ADB serial / transport ID of the target device. Auto-detected if omitted.
@@ -21,16 +23,21 @@
 .PARAMETER SkipBuild
     Skip Gradle bundle task and reuse existing .aab file.
 
+.PARAMETER SkipModelPush
+    Skip checking, downloading, and pushing the LiteRT-LM model to the device.
+
 .EXAMPLE
     .\deploy-bundle.ps1
     .\deploy-bundle.ps1 -DeviceId "emulator-5554"
     .\deploy-bundle.ps1 -Release
+    .\deploy-bundle.ps1 -SkipModelPush
 #>
 
 param(
     [string]$DeviceId = "",
     [switch]$Release,
-    [switch]$SkipBuild
+    [switch]$SkipBuild,
+    [switch]$SkipModelPush
 )
 
 $ErrorActionPreference = "Stop"
@@ -50,16 +57,16 @@ $BundletoolVersion = "1.18.3"
 $BundletoolJar = Join-Path $ToolsDir "bundletool.jar"
 
 if (-not (Test-Path $BundletoolJar)) {
-    Write-Host "[1/6] Downloading bundletool v$BundletoolVersion..." -ForegroundColor Yellow
+    Write-Host "[1/7] Downloading bundletool v$BundletoolVersion..." -ForegroundColor Yellow
     $Url = "https://github.com/google/bundletool/releases/download/$BundletoolVersion/bundletool-all-$BundletoolVersion.jar"
     Invoke-WebRequest -Uri $Url -OutFile $BundletoolJar -UseBasicParsing
     Write-Host "      Bundletool downloaded to $BundletoolJar" -ForegroundColor Green
 } else {
-    Write-Host "[1/6] bundletool found at $BundletoolJar" -ForegroundColor Green
+    Write-Host "[1/7] bundletool found at $BundletoolJar" -ForegroundColor Green
 }
 
 # 2. Select Device
-Write-Host "[2/6] Detecting ADB devices..." -ForegroundColor Yellow
+Write-Host "[2/7] Detecting ADB devices..." -ForegroundColor Yellow
 $AdbOutput = adb devices | Where-Object { $_ -match "\t(device)$" }
 $Devices = @()
 foreach ($line in $AdbOutput) {
@@ -89,43 +96,86 @@ if ([string]::IsNullOrWhiteSpace($DeviceId)) {
 
 Write-Host "      Target device: $DeviceId" -ForegroundColor Green
 
-# 3. Query Device SoC and match Device Group
-Write-Host "[3/6] Querying device SoC for Play Feature Delivery targeting..." -ForegroundColor Yellow
+# 3. Query Device SoC and match Device Group & LiteRT Model
+Write-Host "[3/7] Querying device SoC for Play Feature Delivery & Model targeting..." -ForegroundColor Yellow
 $SocMfr = (adb -s $DeviceId shell getprop ro.soc.manufacturer).Trim()
 $SocModel = (adb -s $DeviceId shell getprop ro.soc.model).Trim()
+$Platform = (adb -s $DeviceId shell getprop ro.board.platform).Trim()
+$Board = (adb -s $DeviceId shell getprop ro.product.board).Trim()
+$Hardware = (adb -s $DeviceId shell getprop ro.hardware).Trim()
+
 if ([string]::IsNullOrWhiteSpace($SocModel)) {
-    $SocModel = (adb -s $DeviceId shell getprop ro.board.platform).Trim()
+    $SocModel = $Platform
 }
-Write-Host "      Detected SoC: Manufacturer='$SocMfr', Model='$SocModel'" -ForegroundColor DarkCyan
+Write-Host "      Detected SoC: Manufacturer='$SocMfr', Model='$SocModel', Platform='$Platform', Board='$Board'" -ForegroundColor DarkCyan
 
 $DeviceGroup = ""
-# Match against device_targeting_configuration.xml
-if ($SocMfr -match "(?i)qualcomm|qti") {
-    switch -Regex ($SocModel.ToUpper()) {
-        "SM8550" { $DeviceGroup = "Qualcomm_SM8550" }
-        "SM8650" { $DeviceGroup = "Qualcomm_SM8650" }
-        "SM8750" { $DeviceGroup = "Qualcomm_SM8750" }
-        "SM8850" { $DeviceGroup = "Qualcomm_SM8850" }
-        default  { $DeviceGroup = "" }
+$ModelName = "embeddinggemma-2-740m.litertlm" # Universal CPU/GPU fallback for Emulators & generic devices
+
+# Match against device_targeting_configuration.xml & SocDetector specifications
+$LookupKey = "$SocMfr $SocModel $Platform $Board $Hardware".ToUpper()
+
+if ($LookupKey -match "QUALCOMM|QTI|QCOM") {
+    switch -Regex ($LookupKey) {
+        "SM8550|KALAMA" {
+            $DeviceGroup = "Qualcomm_SM8550"
+            $ModelName = "embeddinggemma-2-740m_Qualcomm_SM8550.litertlm"
+        }
+        "SM8650|PINEAPPLE" {
+            $DeviceGroup = "Qualcomm_SM8650"
+            $ModelName = "embeddinggemma-2-740m_Qualcomm_SM8650.litertlm"
+        }
+        "SM8750|SUN" {
+            $DeviceGroup = "Qualcomm_SM8750"
+            $ModelName = "embeddinggemma-2-740m_Qualcomm_SM8750.litertlm"
+        }
+        "SM8850" {
+            $DeviceGroup = "Qualcomm_SM8850"
+            $ModelName = "embeddinggemma-2-740m_Qualcomm_SM8850.litertlm"
+        }
+        default {
+            $DeviceGroup = ""
+            $ModelName = "embeddinggemma-2-740m.litertlm"
+        }
     }
-} elseif ($SocMfr -match "(?i)mediatek") {
-    switch -Regex ($SocModel.ToUpper()) {
-        "MT6991" { $DeviceGroup = "Mediatek_MT6991" }
-        "MT6993" { $DeviceGroup = "Mediatek_MT6993" }
-        default  { $DeviceGroup = "" }
+} elseif ($LookupKey -match "MEDIATEK|MT69") {
+    switch -Regex ($LookupKey) {
+        "MT6991|6991" {
+            $DeviceGroup = "Mediatek_MT6991"
+            $ModelName = "embeddinggemma-2-740m_MediaTek_MT6991.litertlm"
+        }
+        "MT6993|6993" {
+            $DeviceGroup = "Mediatek_MT6993"
+            $ModelName = "embeddinggemma-2-740m_MediaTek_MT6993.litertlm"
+        }
+        default {
+            $DeviceGroup = ""
+            $ModelName = "embeddinggemma-2-740m.litertlm"
+        }
     }
-} elseif ($SocMfr -match "(?i)google") {
-    switch -Regex ($SocModel) {
-        "Tensor G5" { $DeviceGroup = "Google_Tensor_G5" }
-        "Tensor G6" { $DeviceGroup = "Google_Tensor_G6" }
-        default     { $DeviceGroup = "" }
+} elseif ($LookupKey -match "GOOGLE|TENSOR") {
+    switch -Regex ($LookupKey) {
+        "TENSOR G5|LAGUNA|G5" {
+            $DeviceGroup = "Google_Tensor_G5"
+            $ModelName = "embeddinggemma-2-740m_Google_Tensor_G5.litertlm"
+        }
+        "TENSOR G6|G6" {
+            $DeviceGroup = "Google_Tensor_G6"
+            $ModelName = "embeddinggemma-2-740m_Google_Tensor_G6.litertlm"
+        }
+        default {
+            $DeviceGroup = ""
+            $ModelName = "embeddinggemma-2-740m.litertlm"
+        }
     }
 }
 
 if ($DeviceGroup) {
     Write-Host "      Matched Device Group: '$DeviceGroup' (NPU split APKs will be installed)" -ForegroundColor Green
+    Write-Host "      Target NPU Model:     '$ModelName'" -ForegroundColor Green
 } else {
     Write-Host "      No specific NPU Device Group matched (Device will receive base APK with CPU/GPU Smart fallback)" -ForegroundColor Yellow
+    Write-Host "      Target Base Model:    '$ModelName'" -ForegroundColor Yellow
 }
 
 # 4. Build App Bundle
@@ -135,7 +185,7 @@ $AabPath = Join-Path $ScriptDir "app\build\outputs\bundle\$BuildTypeLower\app-$B
 $ApksPath = Join-Path $ScriptDir "app\build\outputs\bundle\$BuildTypeLower\app-$BuildTypeLower.apks"
 
 if (-not $SkipBuild) {
-    Write-Host "[4/6] Building Android App Bundle (:$BuildType)..." -ForegroundColor Yellow
+    Write-Host "[4/7] Building Android App Bundle (:$BuildType)..." -ForegroundColor Yellow
     $Gradletask = ":app:bundle$BuildType"
     $GradleCmd = if ($IsWindows -or $env:OS -match "Windows") { ".\gradlew.bat" } else { "./gradlew" }
     
@@ -144,7 +194,7 @@ if (-not $SkipBuild) {
         Write-Error "Gradle build failed with exit code $LASTEXITCODE"
     }
 } else {
-    Write-Host "[4/6] Skipping build step (reusing existing AAB at $AabPath)..." -ForegroundColor DarkCyan
+    Write-Host "[4/7] Skipping build step (reusing existing AAB at $AabPath)..." -ForegroundColor DarkCyan
 }
 
 if (-not (Test-Path $AabPath)) {
@@ -152,14 +202,14 @@ if (-not (Test-Path $AabPath)) {
 }
 
 # 5. Generate APKs with bundletool
-Write-Host "[5/6] Generating split APKs via bundletool..." -ForegroundColor Yellow
+Write-Host "[5/7] Generating split APKs via bundletool..." -ForegroundColor Yellow
 & java -jar "$BundletoolJar" build-apks --bundle="$AabPath" --output="$ApksPath" --overwrite
 if ($LASTEXITCODE -ne 0) {
     Write-Error "bundletool build-apks failed"
 }
 
 # 6. Install onto device
-Write-Host "[6/6] Installing matching APK splits to device $DeviceId..." -ForegroundColor Yellow
+Write-Host "[6/7] Installing matching APK splits to device $DeviceId..." -ForegroundColor Yellow
 $InstallArgs = @(
     "-jar", "$BundletoolJar",
     "install-apks",
@@ -186,7 +236,88 @@ if ($LASTEXITCODE -ne 0) {
 
 Write-Host "Split APKs successfully installed!" -ForegroundColor Green
 
-# 7. Launch App
+# 7. Model Staging Check and Push
+if (-not $SkipModelPush) {
+    Write-Host "[7/7] Ensuring LiteRT-LM model ($ModelName) is present on device..." -ForegroundColor Yellow
+    
+    # Check if target model is already staged in /data/local/tmp on the device and non-empty
+    $DeviceCheck = (adb -s $DeviceId shell "if [ -f /data/local/tmp/$ModelName ] && [ -s /data/local/tmp/$ModelName ]; then echo EXISTS; fi").Trim()
+    
+    if ($DeviceCheck -eq "EXISTS") {
+        Write-Host "      Model '$ModelName' is already present on device (/data/local/tmp)." -ForegroundColor Green
+    } else {
+        $RepoRoot = Split-Path -Parent $ScriptDir
+        $LocalModelsDir = Join-Path $RepoRoot ".local\models"
+        if (-not (Test-Path $LocalModelsDir)) {
+            New-Item -ItemType Directory -Path $LocalModelsDir | Out-Null
+        }
+        $CachedModelFile = Join-Path $LocalModelsDir $ModelName
+
+        # If model is not in local cache, download from Hugging Face
+        if (-not (Test-Path $CachedModelFile) -or (Get-Item $CachedModelFile).Length -eq 0) {
+            Write-Host "      Model not found in local cache. Downloading '$ModelName' from Hugging Face..." -ForegroundColor Yellow
+            $HfUrl = "https://huggingface.co/litert-community/embeddinggemma-2-740m-litert-lm/resolve/main/$ModelName"
+            $DownloadOk = $false
+
+            if (Get-Command curl.exe -ErrorAction SilentlyContinue) {
+                Write-Host "      Downloading via curl: $HfUrl" -ForegroundColor DarkCyan
+                & curl.exe -L --fail --progress-bar -o "$CachedModelFile" "$HfUrl"
+                if ($LASTEXITCODE -eq 0 -and (Test-Path $CachedModelFile) -and (Get-Item $CachedModelFile).Length -gt 0) {
+                    $DownloadOk = $true
+                } else {
+                    if (Test-Path $CachedModelFile) { Remove-Item $CachedModelFile -Force }
+                }
+            }
+
+            if (-not $DownloadOk) {
+                try {
+                    Write-Host "      Downloading via Invoke-WebRequest: $HfUrl" -ForegroundColor DarkCyan
+                    Invoke-WebRequest -Uri $HfUrl -OutFile $CachedModelFile -UseBasicParsing
+                    if (Test-Path $CachedModelFile -and (Get-Item $CachedModelFile).Length -gt 0) {
+                        $DownloadOk = $true
+                    }
+                } catch {
+                    if (Test-Path $CachedModelFile) { Remove-Item $CachedModelFile -Force }
+                    Write-Warning "Could not download $ModelName ($HfUrl): $_"
+                }
+            }
+
+            # If NPU model failed to download, attempt fallback to universal base model
+            if (-not $DownloadOk -and $ModelName -ne "embeddinggemma-2-740m.litertlm") {
+                Write-Host "      Attempting fallback to universal model 'embeddinggemma-2-740m.litertlm'..." -ForegroundColor Yellow
+                $FallbackModel = "embeddinggemma-2-740m.litertlm"
+                $CachedFallback = Join-Path $LocalModelsDir $FallbackModel
+                if (-not (Test-Path $CachedFallback) -or (Get-Item $CachedFallback).Length -eq 0) {
+                    $FallbackUrl = "https://huggingface.co/litert-community/embeddinggemma-2-740m-litert-lm/resolve/main/$FallbackModel"
+                    if (Get-Command curl.exe -ErrorAction SilentlyContinue) {
+                        & curl.exe -L --fail --progress-bar -o "$CachedFallback" "$FallbackUrl"
+                    }
+                }
+                if (Test-Path $CachedFallback -and (Get-Item $CachedFallback).Length -gt 0) {
+                    $ModelName = $FallbackModel
+                    $CachedModelFile = $CachedFallback
+                }
+            }
+        }
+
+        # Push to device if cached model file is available
+        if (Test-Path $CachedModelFile -and (Get-Item $CachedModelFile).Length -gt 0) {
+            Write-Host "      Pushing '$ModelName' to device (/data/local/tmp/)..." -ForegroundColor Yellow
+            adb -s $DeviceId push "$CachedModelFile" "/data/local/tmp/$ModelName"
+            if ($LASTEXITCODE -eq 0) {
+                Write-Host "      Model successfully pushed to /data/local/tmp/$ModelName" -ForegroundColor Green
+            } else {
+                Write-Warning "adb push failed with exit code $LASTEXITCODE"
+            }
+        } else {
+            Write-Warning "Model file could not be obtained. The app will search for existing local files or Play AI Pack on startup."
+        }
+    }
+} else {
+    Write-Host "[7/7] Skipping model staging (-SkipModelPush specified)..." -ForegroundColor DarkCyan
+}
+
+# 8. Launch App
 Write-Host "Launching com.localfind..." -ForegroundColor Cyan
 adb -s $DeviceId shell am start -n com.localfind/.MainActivity
 
