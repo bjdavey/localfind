@@ -55,24 +55,26 @@ The text query uses the same model, so a text query can match an image, an audio
 
 ### 3.1 Hardware Support Matrix & Execution Status
 
-Running on hardware NPUs requires both the **pre-compiled model file** and the vendor's **native driver binaries (`.so`)**:
+Running on hardware NPUs requires both the **pre-compiled model file** (delivered via Google Play AI Pack `:ai_pack:embedding_model` with `#group_<Vendor>_<Model>` device targeting) and the vendor's **native driver binaries (`.so`)** (delivered via Play Feature Delivery `:litert_npu_runtime_libraries:*`):
 
-| Platform / Chipset | Marketing Name | Hardware Target | Status in LocalFind | Native Binary Requirement |
+| Platform / Chipset | Marketing Name | Hardware Target | Delivery Module(s) | Native Binary Requirement |
 | :--- | :--- | :--- | :--- | :--- |
-| **Qualcomm SM8550** | Snapdragon 8 Gen 2 (S23 series, OnePlus 11) | Hexagon HTP v73 NPU | **Model supported**; falls back to GPU OpenCL | Requires Qualcomm LiteRT dispatch, `libQnnHtpV73Stub.so`, `libQnnHtpV73Skel.so`, `libQnnHtp.so`, and `libQnnSystem.so`; not bundled. |
-| **Qualcomm SM8650** | Snapdragon 8 Gen 3 (S24 Ultra, Fold 6, OnePlus 12) | **Hexagon HTP v75 NPU** | **Supported Now** (Verified 1.7x speedup over GPU) | `libLiteRtDispatch_Qualcomm.so`, `libQnnHtpV75Stub.so`, `libQnnHtpV75Skel.so`, `libQnnHtp.so`, and `libQnnSystem.so` bundled in `jniLibs`. |
-| **Qualcomm SM8750** | Snapdragon 8 Elite / Gen 4 (S25 series, OnePlus 13) | Hexagon HTP v79 NPU | **Model supported**; falls back to GPU OpenCL | Requires Qualcomm LiteRT dispatch, `libQnnHtpV79Stub.so`, `libQnnHtpV79Skel.so`, `libQnnHtp.so`, and `libQnnSystem.so`; not bundled. |
-| **Qualcomm SM8850** | Snapdragon 8 Elite Gen 5 (Galaxy S26 series, OnePlus 14, Xiaomi 16) | Hexagon HTP v81 NPU | **Model supported**; falls back to GPU OpenCL | Requires Qualcomm LiteRT dispatch, `libQnnHtpV81Stub.so`, `libQnnHtpV81Skel.so`, `libQnnHtp.so`, and `libQnnSystem.so`; not bundled. |
-| **MediaTek MT6991** | Dimensity 9400 (Vivo X200, Find X8) | MediaTek APU | **Model supported**; falls back to GPU OpenCL | Requires `libLiteRtDispatch_MediaTek.so` and the device's Neuron adapter; not bundled. |
-| **MediaTek MT6993** | Dimensity Next-Gen (Vivo X300, Find X9) | MediaTek APU | **Model supported**; falls back to GPU OpenCL | Requires `libLiteRtDispatch_MediaTek.so` and the device's Neuron adapter; not bundled. |
-| **Google Tensor G5/G6** | Pixel 10 / Pixel 11 | Google EdgeTPU | **Model supported**; falls back to GPU OpenCL | Requires `libLiteRtDispatch_GoogleTensor.so` and the device's Edge TPU runtime; not bundled. |
-| **Universal (All Phones)** | Any Qualcomm, MediaTek, Tensor, Exynos | **GPU (OpenCL / Vulkan)** | **Supported Now** across all devices | Requires a compatible system GPU driver (`libOpenCL.so` or Vulkan driver); supplied by the device, not bundled. |
-| **Universal (All Phones)** | Any ARM64 or x86_64 device | **CPU (XNNPack FP16)** | **Supported Now** across all devices | No vendor binary required; XNNPack is included in the MediaPipe Tasks runtime. |
+| **Qualcomm SM8550** | Snapdragon 8 Gen 2 (S23 series, OnePlus 11) | Hexagon HTP v73 NPU | `qualcomm_runtime_common` + `htp` + `v73` | Maven `litert-npu-runtime-qualcomm` (`libLiteRtDispatch_Qualcomm.so`) + QAIRT `libQnnSystem.so`, `libQnnHtp.so`, `libQnnHtpV73Stub.so`, `libQnnHtpV73Skel.so` (`fetch_qualcomm_library.sh`). |
+| **Qualcomm SM8650** | Snapdragon 8 Gen 3 (S24 Ultra, Fold 6, OnePlus 12) | **Hexagon HTP v75 NPU** | `qualcomm_runtime_common` + `htp` + `v75` | Verified 1.7x speedup over GPU. Bundled in `qualcomm_runtime_v75` (and wired for local `assembleDebug` via `debug_sm8650_npu.gradle`). |
+| **Qualcomm SM8750** | Snapdragon 8 Elite / Gen 4 (S25 series, OnePlus 13) | Hexagon HTP v79 NPU | `qualcomm_runtime_common` + `htp` + `v79` | Maven `litert-npu-runtime-qualcomm` + QAIRT `libQnnHtpV79Stub.so`, `libQnnHtpV79Skel.so` (`fetch_qualcomm_library.sh`). |
+| **Qualcomm SM8850** | Snapdragon 8 Elite Gen 5 (Galaxy S26 series, OnePlus 14, Xiaomi 16) | Hexagon HTP v81 NPU | `qualcomm_runtime_common` + `htp` + `v81` | Maven `litert-npu-runtime-qualcomm` + QAIRT `libQnnHtpV81Stub.so`, `libQnnHtpV81Skel.so` (`fetch_qualcomm_library.sh`). |
+| **MediaTek MT6991** | Dimensity 9400 (Vivo X200, Find X8) | MediaTek APU v8 | `mediatek_runtime_common` + `v8` | Maven `litert-npu-runtime-mediatek` (`libLiteRtDispatch_MediaTek.so`) + NeuroPilot `libneuronusdk_adapter.mtk.so` (`fetch_mediatek_library.sh`). |
+| **MediaTek MT6993** | Dimensity 9500 (Vivo X300, Find X9) | MediaTek APU v9 | `mediatek_runtime_common` + `v9` | Maven `litert-npu-runtime-mediatek` (`libLiteRtDispatch_MediaTek.so`) + NeuroPilot `libneuronusdk_adapter.so` (`fetch_mediatek_library.sh`). |
+| **Google Tensor G5/G6** | Pixel 10 / Pixel 11 | Google EdgeTPU | `google_tensor_runtime` | Maven `litert-npu-runtime-google-tensor` (`libLiteRtDispatch_GoogleTensor.so`). |
+| **Universal (All Phones)** | Any Qualcomm, MediaTek, Tensor, Exynos | **GPU (OpenCL / Vulkan)** | Base `:app` | Uses system GPU driver (`libOpenCL.so` or Vulkan driver). |
+| **Universal (All Phones)** | Any ARM64 or x86_64 device | **CPU (XNNPack FP16)** | Base `:app` | XNNPack is included in the MediaPipe / LiteRT-LM runtime. |
 
-- **Graceful Multi-Tier Fallback:** If a device-specific NPU model or native driver is missing, or if NPU delegate initialization fails on unsupported silicon, LocalFind seamlessly cascades to **GPU** vision acceleration, and subsequently to **CPU** (XNNPack). Text and audio modalities run reliably on CPU to eliminate driver overhead.
+- **Default NPU Policy & Smart Fallback:**
+  - `HardwareAccelerator.NPU` is the default setting on supported devices and never auto-switches on screen/battery state so all indexed vectors stay in a consistent vector space.
+  - On devices that do not support NPU (`SocDetector.isNpuRuntimeAvailable(context) == false`), LocalFind disables the NPU option in Settings and automatically falls back to **`SMART` mode** (`GPU` when screen is off and Battery Saver is off, `CPU` when screen is on).
 - **Deployment Strategy:**
-  - **Release:** Play Asset Delivery **install-time** asset pack.
-  - **Development:** `adb push <model-file> /data/local/tmp/` (auto-detected and staged into app storage).
+  - **Release (`.aab`):** Google Play AI Pack (`:ai_pack:embedding_model`, `fast-follow` delivery extracted directly to disk) + Play Feature Delivery (`:litert_npu_runtime_libraries:*`, `install-time` split APKs conditioned on `device_targeting_configuration.xml`).
+  - **Development (`assembleDebug`):** `debug_sm8650_npu.gradle` wires the `SM8650` (`v75`) libraries for standalone debug APKs, and `SocDetector` stages models from `/data/local/tmp/` when not installed via Play AI Pack.
 
 ## 4. File Access: Link, Don't Copy
 
@@ -145,7 +147,7 @@ All variables are persisted locally using native Android `SharedPreferences` ([S
 | Indexing | Video Include Audio | `false` | Whether to decode and embed audio tracks alongside video keyframes |
 | Indexing | Video Skip Similar Chunks | `true` | Skip redundant consecutive video windows (`>= 85%` luminance similarity) |
 | Indexing | Max Image Dimension | `512` px | Maximum dimension for image decoding (video frames use `256` px hardware downsampling) |
-| Acceleration | Vision Accelerator | `SMART` | Hardware accelerator policy: `SMART` (Auto), `NPU` (Hardware Neural Engine), `GPU` (Faster), `CPU` (Cool & Smooth UI) |
+| Acceleration | Vision Accelerator | `NPU` | Hardware accelerator policy: `NPU` (Default on supported SoCs), `SMART` (Auto fallback on unsupported devices), `GPU` (Faster), `CPU` (Cool & Smooth UI) |
 
 ## 10. Offline Guarantee
 
@@ -182,5 +184,5 @@ android/app/src/main/
 - **Single Model Instance:** Never bypass `EngineManager`. The ~485MB `EmbeddingGemma 2` model must only be loaded once to prevent Out-Of-Memory (OOM) crashes on mobile devices.
 - **Background Threading:** Never perform file extraction, PDF parsing, audio decoding, embedding, or database writes on the Android Main (UI) thread; always use dispatcher.
 - **Hardware Acceleration Linking:** Vendor libraries (`libcdsprpc.so` for Qualcomm Hexagon FastRPC and `libOpenCL.so` for GPU) are declared in `AndroidManifest.xml` with `android:required="false"`, ensuring that devices lacking vendor drivers install and run normally.
-- **Dynamic Hardware Fallback:** If dedicated NPU models or delegates fail to initialize on any specific silicon, `Embedder` catches runtime initialization errors and automatically cascades to GPU and CPU (XNNPack).
-- **Dispatch Runtime Auto-Staging:** LiteRT dispatch loader expects vendor dispatch `.so` files in `context.filesDir`. LocalFind automatically stages bundled native dispatch libraries on initialization.
+- **Dynamic Hardware Fallback:** If dedicated NPU models or delegates are unavailable or fail to initialize, `Embedder` and `HardwareAccelerator.resolveEffective` automatically fall back to `SMART` mode (`GPU` when screen is off, `CPU` when screen is on).
+- **Zero-Copy Symlink Dispatch Staging:** LiteRT-LM's C++ `litert_dispatch.cc` searches `context.filesDir` for `libLiteRtDispatch_*.so` and vendor QNN/NeuroPilot libraries. `SocDetector.ensureDispatchLibraries` creates zero-byte POSIX symlinks (`Os.symlink`) from `context.applicationInfo.nativeLibraryDir` into `context.filesDir`, avoiding 21 MB of duplicate `.so` copies on disk.

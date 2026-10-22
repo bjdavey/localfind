@@ -62,6 +62,7 @@
 - [x] Show original file path in file details view
 - [x] Multi select
 - [x] Smart Mode in Advanced Settings: dynamic GPU/CPU switching based on screen and battery saver state
+- [x] Play AI Pack, Play Feature Delivery & NPU default with Smart Mode fallback on unsupported devices
 - Refactor, optimize, check dead code, technical debt, folder/files structure and design decisions
 - What else?
 - Final E2E test with edge cases

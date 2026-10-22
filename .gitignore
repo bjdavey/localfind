@@ -1,7 +1,8 @@
 # Gradle
 .gradle/
+**/.gradle/
 build/
-*/build/
+**/build/
 
 # Local configuration
 local.properties

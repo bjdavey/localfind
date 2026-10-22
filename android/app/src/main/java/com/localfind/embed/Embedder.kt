@@ -49,7 +49,7 @@ const val DEFAULT_VISION_TOKENS_PER_IMAGE = 70
  */
 class Embedder(
     context: Context,
-    val configuredAccelerator: HardwareAccelerator = HardwareAccelerator.SMART,
+    val configuredAccelerator: HardwareAccelerator = HardwareAccelerator.NPU,
     preferredModelName: String? = null
 ) : AutoCloseable {
     private val embedder: UniversalEmbedder
@@ -73,7 +73,7 @@ class Embedder(
     val isGpuVisionEnabled: Boolean
 
     init {
-        // Locate the model file in internal storage, copying from staging paths if missing.
+        // Locate the model file (from Play AI Pack or internal storage), copying from staging paths if missing.
         val model = SocDetector.ensureModelFile(context, effectiveAccelerator, preferredModelName)
 
         require(model.exists() && model.length() > 0L) {
@@ -82,27 +82,26 @@ class Embedder(
                     "adb push .local/models/${model.name} /data/local/tmp/"
         }
 
-        // Set L2 normalization to true so vectors have unit length (norm = 1.0),
-        // and set visionTokensPerImage to 70 for fast vision encoding.
-        // BaseOptions, Text, and Audio run on CPU (XNNPack), avoiding Qualcomm Adreno's proprietary
-        // Vulkan compiler crash in libllvm-qgl.so (SIGSEGV during text attention compute pipeline compilation).
-        val baseOptions = BaseOptions.builder()
-            .setModelAssetPath(model.absolutePath)
-            .setDelegate(com.google.mediapipe.tasks.core.Delegate.CPU)
-            .build()
-
         var createdEmbedder: UniversalEmbedder? = null
         var npuSuccess = false
         var gpuSuccess = false
 
         if (effectiveAccelerator == HardwareAccelerator.NPU) {
             try {
-                // Ensure Qualcomm QNN and LiteRT dispatch runtime libraries are staged in filesDir
+                // Link NPU dispatch and QNN/NeuroPilot runtime libraries from nativeLibraryDir into filesDir
                 SocDetector.ensureDispatchLibraries(context)
+                model.parentFile?.takeIf { it != context.filesDir && it.canWrite() }?.let {
+                    SocDetector.ensureDispatchLibraries(context, it)
+                }
 
-                // Attempt NPU acceleration for vision encoding via Qualcomm Hexagon HTP v75
+                val npuBaseOptions = BaseOptions.builder()
+                    .setModelAssetPath(model.absolutePath)
+                    .setDelegate(com.google.mediapipe.tasks.core.Delegate.CPU)
+                    .build()
+
+                // Attempt NPU acceleration for vision encoding via nativeLibraryDir dispatch
                 val npuOptions = UniversalEmbedderOptions.builder()
-                    .setBaseOptions(baseOptions)
+                    .setBaseOptions(npuBaseOptions)
                     .setL2Normalize(true)
                     .setVisionTokensPerImage(DEFAULT_VISION_TOKENS_PER_IMAGE)
                     .setCacheDir(context.cacheDir.absolutePath)
@@ -113,17 +112,33 @@ class Embedder(
 
                 createdEmbedder = UniversalEmbedder.createFromOptions(context, npuOptions)
                 npuSuccess = true
-                Log.i(TAG, "UniversalEmbedder successfully initialized with Qualcomm Hexagon NPU vision acceleration (configured=$configuredAccelerator, effective=$effectiveAccelerator).")
+                Log.i(TAG, "UniversalEmbedder successfully initialized with NPU vision acceleration (configured=$configuredAccelerator, effective=$effectiveAccelerator).")
             } catch (t: Throwable) {
-                Log.w(TAG, "NPU vision acceleration unavailable or failed to initialize (${t.message}). Falling back to GPU/CPU.", t)
+                Log.w(TAG, "NPU vision acceleration unavailable or failed to initialize (${t.message}). Falling back to Smart Mode (GPU/CPU).", t)
             }
         }
 
-        if (createdEmbedder == null && (effectiveAccelerator == HardwareAccelerator.GPU || effectiveAccelerator == HardwareAccelerator.NPU)) {
+        // Resolve fallback model (standard CPU/GPU model if NPU init failed) and Smart Mode target
+        val fallbackEffective = if (effectiveAccelerator == HardwareAccelerator.NPU) {
+            HardwareAccelerator.SMART.resolveEffective(context)
+        } else {
+            effectiveAccelerator
+        }
+        val fallbackModel = if (effectiveAccelerator == HardwareAccelerator.NPU && createdEmbedder == null) {
+            SocDetector.ensureModelFile(context, fallbackEffective, preferredModelName).takeIf { it.exists() && it.length() > 0L } ?: model
+        } else {
+            model
+        }
+        val fallbackBaseOptions = BaseOptions.builder()
+            .setModelAssetPath(fallbackModel.absolutePath)
+            .setDelegate(com.google.mediapipe.tasks.core.Delegate.CPU)
+            .build()
+
+        if (createdEmbedder == null && fallbackEffective == HardwareAccelerator.GPU) {
             try {
                 // Attempt GPU acceleration for vision encoding (images and video frame indexing).
                 val gpuOptions = UniversalEmbedderOptions.builder()
-                    .setBaseOptions(baseOptions)
+                    .setBaseOptions(fallbackBaseOptions)
                     .setL2Normalize(true)
                     .setVisionTokensPerImage(DEFAULT_VISION_TOKENS_PER_IMAGE)
                     .setTextDelegate(com.google.mediapipe.tasks.core.Delegate.CPU)
@@ -133,7 +148,7 @@ class Embedder(
 
                 createdEmbedder = UniversalEmbedder.createFromOptions(context, gpuOptions)
                 gpuSuccess = true
-                Log.i(TAG, "UniversalEmbedder initialized with GPU vision acceleration (configured=$configuredAccelerator, effective=$effectiveAccelerator).")
+                Log.i(TAG, "UniversalEmbedder initialized with GPU vision acceleration (configured=$configuredAccelerator, effective=$fallbackEffective).")
             } catch (t: Throwable) {
                 Log.w(TAG, "GPU vision acceleration unavailable or failed to initialize (${t.message}). Falling back to CPU vision.", t)
             }
@@ -142,7 +157,7 @@ class Embedder(
         if (createdEmbedder == null) {
             // CPU mode or fallback: All modalities execute via CPU (XNNPack).
             val cpuOptions = UniversalEmbedderOptions.builder()
-                .setBaseOptions(baseOptions)
+                .setBaseOptions(fallbackBaseOptions)
                 .setL2Normalize(true)
                 .setVisionTokensPerImage(DEFAULT_VISION_TOKENS_PER_IMAGE)
                 .setTextDelegate(com.google.mediapipe.tasks.core.Delegate.CPU)
@@ -151,7 +166,7 @@ class Embedder(
                 .build()
 
             createdEmbedder = UniversalEmbedder.createFromOptions(context, cpuOptions)
-            Log.i(TAG, "UniversalEmbedder initialized with CPU vision delegate (configured=$configuredAccelerator, effective=$effectiveAccelerator).")
+            Log.i(TAG, "UniversalEmbedder initialized with CPU vision delegate (configured=$configuredAccelerator, effective=$fallbackEffective).")
         }
 
         embedder = createdEmbedder

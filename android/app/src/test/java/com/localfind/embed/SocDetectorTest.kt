@@ -59,6 +59,35 @@ class SocDetectorTest {
     }
 
     @Test
+    fun testSnapdragon8EliteGen5_SM8850() {
+        val soc = SocDetector.parseSocInfo(
+            rawManufacturer = "Qualcomm",
+            rawModel = "SM8850",
+            rawHardware = "qcom",
+            rawBoard = "canoe"
+        )
+        assertEquals("Qualcomm", soc.vendor)
+        assertEquals("SM8850", soc.model)
+        assertEquals("Snapdragon 8 Elite Gen 5", soc.marketingName)
+        assertEquals("embeddinggemma-2-740m_Qualcomm_SM8850.litertlm", soc.expectedNpuModelName)
+        assertEquals("V81", soc.htpArchitecture)
+    }
+
+    @Test
+    fun testUnsupportedSnapdragon_hasNullNpuModel() {
+        val soc = SocDetector.parseSocInfo(
+            rawManufacturer = "Qualcomm",
+            rawModel = "SM7150",
+            rawHardware = "qcom",
+            rawBoard = "sm7150"
+        )
+        assertEquals("Qualcomm", soc.vendor)
+        assertEquals("SM7150", soc.model)
+        assertNull(soc.expectedNpuModelName)
+        assertNull(soc.htpArchitecture)
+    }
+
+    @Test
     fun testMediaTekDimensity9400() {
         val soc = SocDetector.parseSocInfo(
             rawManufacturer = "MediaTek",

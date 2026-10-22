@@ -30,7 +30,7 @@ class AppSettingsTest {
         assertEquals(true, settings.videoSkipSimilarChunks)
         assertEquals(0.85f, settings.videoSimilarityThreshold, 0.0001f)
         assertEquals(false, settings.enableFolderImport)
-        assertEquals(HardwareAccelerator.SMART, settings.accelerator)
+        assertEquals(HardwareAccelerator.NPU, settings.accelerator)
     }
 
     @Test
@@ -80,7 +80,7 @@ class AppSettingsTest {
         assertEquals(false, initial.videoIncludeAudio)
         assertEquals(true, initial.videoSkipSimilarChunks)
         assertEquals(0.85f, initial.videoSimilarityThreshold, 0.0001f)
-        assertEquals(HardwareAccelerator.SMART, initial.accelerator)
+        assertEquals(HardwareAccelerator.NPU, initial.accelerator)
 
         // 2. Save modified settings
         val modified = AppSettings(
@@ -127,12 +127,12 @@ class AppSettingsTest {
         assertEquals(true, reset.videoSkipSimilarChunks)
         assertEquals(false, reset.enableFolderImport)
         assertEquals(0.85f, reset.videoSimilarityThreshold, 0.0001f)
-        assertEquals(HardwareAccelerator.SMART, reset.accelerator)
+        assertEquals(HardwareAccelerator.NPU, reset.accelerator)
 
         val afterReset = store.load()
         assertEquals(false, afterReset.darkMode)
         assertEquals(DEFAULT_SIMILARITY_THRESHOLD, afterReset.similarityThreshold, 0.0001f)
-        assertEquals(HardwareAccelerator.SMART, afterReset.accelerator)
+        assertEquals(HardwareAccelerator.NPU, afterReset.accelerator)
     }
 
     @Test
@@ -192,8 +192,8 @@ class AppSettingsTest {
         val fakePrefs = FakeSharedPreferences()
         val store = SettingsStore(fakePrefs)
 
-        // Default should be SMART
-        assertEquals(HardwareAccelerator.SMART, store.load().accelerator)
+        // Default should be NPU
+        assertEquals(HardwareAccelerator.NPU, store.load().accelerator)
 
         // Switch to GPU
         store.save(AppSettings(accelerator = HardwareAccelerator.GPU))
@@ -207,9 +207,9 @@ class AppSettingsTest {
         store.save(AppSettings(accelerator = HardwareAccelerator.SMART))
         assertEquals(HardwareAccelerator.SMART, store.load().accelerator)
 
-        // Corrupted/unknown value in SharedPreferences gracefully defaults to SMART
+        // Corrupted/unknown value in SharedPreferences gracefully defaults to NPU
         fakePrefs.edit().putString(SettingsStore.KEY_HARDWARE_ACCELERATOR, "NON_EXISTENT_ACCELERATOR").apply()
-        assertEquals(HardwareAccelerator.SMART, store.load().accelerator)
+        assertEquals(HardwareAccelerator.NPU, store.load().accelerator)
     }
 
     /**

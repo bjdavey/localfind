@@ -40,7 +40,37 @@ android {
             useLegacyPackaging = true
         }
     }
+
+    androidResources {
+        noCompress += listOf("litertlm", "tflite")
+    }
+
+    // Google Play AI Pack for SoC-targeted .litertlm delivery (fast-follow)
+    assetPacks.add(":ai_pack:embedding_model")
+
+    // Play Feature Delivery modules for SoC-targeted NPU native runtime libraries
+    dynamicFeatures.add(":litert_npu_runtime_libraries:mediatek_runtime_common")
+    dynamicFeatures.add(":litert_npu_runtime_libraries:mediatek_runtime_v8")
+    dynamicFeatures.add(":litert_npu_runtime_libraries:mediatek_runtime_v9")
+    dynamicFeatures.add(":litert_npu_runtime_libraries:google_tensor_runtime")
+    dynamicFeatures.add(":litert_npu_runtime_libraries:qualcomm_runtime_common")
+    dynamicFeatures.add(":litert_npu_runtime_libraries:qualcomm_runtime_htp")
+    dynamicFeatures.add(":litert_npu_runtime_libraries:qualcomm_runtime_v73")
+    dynamicFeatures.add(":litert_npu_runtime_libraries:qualcomm_runtime_v75")
+    dynamicFeatures.add(":litert_npu_runtime_libraries:qualcomm_runtime_v79")
+    dynamicFeatures.add(":litert_npu_runtime_libraries:qualcomm_runtime_v81")
+
+    bundle {
+        deviceTargetingConfig = file("device_targeting_configuration.xml")
+        deviceGroup {
+            enableSplit = true
+            defaultGroup = "other"
+        }
+    }
 }
+
+// Wire SM8650 (Hexagon V75) NPU runtime libraries for standalone local debug APK builds
+apply(from = "../litert_npu_runtime_libraries/debug_sm8650_npu.gradle")
 
 kotlin {
     compilerOptions {
@@ -49,6 +79,11 @@ kotlin {
 }
 
 dependencies {
+    // Strings for NPU Play Feature Delivery runtime modules
+    implementation(project(":litert_npu_runtime_libraries:runtime_strings"))
+    // Google Play AI Pack delivery API for locating fast-follow extracted model packs
+    implementation(libs.android.play.ai.delivery)
+
     implementation(platform(libs.androidx.compose.bom))
     implementation(libs.androidx.activity.compose)
     implementation(libs.androidx.compose.material3)

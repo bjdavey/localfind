@@ -86,6 +86,11 @@ fun SettingsScreen(
     val context = androidx.compose.ui.platform.LocalContext.current
     val detectedSoc = remember { com.localfind.embed.SocDetector.detectSoc() }
     val isNpuReady = remember(detectedSoc) { com.localfind.embed.SocDetector.isNpuRuntimeAvailable(context) }
+    val activeAcceleratorOption = if (!isNpuReady && settings.accelerator == HardwareAccelerator.NPU) {
+        HardwareAccelerator.SMART
+    } else {
+        settings.accelerator
+    }
 
     if (showThemeDialog) {
         AlertDialog(
@@ -142,10 +147,11 @@ fun SettingsScreen(
             text = {
                 Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
                     HardwareAccelerator.values().forEach { mode ->
+                        val isModeEnabled = mode != HardwareAccelerator.NPU || isNpuReady
                         Row(
                             modifier = Modifier
                                 .fillMaxWidth()
-                                .clickable {
+                                .clickable(enabled = isModeEnabled) {
                                     onSettingsChange(settings.copy(accelerator = mode))
                                     showAcceleratorDialog = false
                                 }
@@ -154,28 +160,37 @@ fun SettingsScreen(
                             horizontalArrangement = Arrangement.spacedBy(12.dp)
                         ) {
                             RadioButton(
-                                selected = (settings.accelerator == mode),
-                                onClick = null // Handled by outer Row clickable
+                                selected = (activeAcceleratorOption == mode),
+                                onClick = null, // Handled by outer Row clickable
+                                enabled = isModeEnabled
                             )
                             Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
                                 Text(
                                     text = mode.title,
                                     style = MaterialTheme.typography.bodyLarge,
-                                    color = MaterialTheme.colorScheme.onSurface
+                                    color = if (isModeEnabled) {
+                                        MaterialTheme.colorScheme.onSurface
+                                    } else {
+                                        MaterialTheme.colorScheme.onSurface.copy(alpha = 0.38f)
+                                    }
                                 )
                                 Text(
                                     text = when (mode) {
-                                        HardwareAccelerator.SMART -> "Auto: Uses GPU when screen is off, CPU when screen is on or Battery Saver is on."
                                         HardwareAccelerator.NPU -> if (isNpuReady) {
-                                            "NPU (${detectedSoc.marketingName}): Dedicated AI tensor cores for maximum indexing speed and lowest battery draw."
+                                            "NPU (${detectedSoc.marketingName}): Default. Dedicated AI tensor cores for maximum indexing speed and consistent vectors."
                                         } else {
-                                            "NPU (${detectedSoc.marketingName}): Native runtime not packaged for this chip. Falls back to GPU OpenCL."
+                                            "NPU (${detectedSoc.marketingName}): Not supported on this device. Automatically falls back to Smart (Auto)."
                                         }
+                                        HardwareAccelerator.SMART -> "Auto: Uses GPU when screen is off, CPU when screen is on or Battery Saver is on."
                                         HardwareAccelerator.GPU -> "Always use mobile GPU compute shaders for maximum indexing speed."
                                         HardwareAccelerator.CPU -> "Always use CPU (XNNPack) to keep phone cool and eliminate UI lag."
                                     },
                                     style = MaterialTheme.typography.bodySmall,
-                                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                                    color = if (isModeEnabled) {
+                                        MaterialTheme.colorScheme.onSurfaceVariant
+                                    } else {
+                                        MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.38f)
+                                    }
                                 )
                             }
                         }
@@ -370,14 +385,10 @@ fun SettingsScreen(
 
                     SettingClickableRow(
                         title = "Vision indexing accelerator",
-                        subtitle = settings.accelerator.title,
-                        description = when (settings.accelerator) {
+                        subtitle = activeAcceleratorOption.title,
+                        description = when (activeAcceleratorOption) {
+                            HardwareAccelerator.NPU -> "NPU (${detectedSoc.marketingName}): Dedicated AI tensor cores for maximum indexing speed and consistent vectors."
                             HardwareAccelerator.SMART -> "Smart: Uses GPU when screen is off, switches to CPU when screen is on or Battery Saver is on."
-                            HardwareAccelerator.NPU -> if (isNpuReady) {
-                                "NPU (${detectedSoc.marketingName}): Dedicated AI tensor cores for maximum indexing speed and lowest battery draw."
-                            } else {
-                                "NPU (${detectedSoc.marketingName}): Native runtime not packaged for this chip. Falls back to GPU OpenCL."
-                            }
                             HardwareAccelerator.GPU -> "GPU: Always uses mobile GPU compute shaders for maximum indexing speed."
                             HardwareAccelerator.CPU -> "CPU: Always uses CPU (XNNPack) to eliminate UI lag and reduce heat."
                         },

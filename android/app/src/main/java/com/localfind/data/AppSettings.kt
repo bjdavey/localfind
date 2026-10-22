@@ -26,32 +26,44 @@ enum class ThemeMode(val title: String) {
 /**
  * Hardware accelerator choice for multimodal vision indexing (images and video keyframes).
  *
+ * - [NPU]: Default on supported chipsets (Qualcomm Hexagon HTP, MediaTek NeuroPilot, Google Tensor).
+ *   Runs on dedicated AI tensor cores without switching on screen/battery state so all embeddings
+ *   remain in a consistent vector distribution. Automatically falls back to [SMART] on unsupported devices.
  * - [SMART]: Dynamically routes between GPU and CPU based on device state.
  *   Uses GPU when the screen is OFF and not in Battery Saver mode for maximum speed.
  *   Switches to CPU when the screen is ON or Battery Saver is ON to keep the UI smooth and cool.
- * - [NPU]: Uses dedicated on-device Neural Processing Unit (NPU) on supported chipsets (Qualcomm Hexagon, MediaTek, Tensor) for maximum speed and energy efficiency.
  * - [GPU]: Always uses mobile GPU compute shaders for maximum indexing speed.
  * - [CPU]: Always uses CPU (XNNPack) to keep the device cool, save power, and avoid UI frame contention.
  */
 enum class HardwareAccelerator(val title: String) {
-    SMART("Smart (Auto)"),
     NPU("NPU (Neural Processing Unit)"),
+    SMART("Smart (Auto)"),
     GPU("GPU (Faster)"),
     CPU("CPU (Smoother UI)")
 }
 
-/** Default hardware accelerator for vision indexing. */
-val DEFAULT_HARDWARE_ACCELERATOR = HardwareAccelerator.SMART
+/** Default hardware accelerator for vision indexing (NPU on supported devices, falling back to Smart). */
+val DEFAULT_HARDWARE_ACCELERATOR = HardwareAccelerator.NPU
 
 /**
- * Resolves the effective concrete hardware accelerator ([HardwareAccelerator.GPU] or [HardwareAccelerator.CPU])
- * querying the system [android.os.PowerManager] from [context].
+ * Resolves the effective concrete hardware accelerator ([HardwareAccelerator.NPU],
+ * [HardwareAccelerator.GPU], or [HardwareAccelerator.CPU]).
  *
  * Policy:
+ * - If [HardwareAccelerator.NPU] is chosen and the device supports NPU ([com.localfind.embed.SocDetector.isNpuRuntimeAvailable]),
+ *   returns [HardwareAccelerator.NPU] permanently without switching on screen/battery state.
+ * - If [HardwareAccelerator.NPU] is chosen on an unsupported device, falls back to [HardwareAccelerator.SMART].
  * - If [HardwareAccelerator.GPU] or [HardwareAccelerator.CPU] is explicitly chosen, returns that choice.
  * - If [HardwareAccelerator.SMART], uses GPU only when the screen is off and Battery Saver is disabled.
  */
 fun HardwareAccelerator.resolveEffective(context: Context): HardwareAccelerator {
+    if (this == HardwareAccelerator.NPU) {
+        return if (com.localfind.embed.SocDetector.isNpuRuntimeAvailable(context)) {
+            HardwareAccelerator.NPU
+        } else {
+            HardwareAccelerator.SMART.resolveEffective(context)
+        }
+    }
     if (this != HardwareAccelerator.SMART) return this
     val powerManager = context.getSystemService(Context.POWER_SERVICE) as? android.os.PowerManager
     val isScreenOn = powerManager?.isInteractive == true
