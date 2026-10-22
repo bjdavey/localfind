@@ -69,8 +69,12 @@ Running on hardware NPUs requires both the **pre-compiled model file** (delivere
 | **Universal (All Phones)** | Any Qualcomm, MediaTek, Tensor, Exynos | **GPU (OpenCL / Vulkan)** | Base `:app` | Uses system GPU driver (`libOpenCL.so` or Vulkan driver). |
 | **Universal (All Phones)** | Any ARM64 or x86_64 device | **CPU (XNNPack FP16)** | Base `:app` | XNNPack is included in the MediaPipe / LiteRT-LM runtime. |
 
-- **Default NPU Policy & Smart Fallback:**
+- **Default NPU Policy & Modality Delegates:**
   - `HardwareAccelerator.NPU` is the default setting on supported devices and never auto-switches on screen/battery state so all indexed vectors stay in a consistent vector space.
+  - **Modality Delegates on NPU & GPU:**
+    - **Vision:** `setVisionDelegate(Delegate.NPU / Delegate.GPU)` executes image and video frame visual encoding on hardware NPU (e.g. Qualcomm Hexagon HTP) or GPU (OpenCL).
+    - **Text (PDF & Documents):** `setTextDelegate(Delegate.NPU / Delegate.GPU)` executes text embedding for PDF page passages, text files, and search queries on hardware NPU or GPU, with graceful fallback to CPU.
+    - **Audio:** `setAudioDelegate(Delegate.CPU)` remains on CPU as LiteRT audio mel-spectrogram STFT frontends require CPU execution.
   - On devices that do not support NPU (`SocDetector.isNpuRuntimeAvailable(context) == false`), LocalFind disables the NPU option in Settings and automatically falls back to **`SMART` mode** (`GPU` when screen is off and Battery Saver is off, `CPU` when screen is on).
 - **Deployment & Multi-Device Testing Strategy:**
   - **Google Play:** Google Play AI Pack (`:ai_pack:embedding_model`, `fast-follow` delivery extracted directly to disk) + Play Feature Delivery (`:litert_npu_runtime_libraries:*`, `install-time` split APKs conditioned on `device_targeting_configuration.xml`).
@@ -148,7 +152,7 @@ All variables are persisted locally using native Android `SharedPreferences` ([S
 | Indexing | Video Include Audio | `false` | Whether to decode and embed audio tracks alongside video keyframes |
 | Indexing | Video Skip Similar Chunks | `true` | Skip redundant consecutive video windows (`>= 85%` luminance similarity) |
 | Indexing | Max Image Dimension | `512` px | Maximum dimension for image decoding (video frames use `256` px hardware downsampling) |
-| Acceleration | Vision Accelerator | `NPU` | Hardware accelerator policy: `NPU` (Default on supported SoCs), `SMART` (Auto fallback on unsupported devices), `GPU` (Faster), `CPU` (Cool & Smooth UI) |
+| Acceleration | Hardware Accelerator | `NPU` | Hardware accelerator policy: `NPU` (Default on supported SoCs with NPU vision + NPU text), `SMART` (Auto fallback on unsupported devices), `GPU` (Faster), `CPU` (Cool & Smooth UI) |
 
 ## 10. Offline Guarantee
 

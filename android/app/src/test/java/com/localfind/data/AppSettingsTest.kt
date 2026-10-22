@@ -17,8 +17,8 @@ class AppSettingsTest {
         val settings = AppSettings()
 
         assertEquals(false, settings.darkMode)
-        // User explicitly requested Similarity Threshold default 0.6
-        assertEquals(0.6f, settings.similarityThreshold, 0.0001f)
+        // User explicitly requested Similarity Threshold default 0.3 (adapted for NPU support)
+        assertEquals(0.3f, settings.similarityThreshold, 0.0001f)
         assertEquals(10, settings.topK)
         assertEquals(500, settings.textChunkSize)
         assertEquals(100, settings.textChunkOverlap)
@@ -168,7 +168,7 @@ class AppSettingsTest {
 
         // 1. Initial state defaults
         val initial = store.load()
-        assertEquals(0.6f, initial.similarityThreshold, 0.0001f)
+        assertEquals(0.3f, initial.similarityThreshold, 0.0001f)
         assertEquals(10, initial.topK)
 
         // 2. Save custom settings
@@ -182,7 +182,7 @@ class AppSettingsTest {
 
         // 3. Resetting user preferences resets to defaults
         val reset = store.reset(defaultDarkMode = false)
-        assertEquals(0.6f, reset.similarityThreshold, 0.0001f)
+        assertEquals(0.3f, reset.similarityThreshold, 0.0001f)
         assertEquals(10, reset.topK)
         assertEquals(false, reset.darkMode)
     }

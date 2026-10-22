@@ -147,8 +147,9 @@ class GpuVsNpuBenchmarkTest {
 
         val npuModelName = SocDetector.resolveModelName(context, HardwareAccelerator.NPU)
         Embedder(context, HardwareAccelerator.NPU, npuModelName).use { embedder ->
-            Log.i(TAG, "Embedder initialized: isNpu=${embedder.isNpuVisionEnabled}, isGpu=${embedder.isGpuVisionEnabled}")
-            assertTrue("NPU must be active", embedder.isNpuVisionEnabled)
+            Log.i(TAG, "Embedder initialized: isNpuVision=${embedder.isNpuVisionEnabled}, isNpuText=${embedder.isNpuTextEnabled}, isGpu=${embedder.isGpuVisionEnabled}")
+            assertTrue("NPU vision must be active", embedder.isNpuVisionEnabled)
+            assertTrue("NPU text must be active for fast PDF/text indexing", embedder.isNpuTextEnabled)
 
             // 1. Text embedding test
             val t0 = System.currentTimeMillis()

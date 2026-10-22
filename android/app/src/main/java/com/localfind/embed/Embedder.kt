@@ -67,10 +67,21 @@ class Embedder(
     val isNpuVisionEnabled: Boolean
 
     /**
+     * Whether NPU acceleration is actively enabled for text encoding (e.g. PDF indexing, text files, queries).
+     * When true, text encoding executes via dedicated hardware NPU.
+     */
+    val isNpuTextEnabled: Boolean
+
+    /**
      * Whether GPU acceleration is actively enabled for the vision encoder.
      * When false, vision encoding executes via CPU (XNNPack).
      */
     val isGpuVisionEnabled: Boolean
+
+    /**
+     * Whether GPU acceleration is actively enabled for text encoding (e.g. PDF indexing, text files, queries).
+     */
+    val isGpuTextEnabled: Boolean
 
     init {
         // Locate the model file (from Play AI Pack or internal storage), copying from staging paths if missing.
@@ -83,38 +94,66 @@ class Embedder(
         }
 
         var createdEmbedder: UniversalEmbedder? = null
-        var npuSuccess = false
-        var gpuSuccess = false
+        var npuVisionSuccess = false
+        var npuTextSuccess = false
+        var gpuVisionSuccess = false
+        var gpuTextSuccess = false
 
         if (effectiveAccelerator == HardwareAccelerator.NPU) {
+            // Link NPU dispatch and QNN/NeuroPilot runtime libraries from nativeLibraryDir into filesDir
+            SocDetector.ensureDispatchLibraries(context)
+            model.parentFile?.takeIf { it != context.filesDir && it.canWrite() }?.let {
+                SocDetector.ensureDispatchLibraries(context, it)
+            }
+
+            val npuBaseOptions = BaseOptions.builder()
+                .setModelAssetPath(model.absolutePath)
+                .setDelegate(com.google.mediapipe.tasks.core.Delegate.CPU)
+                .build()
+
+            // Attempt Text=NPU + Vision=NPU (Audio executes on CPU for DSP mel-spectrogram frontend)
             try {
-                // Link NPU dispatch and QNN/NeuroPilot runtime libraries from nativeLibraryDir into filesDir
-                SocDetector.ensureDispatchLibraries(context)
-                model.parentFile?.takeIf { it != context.filesDir && it.canWrite() }?.let {
-                    SocDetector.ensureDispatchLibraries(context, it)
-                }
-
-                val npuBaseOptions = BaseOptions.builder()
-                    .setModelAssetPath(model.absolutePath)
-                    .setDelegate(com.google.mediapipe.tasks.core.Delegate.CPU)
-                    .build()
-
-                // Attempt NPU acceleration for vision encoding via nativeLibraryDir dispatch
-                val npuOptions = UniversalEmbedderOptions.builder()
+                val textVisionOptions = UniversalEmbedderOptions.builder()
                     .setBaseOptions(npuBaseOptions)
                     .setL2Normalize(true)
                     .setVisionTokensPerImage(DEFAULT_VISION_TOKENS_PER_IMAGE)
                     .setCacheDir(context.cacheDir.absolutePath)
-                    .setTextDelegate(com.google.mediapipe.tasks.core.Delegate.CPU)
+                    .setTextDelegate(com.google.mediapipe.tasks.core.Delegate.NPU)
                     .setAudioDelegate(com.google.mediapipe.tasks.core.Delegate.CPU)
                     .setVisionDelegate(com.google.mediapipe.tasks.core.Delegate.NPU)
                     .build()
 
-                createdEmbedder = UniversalEmbedder.createFromOptions(context, npuOptions)
-                npuSuccess = true
-                Log.i(TAG, "UniversalEmbedder successfully initialized with NPU vision acceleration (configured=$configuredAccelerator, effective=$effectiveAccelerator).")
+                val candidate = UniversalEmbedder.createFromOptions(context, textVisionOptions)
+                // Warm up text embedding to verify graph execution on NPU
+                candidate.embedText("localfind npu warmup")
+                createdEmbedder = candidate
+                npuVisionSuccess = true
+                npuTextSuccess = true
+                Log.i(TAG, "UniversalEmbedder successfully initialized with Text=NPU and Vision=NPU (Audio=CPU).")
             } catch (t: Throwable) {
-                Log.w(TAG, "NPU vision acceleration unavailable or failed to initialize (${t.message}). Falling back to Smart Mode (GPU/CPU).", t)
+                Log.w(TAG, "Text+Vision NPU initialization or warmup failed: ${t.message}. Falling back to Vision-only NPU.", t)
+            }
+
+            // Fallback: Vision-only NPU (Text=CPU, Audio=CPU, Vision=NPU)
+            if (createdEmbedder == null) {
+                try {
+                    val visionOnlyOptions = UniversalEmbedderOptions.builder()
+                        .setBaseOptions(npuBaseOptions)
+                        .setL2Normalize(true)
+                        .setVisionTokensPerImage(DEFAULT_VISION_TOKENS_PER_IMAGE)
+                        .setCacheDir(context.cacheDir.absolutePath)
+                        .setTextDelegate(com.google.mediapipe.tasks.core.Delegate.CPU)
+                        .setAudioDelegate(com.google.mediapipe.tasks.core.Delegate.CPU)
+                        .setVisionDelegate(com.google.mediapipe.tasks.core.Delegate.NPU)
+                        .build()
+
+                    createdEmbedder = UniversalEmbedder.createFromOptions(context, visionOnlyOptions)
+                    npuVisionSuccess = true
+                    npuTextSuccess = false
+                    Log.i(TAG, "UniversalEmbedder successfully initialized with Vision-only NPU (Text=CPU, Audio=CPU).")
+                } catch (t: Throwable) {
+                    Log.w(TAG, "NPU vision acceleration unavailable or failed to initialize (${t.message}). Falling back to Smart Mode (GPU/CPU).", t)
+                }
             }
         }
 
@@ -135,22 +174,47 @@ class Embedder(
             .build()
 
         if (createdEmbedder == null && fallbackEffective == HardwareAccelerator.GPU) {
+            // Attempt 1: Text=GPU + Vision=GPU (Audio=CPU)
             try {
-                // Attempt GPU acceleration for vision encoding (images and video frame indexing).
-                val gpuOptions = UniversalEmbedderOptions.builder()
+                val fullGpuOptions = UniversalEmbedderOptions.builder()
                     .setBaseOptions(fallbackBaseOptions)
                     .setL2Normalize(true)
                     .setVisionTokensPerImage(DEFAULT_VISION_TOKENS_PER_IMAGE)
-                    .setTextDelegate(com.google.mediapipe.tasks.core.Delegate.CPU)
+                    .setTextDelegate(com.google.mediapipe.tasks.core.Delegate.GPU)
                     .setAudioDelegate(com.google.mediapipe.tasks.core.Delegate.CPU)
                     .setVisionDelegate(com.google.mediapipe.tasks.core.Delegate.GPU)
                     .build()
 
-                createdEmbedder = UniversalEmbedder.createFromOptions(context, gpuOptions)
-                gpuSuccess = true
-                Log.i(TAG, "UniversalEmbedder initialized with GPU vision acceleration (configured=$configuredAccelerator, effective=$fallbackEffective).")
+                val candidate = UniversalEmbedder.createFromOptions(context, fullGpuOptions)
+                // Warm up text embedding to verify graph execution on GPU
+                candidate.embedText("localfind gpu warmup")
+                createdEmbedder = candidate
+                gpuVisionSuccess = true
+                gpuTextSuccess = true
+                Log.i(TAG, "UniversalEmbedder initialized with GPU text and vision acceleration (configured=$configuredAccelerator, effective=$fallbackEffective).")
             } catch (t: Throwable) {
-                Log.w(TAG, "GPU vision acceleration unavailable or failed to initialize (${t.message}). Falling back to CPU vision.", t)
+                Log.w(TAG, "GPU text acceleration unavailable or failed to initialize (${t.message}). Falling back to GPU vision only.", t)
+            }
+
+            // Attempt 2: Vision-only GPU (Text=CPU, Audio=CPU, Vision=GPU)
+            if (createdEmbedder == null) {
+                try {
+                    val visionOnlyGpuOptions = UniversalEmbedderOptions.builder()
+                        .setBaseOptions(fallbackBaseOptions)
+                        .setL2Normalize(true)
+                        .setVisionTokensPerImage(DEFAULT_VISION_TOKENS_PER_IMAGE)
+                        .setTextDelegate(com.google.mediapipe.tasks.core.Delegate.CPU)
+                        .setAudioDelegate(com.google.mediapipe.tasks.core.Delegate.CPU)
+                        .setVisionDelegate(com.google.mediapipe.tasks.core.Delegate.GPU)
+                        .build()
+
+                    createdEmbedder = UniversalEmbedder.createFromOptions(context, visionOnlyGpuOptions)
+                    gpuVisionSuccess = true
+                    gpuTextSuccess = false
+                    Log.i(TAG, "UniversalEmbedder initialized with GPU vision acceleration (configured=$configuredAccelerator, effective=$fallbackEffective).")
+                } catch (t: Throwable) {
+                    Log.w(TAG, "GPU vision acceleration unavailable or failed to initialize (${t.message}). Falling back to CPU vision.", t)
+                }
             }
         }
 
@@ -170,8 +234,10 @@ class Embedder(
         }
 
         embedder = createdEmbedder
-        isNpuVisionEnabled = npuSuccess
-        isGpuVisionEnabled = gpuSuccess
+        isNpuVisionEnabled = npuVisionSuccess
+        isNpuTextEnabled = npuTextSuccess
+        isGpuVisionEnabled = gpuVisionSuccess
+        isGpuTextEnabled = gpuTextSuccess
     }
 
     /**
