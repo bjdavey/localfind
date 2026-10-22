@@ -76,7 +76,7 @@ fun HardwareAccelerator.resolveEffective(context: Context): HardwareAccelerator 
 }
 
 /** Default minimum cosine similarity score required for search results (user-requested default: 0.6). */
-const val DEFAULT_SIMILARITY_THRESHOLD = 0.6f
+const val DEFAULT_SIMILARITY_THRESHOLD = 0.3f
 
 /** Default maximum number of top nearest-neighbor search results returned. */
 const val DEFAULT_TOP_K = 10
