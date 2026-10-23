@@ -268,20 +268,6 @@ class FileStore(context: Context) : SQLiteOpenHelper(
     }
 
     /**
-     * Reassigns a file's containing folder. Passing `null` moves the file to library root.
-     */
-    fun updateFileFolder(uri: String, folderId: String?) {
-        val values = ContentValues().apply {
-            if (folderId != null) {
-                put("folder_id", folderId)
-            } else {
-                putNull("folder_id")
-            }
-        }
-        writableDatabase.update(TABLE_FILES, values, "uri = ?", arrayOf(uri))
-    }
-
-    /**
      * Reassigns multiple files' containing folder in a single atomic database transaction.
      * Passing `null` moves the files to library root.
      */
@@ -430,9 +416,7 @@ class FileStore(context: Context) : SQLiteOpenHelper(
     /**
      * Deletes an imported file record by its URI.
      */
-    fun delete(uri: String) {
-        writableDatabase.delete(TABLE_FILES, "uri = ?", arrayOf(uri))
-    }
+    fun delete(uri: String) = deleteFiles(listOf(uri))
 
     /**
      * Deletes multiple imported file records by their URIs inside an atomic transaction.

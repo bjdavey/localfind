@@ -52,11 +52,8 @@ import com.localfind.R
 import com.localfind.search.SearchResult
 import com.localfind.ui.gallery.GalleryCategory
 import com.localfind.ui.gallery.ThumbnailHelper
-import com.localfind.ui.theme.BadgeAudio
-import com.localfind.ui.theme.BadgeImage
-import com.localfind.ui.theme.BadgePdf
-import com.localfind.ui.theme.BadgeText
-import com.localfind.ui.theme.BadgeVideo
+import com.localfind.ui.gallery.badgeColor
+import com.localfind.ui.gallery.rememberFilePreview
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 
@@ -120,28 +117,14 @@ fun SearchResultCard(
         if (category == GalleryCategory.PDFS && result.location > 0) result.location.toInt() else null
     }
 
-    var previewData by remember(result.fileUri, videoTimeOffset, pdfPageNumber) {
-        mutableStateOf(
-            if (result.fileUri.isNotBlank()) {
-                ThumbnailHelper.getCachedPreview(result.fileUri, videoTimeOffset, pdfPageNumber)
-            } else null
-        )
-    }
-
-    LaunchedEffect(result.fileUri, videoTimeOffset, pdfPageNumber) {
-        if (previewData == null && result.fileUri.isNotBlank() && category != GalleryCategory.PHOTOS) {
-            previewData = withContext(Dispatchers.IO) {
-                ThumbnailHelper.loadPreviewBlocking(
-                    context = context,
-                    uriString = result.fileUri,
-                    fileName = result.fileName,
-                    mimeType = null,
-                    timeOffsetMs = videoTimeOffset,
-                    pageNumber = pdfPageNumber
-                )
-            }
-        }
-    }
+    val previewData = rememberFilePreview(
+        uri = result.fileUri,
+        fileName = result.fileName,
+        mimeType = null,
+        skip = category == GalleryCategory.PHOTOS,
+        timeOffsetMs = videoTimeOffset,
+        pageNumber = pdfPageNumber
+    )
 
     Card(
         modifier = modifier
@@ -337,14 +320,7 @@ fun SearchResultCard(
                 }
 
                 // Sub-header: Type Badge + Location Offset
-                val typeBadgeColor = when (category) {
-                    GalleryCategory.PHOTOS -> BadgeImage
-                    GalleryCategory.VIDEOS -> BadgeVideo
-                    GalleryCategory.PDFS -> BadgePdf
-                    GalleryCategory.TEXT -> BadgeText
-                    GalleryCategory.AUDIO -> BadgeAudio
-                    GalleryCategory.ALL -> BadgeImage
-                }
+                val typeBadgeColor = category.badgeColor
 
                 Row(
                     horizontalArrangement = Arrangement.spacedBy(8.dp),

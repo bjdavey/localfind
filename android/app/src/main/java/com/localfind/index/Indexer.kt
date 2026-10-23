@@ -16,6 +16,9 @@ import com.localfind.index.document.indexTextFile
 import com.localfind.index.image.indexImageFile
 import com.localfind.index.video.indexVideoFile
 
+/** Error message of an [IndexResult] that stopped because the user cancelled or paused indexing. */
+const val INDEXING_CANCELLED_MESSAGE = "Indexing cancelled"
+
 /**
  * Result report from indexing a file.
  *
@@ -158,12 +161,12 @@ class Indexer(
         embedItem: (item: T) -> ChunkEmbeddingData
     ): IndexResult {
         if (isCancelled()) {
-            return IndexResult(0, false, "Indexing cancelled")
+            return IndexResult(0, false, INDEXING_CANCELLED_MESSAGE)
         }
 
         if (items.isEmpty()) {
             if (deleteOnEmpty) {
-                embeddingStore.deleteByMetadata(mapOf("fileId" to file.uri))
+                embeddingStore.deleteByFileUri(file.uri)
             }
             IndexingResumeManager.clearResumeChunk(context, file.uri)
             onProgress?.invoke(1, 1)
@@ -172,7 +175,7 @@ class Indexer(
 
         val startChunk = IndexingResumeManager.getResumeChunk(context, file.uri, file.size, items.size)
         if (IndexingResumeLogic.shouldDeleteExistingChunks(startChunk)) {
-            embeddingStore.deleteByMetadata(mapOf("fileId" to file.uri))
+            embeddingStore.deleteByFileUri(file.uri)
         } else {
             onProgress?.invoke(startChunk, items.size)
         }
@@ -186,7 +189,7 @@ class Indexer(
                         records.clear()
                     }
                     IndexingResumeManager.setResumeChunk(context, file.uri, index, file.size)
-                    return IndexResult(index, false, "Indexing cancelled")
+                    return IndexResult(index, false, INDEXING_CANCELLED_MESSAGE)
                 }
 
                 onProgress?.invoke(index + 1, items.size)
@@ -223,7 +226,7 @@ class Indexer(
         }
 
         if (isCancelled()) {
-            return IndexResult(items.size, false, "Indexing cancelled")
+            return IndexResult(items.size, false, INDEXING_CANCELLED_MESSAGE)
         }
 
         IndexingResumeManager.clearResumeChunk(context, file.uri)

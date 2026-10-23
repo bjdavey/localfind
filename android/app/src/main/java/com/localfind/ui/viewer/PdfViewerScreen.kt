@@ -203,8 +203,9 @@ fun PdfViewerScreen(
                                 )
                             }
                         ) { fragment ->
+                            // initialPage comes from the arguments bundle on creation and from the
+                            // LaunchedEffect above whenever params change
                             fragmentRef = fragment
-                            fragment.initialPage = params.initialPage
                             fragment.documentUri = parsedDocUri
                             fragment.onLoadSuccess = {
                                 isDocumentLoading = false

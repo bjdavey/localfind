@@ -10,6 +10,7 @@ import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.ColumnScope
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.aspectRatio
@@ -56,11 +57,8 @@ import com.localfind.data.Folder
 import com.localfind.data.ImportedFile
 import com.localfind.data.IndexingStatus
 import com.localfind.index.Indexer
-import com.localfind.ui.theme.BadgeAudio
-import com.localfind.ui.theme.BadgeImage
 import com.localfind.ui.theme.BadgePdf
 import com.localfind.ui.theme.BadgeText
-import com.localfind.ui.theme.BadgeVideo
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 
@@ -100,22 +98,12 @@ fun MediaGalleryTile(
         Indexer.isPdfNameOrMime(file.displayName, file.mimeType)
     }
 
-    var previewData by remember(file.uri) {
-        mutableStateOf(ThumbnailHelper.getCachedPreview(file.uri))
-    }
-
-    LaunchedEffect(file.uri) {
-        if (previewData == null && category != GalleryCategory.PHOTOS) {
-            previewData = withContext(Dispatchers.IO) {
-                ThumbnailHelper.loadPreviewBlocking(
-                    context = context,
-                    uriString = file.uri,
-                    fileName = file.displayName,
-                    mimeType = file.mimeType
-                )
-            }
-        }
-    }
+    val previewData = rememberFilePreview(
+        uri = file.uri,
+        fileName = file.displayName,
+        mimeType = file.mimeType,
+        skip = category == GalleryCategory.PHOTOS
+    )
 
     val isPending = file.indexingStatus == IndexingStatus.PENDING
     val isFailed = file.indexingStatus == IndexingStatus.FAILED
@@ -265,159 +253,54 @@ fun MediaGalleryTile(
             // 2. CENTER CIRCULAR PROGRESS & CONTEXTUAL ACTIONS
             // -----------------------------------------------------------------
             if (isIndexing) {
-                Box(
-                    modifier = Modifier.fillMaxSize(),
-                    contentAlignment = Alignment.Center
-                ) {
-                    Column(
-                        horizontalAlignment = Alignment.CenterHorizontally,
-                        verticalArrangement = Arrangement.spacedBy(8.dp),
-                        modifier = Modifier.padding(horizontal = 8.dp)
-                    ) {
-                        // Running animated circular progress (determinate with % or indeterminate)
-                        if (activeProgressFraction > 0f) {
-                            Box(contentAlignment = Alignment.Center) {
-                                CircularProgressIndicator(
-                                    progress = { activeProgressFraction },
-                                    modifier = Modifier.size(38.dp),
-                                    color = Color.White.copy(alpha = 0.85f),
-                                    trackColor = Color.White.copy(alpha = 0.25f),
-                                    strokeWidth = 3.5.dp
-                                )
-                                Text(
-                                    text = "${(activeProgressFraction * 100).toInt()}%",
-                                    style = MaterialTheme.typography.labelSmall,
-                                    fontWeight = FontWeight.Bold,
-                                    color = Color.White
-                                )
-                            }
-                        } else {
+                TileStatusOverlay {
+                    // Running animated circular progress (determinate with % or indeterminate)
+                    if (activeProgressFraction > 0f) {
+                        Box(contentAlignment = Alignment.Center) {
                             CircularProgressIndicator(
-                                modifier = Modifier.size(36.dp),
+                                progress = { activeProgressFraction },
+                                modifier = Modifier.size(38.dp),
                                 color = Color.White.copy(alpha = 0.85f),
                                 trackColor = Color.White.copy(alpha = 0.25f),
                                 strokeWidth = 3.5.dp
                             )
+                            Text(
+                                text = "${(activeProgressFraction * 100).toInt()}%",
+                                style = MaterialTheme.typography.labelSmall,
+                                fontWeight = FontWeight.Bold,
+                                color = Color.White
+                            )
                         }
-                        // Actively indexing: show Cancel only (pausing is queue-wide, from the status banner)
-                        Row(
-                            horizontalArrangement = Arrangement.spacedBy(6.dp),
-                            verticalAlignment = Alignment.CenterVertically
-                        ) {
-                            if (onCancelIndex != null) {
-                                StatusActionButton(
-                                    text = "Cancel",
-                                    iconRes = R.drawable.ic_close,
-                                    contentColor = Color(0xFFFF8A80),
-                                    onClick = onCancelIndex
-                                )
-                            }
-                        }
+                    } else {
+                        CircularProgressIndicator(
+                            modifier = Modifier.size(36.dp),
+                            color = Color.White.copy(alpha = 0.85f),
+                            trackColor = Color.White.copy(alpha = 0.25f),
+                            strokeWidth = 3.5.dp
+                        )
                     }
+                    // Actively indexing: show Cancel only (pausing is queue-wide, from the status banner)
+                    CancelIndexButton(onCancelIndex)
                 }
             } else if (isPending) {
-                Box(
-                    modifier = Modifier.fillMaxSize(),
-                    contentAlignment = Alignment.Center
-                ) {
-                    Column(
-                        horizontalAlignment = Alignment.CenterHorizontally,
-                        verticalArrangement = Arrangement.spacedBy(8.dp),
-                        modifier = Modifier.padding(horizontal = 8.dp)
-                    ) {
-                        if (isQueuePaused) {
-                            // Freezed circular progress ring in muted outline with pause icon inside
-                            Box(
-                                modifier = Modifier
-                                    .size(38.dp)
-                                    .clip(CircleShape)
-                                    .border(3.5.dp, Color.White.copy(alpha = 0.55f), CircleShape),
-                                contentAlignment = Alignment.Center
-                            ) {
-                                Icon(
-                                    painter = painterResource(R.drawable.ic_pause),
-                                    contentDescription = null,
-                                    tint = Color.White.copy(alpha = 0.75f),
-                                    modifier = Modifier.size(16.dp)
-                                )
-                            }
-                            // Paused: show Cancel only (resuming is queue-wide, from the status banner)
-                            Row(
-                                horizontalArrangement = Arrangement.spacedBy(6.dp),
-                                verticalAlignment = Alignment.CenterVertically
-                            ) {
-                                if (onCancelIndex != null) {
-                                    StatusActionButton(
-                                        text = "Cancel",
-                                        iconRes = R.drawable.ic_close,
-                                        contentColor = Color(0xFFFF8A80),
-                                        onClick = onCancelIndex
-                                    )
-                                }
-                            }
-                        } else {
-                            // Queued / Pending circular progress ring in muted outline
-                            Box(
-                                modifier = Modifier
-                                    .size(38.dp)
-                                    .clip(CircleShape)
-                                    .border(3.5.dp, Color.White.copy(alpha = 0.55f), CircleShape),
-                                contentAlignment = Alignment.Center
-                            ) {
-                                Icon(
-                                    painter = painterResource(R.drawable.ic_hourglass_empty),
-                                    contentDescription = null,
-                                    tint = Color.White.copy(alpha = 0.75f),
-                                    modifier = Modifier.size(16.dp)
-                                )
-                            }
-                            // Pending in queue: show Cancel only
-                            if (onCancelIndex != null) {
-                                StatusActionButton(
-                                    text = "Cancel",
-                                    iconRes = R.drawable.ic_close,
-                                    contentColor = Color(0xFFFF8A80),
-                                    onClick = onCancelIndex
-                                )
-                            }
-                        }
-                    }
+                TileStatusOverlay {
+                    // Paused or queued: muted ring with a pause / hourglass icon inside.
+                    // Pending files only offer Cancel (resuming is queue-wide, from the status banner).
+                    StatusRing(if (isQueuePaused) R.drawable.ic_pause else R.drawable.ic_hourglass_empty)
+                    CancelIndexButton(onCancelIndex)
                 }
             } else if (isFailed) {
-                Box(
-                    modifier = Modifier.fillMaxSize(),
-                    contentAlignment = Alignment.Center
-                ) {
-                    Column(
-                        horizontalAlignment = Alignment.CenterHorizontally,
-                        verticalArrangement = Arrangement.spacedBy(8.dp),
-                        modifier = Modifier.padding(horizontal = 8.dp)
-                    ) {
-                        // Failed circular progress ring in muted outline with warning icon inside
-                        Box(
-                            modifier = Modifier
-                                .size(38.dp)
-                                .clip(CircleShape)
-                                .border(3.5.dp, Color.White.copy(alpha = 0.55f), CircleShape),
-                            contentAlignment = Alignment.Center
-                        ) {
-                            Icon(
-                                painter = painterResource(R.drawable.ic_warning),
-                                contentDescription = null,
-                                tint = Color.White.copy(alpha = 0.75f),
-                                modifier = Modifier.size(16.dp)
-                            )
-                        }
-                        // Failed: show Retry only
-                        if (onRetryIndex != null) {
-                            StatusActionButton(
-                                text = "Try again",
-                                iconRes = R.drawable.ic_refresh,
-                                contentColor = Color.White,
-                                backgroundColor = MaterialTheme.colorScheme.primary.copy(alpha = 0.85f),
-                                onClick = onRetryIndex
-                            )
-                        }
+                TileStatusOverlay {
+                    // Failed: muted ring with a warning icon, offering Retry only
+                    StatusRing(R.drawable.ic_warning)
+                    if (onRetryIndex != null) {
+                        StatusActionButton(
+                            text = "Try again",
+                            iconRes = R.drawable.ic_refresh,
+                            contentColor = Color.White,
+                            backgroundColor = MaterialTheme.colorScheme.primary.copy(alpha = 0.85f),
+                            onClick = onRetryIndex
+                        )
                     }
                 }
             }
@@ -425,23 +308,8 @@ fun MediaGalleryTile(
             // -----------------------------------------------------------------
             // 3. TOP-LEFT & TOP-RIGHT BADGES (Modality Badge + Menu)
             // -----------------------------------------------------------------
-            val badgeColor = when (category) {
-                GalleryCategory.PHOTOS -> BadgeImage
-                GalleryCategory.VIDEOS -> BadgeVideo
-                GalleryCategory.PDFS -> BadgePdf
-                GalleryCategory.TEXT -> BadgeText
-                GalleryCategory.AUDIO -> BadgeAudio
-                GalleryCategory.ALL -> BadgeImage
-            }
-
-            val badgeIconRes = when (category) {
-                GalleryCategory.VIDEOS -> R.drawable.ic_videocam
-                GalleryCategory.AUDIO -> R.drawable.ic_audiotrack
-                GalleryCategory.PDFS -> R.drawable.ic_picture_as_pdf
-                GalleryCategory.TEXT -> R.drawable.ic_description
-                GalleryCategory.PHOTOS -> R.drawable.ic_image
-                GalleryCategory.ALL -> R.drawable.ic_description
-            }
+            val badgeColor = category.badgeColor
+            val badgeIconRes = category.iconResId
 
             // Duration text specifically for video and audio (e.g. "02:45"), null for other file types
             val durationText = if (category == GalleryCategory.VIDEOS || category == GalleryCategory.AUDIO) {
@@ -593,6 +461,54 @@ fun MediaGalleryTile(
                 )
             }
         }
+    }
+}
+
+/** Centered column shared by the tile's indexing / queued / failed status overlays. */
+@Composable
+private fun TileStatusOverlay(content: @Composable ColumnScope.() -> Unit) {
+    Box(
+        modifier = Modifier.fillMaxSize(),
+        contentAlignment = Alignment.Center
+    ) {
+        Column(
+            horizontalAlignment = Alignment.CenterHorizontally,
+            verticalArrangement = Arrangement.spacedBy(8.dp),
+            modifier = Modifier.padding(horizontal = 8.dp),
+            content = content
+        )
+    }
+}
+
+/** Frozen circular ring in a muted outline with a status [iconRes] inside (paused, queued, failed). */
+@Composable
+private fun StatusRing(iconRes: Int) {
+    Box(
+        modifier = Modifier
+            .size(38.dp)
+            .clip(CircleShape)
+            .border(3.5.dp, Color.White.copy(alpha = 0.55f), CircleShape),
+        contentAlignment = Alignment.Center
+    ) {
+        Icon(
+            painter = painterResource(iconRes),
+            contentDescription = null,
+            tint = Color.White.copy(alpha = 0.75f),
+            modifier = Modifier.size(16.dp)
+        )
+    }
+}
+
+/** Red "Cancel" pill used on active and queued tiles. */
+@Composable
+private fun CancelIndexButton(onCancel: (() -> Unit)?) {
+    if (onCancel != null) {
+        StatusActionButton(
+            text = "Cancel",
+            iconRes = R.drawable.ic_close,
+            contentColor = Color(0xFFFF8A80),
+            onClick = onCancel
+        )
     }
 }
 

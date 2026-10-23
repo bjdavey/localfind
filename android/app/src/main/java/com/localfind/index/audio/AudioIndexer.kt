@@ -3,6 +3,7 @@ package com.localfind.index.audio
 import androidx.core.net.toUri
 import com.localfind.data.ImportedFile
 import com.localfind.index.ChunkEmbeddingData
+import com.localfind.index.INDEXING_CANCELLED_MESSAGE
 import com.localfind.index.IndexResult
 import com.localfind.index.Indexer
 import com.localfind.ui.search.SearchResultFormatter
@@ -27,7 +28,7 @@ fun Indexer.indexAudioFile(
         return IndexResult(0, false, "Not a supported audio file")
     }
     if (isCancelled()) {
-        return IndexResult(0, false, "Indexing cancelled")
+        return IndexResult(0, false, INDEXING_CANCELLED_MESSAGE)
     }
 
     val pcm = try {
@@ -37,7 +38,7 @@ fun Indexer.indexAudioFile(
     }
 
     if (isCancelled()) {
-        return IndexResult(0, false, "Indexing cancelled")
+        return IndexResult(0, false, INDEXING_CANCELLED_MESSAGE)
     }
 
     val windows = AudioChunker.windows(

@@ -3,6 +3,7 @@ package com.localfind.index.document
 import androidx.core.net.toUri
 import com.localfind.data.ImportedFile
 import com.localfind.index.ChunkEmbeddingData
+import com.localfind.index.INDEXING_CANCELLED_MESSAGE
 import com.localfind.index.IndexResult
 import com.localfind.index.Indexer
 import com.tom_roush.pdfbox.android.PDFBoxResourceLoader
@@ -36,7 +37,7 @@ fun Indexer.indexTextFile(
         return IndexResult(0, false, "Not a supported text file")
     }
     if (isCancelled()) {
-        return IndexResult(0, false, "Indexing cancelled")
+        return IndexResult(0, false, INDEXING_CANCELLED_MESSAGE)
     }
 
     val uri = file.uri.toUri()
@@ -49,7 +50,7 @@ fun Indexer.indexTextFile(
     }
 
     if (isCancelled()) {
-        return IndexResult(0, false, "Indexing cancelled")
+        return IndexResult(0, false, INDEXING_CANCELLED_MESSAGE)
     }
 
     val chunks = TextChunker.chunk(
@@ -96,7 +97,7 @@ fun Indexer.indexPdfFile(
         return IndexResult(0, false, "Not a supported PDF file")
     }
     if (isCancelled()) {
-        return IndexResult(0, false, "Indexing cancelled")
+        return IndexResult(0, false, INDEXING_CANCELLED_MESSAGE)
     }
 
     try {
@@ -119,7 +120,7 @@ fun Indexer.indexPdfFile(
                 val totalPages = document.numberOfPages
                 for (pageNum in 1..totalPages) {
                     if (isCancelled()) {
-                        return IndexResult(0, false, "Indexing cancelled")
+                        return IndexResult(0, false, INDEXING_CANCELLED_MESSAGE)
                     }
                     // Phase 1 (Text extraction): 0% to 15%
                     onProgress?.invoke(pageNum * 15 / totalPages.coerceAtLeast(1), 100)

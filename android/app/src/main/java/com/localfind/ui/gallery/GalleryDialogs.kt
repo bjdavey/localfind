@@ -37,6 +37,7 @@ import com.localfind.R
 import com.localfind.data.Folder
 import com.localfind.data.ImportedFile
 import com.localfind.data.IndexingStatus
+import com.localfind.index.Indexer
 import android.widget.Toast
 import androidx.compose.foundation.text.selection.SelectionContainer
 import androidx.compose.material3.HorizontalDivider
@@ -66,6 +67,9 @@ internal fun FileDetailsDialog(
     val friendlyPath = remember(originalPath) {
         FilePathHelper.formatUserFriendlyPath(originalPath)
     }
+    val category = remember(file.displayName, file.mimeType) {
+        ThumbnailHelper.categorizeFile(file.displayName, file.mimeType)
+    }
 
     AlertDialog(
         onDismissRequest = onDismiss,
@@ -74,15 +78,7 @@ internal fun FileDetailsDialog(
                 verticalAlignment = Alignment.CenterVertically,
                 horizontalArrangement = Arrangement.spacedBy(12.dp)
             ) {
-                val category = ThumbnailHelper.categorizeFile(file.displayName, file.mimeType)
-                val iconRes = when (category) {
-                    GalleryCategory.PHOTOS -> R.drawable.ic_image
-                    GalleryCategory.VIDEOS -> R.drawable.ic_videocam
-                    GalleryCategory.AUDIO -> R.drawable.ic_audiotrack
-                    GalleryCategory.PDFS -> R.drawable.ic_picture_as_pdf
-                    GalleryCategory.TEXT -> R.drawable.ic_description
-                    else -> R.drawable.ic_description
-                }
+                val iconRes = category.iconResId
                 Surface(
                     shape = RoundedCornerShape(10.dp),
                     color = MaterialTheme.colorScheme.primaryContainer,
@@ -139,12 +135,12 @@ internal fun FileDetailsDialog(
                         }
 
                         val friendlyType = when {
-                            file.displayName.endsWith(".pdf", ignoreCase = true) || file.mimeType == "application/pdf" -> "PDF Document"
+                            Indexer.isPdfNameOrMime(file.displayName, file.mimeType) -> "PDF Document"
                             file.displayName.endsWith(".txt", ignoreCase = true) -> "Text Document (.txt)"
                             file.displayName.endsWith(".md", ignoreCase = true) -> "Markdown Document (.md)"
-                            ThumbnailHelper.categorizeFile(file.displayName, file.mimeType) == GalleryCategory.PHOTOS -> "Photo"
-                            ThumbnailHelper.categorizeFile(file.displayName, file.mimeType) == GalleryCategory.VIDEOS -> "Video"
-                            ThumbnailHelper.categorizeFile(file.displayName, file.mimeType) == GalleryCategory.AUDIO -> "Audio"
+                            category == GalleryCategory.PHOTOS -> "Photo"
+                            category == GalleryCategory.VIDEOS -> "Video"
+                            category == GalleryCategory.AUDIO -> "Audio"
                             else -> file.mimeType ?: "File"
                         }
                         Row(
@@ -311,7 +307,6 @@ internal fun FileDetailsDialog(
 
                 // Open in phone gallery or native app ("Open in Gallery" or "Open original file")
                 if (onOpenExternal != null) {
-                    val category = ThumbnailHelper.categorizeFile(file.displayName, file.mimeType)
                     val externalLabel = when (category) {
                         GalleryCategory.PHOTOS -> "Open in Gallery"
                         else -> "Open original file"
@@ -331,7 +326,7 @@ internal fun FileDetailsDialog(
                 }
 
                 // Secondary actions: Search in File (or Search by image for photos) and Move to Folder
-                val isPhoto = ThumbnailHelper.categorizeFile(file.displayName, file.mimeType) == GalleryCategory.PHOTOS
+                val isPhoto = category == GalleryCategory.PHOTOS
                 val searchActionLabel = if (isPhoto) "Search by image" else "Search in file"
                 val searchActionShortLabel = "Search"
                 val searchActionIcon = if (isPhoto) R.drawable.ic_image else R.drawable.ic_search
@@ -633,6 +628,7 @@ internal fun CreateFolderDialog(
 
 /**
  * Dialog enabling users to move an imported file into a different folder or back to root.
+ * The file's current folder is excluded from the destinations.
  */
 @Composable
 internal fun MoveFileDialog(
@@ -641,8 +637,7 @@ internal fun MoveFileDialog(
     onMove: (String?) -> Unit,
     onDismiss: () -> Unit
 ) {
-    AlertDialog(
-        onDismissRequest = onDismiss,
+    MoveDestinationDialog(
         title = {
             Text(
                 text = "Move \"${file.displayName}\"",
@@ -650,91 +645,12 @@ internal fun MoveFileDialog(
                 overflow = TextOverflow.Ellipsis
             )
         },
-        text = {
-            Column(
-                modifier = Modifier.fillMaxWidth(),
-                verticalArrangement = Arrangement.spacedBy(8.dp)
-            ) {
-                Text(
-                    text = "Select destination folder:",
-                    style = MaterialTheme.typography.bodyMedium,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                )
-
-                // Root library option (if currently in a folder)
-                if (file.folderId != null) {
-                    Surface(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .clip(RoundedCornerShape(10.dp))
-                            .clickable { onMove(null) },
-                        color = MaterialTheme.colorScheme.surfaceVariant
-                    ) {
-                        Row(
-                            modifier = Modifier.padding(12.dp),
-                            verticalAlignment = Alignment.CenterVertically,
-                            horizontalArrangement = Arrangement.spacedBy(8.dp)
-                        ) {
-                            Icon(
-                                painter = painterResource(R.drawable.ic_home),
-                                contentDescription = null,
-                                modifier = Modifier.size(20.dp),
-                                tint = MaterialTheme.colorScheme.primary
-                            )
-                            Text(
-                                text = "Library Root",
-                                style = MaterialTheme.typography.bodyMedium,
-                                fontWeight = FontWeight.Medium
-                            )
-                        }
-                    }
-                }
-
-                val availableFolders = folders.filter { it.id != file.folderId }
-                if (availableFolders.isEmpty()) {
-                    Text(
-                        text = "No other folders created yet.",
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        modifier = Modifier.padding(vertical = 4.dp)
-                    )
-                } else {
-                    availableFolders.forEach { folder ->
-                        Surface(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .clip(RoundedCornerShape(10.dp))
-                                .clickable { onMove(folder.id) },
-                            color = MaterialTheme.colorScheme.surfaceVariant
-                        ) {
-                            Row(
-                                modifier = Modifier.padding(12.dp),
-                                verticalAlignment = Alignment.CenterVertically,
-                                horizontalArrangement = Arrangement.spacedBy(8.dp)
-                            ) {
-                                Icon(
-                                    painter = painterResource(R.drawable.ic_folder),
-                                    contentDescription = null,
-                                    modifier = Modifier.size(20.dp),
-                                    tint = MaterialTheme.colorScheme.primary
-                                )
-                                Text(
-                                    text = folder.name,
-                                    style = MaterialTheme.typography.bodyMedium,
-                                    fontWeight = FontWeight.Medium
-                                )
-                            }
-                        }
-                    }
-                }
-            }
-        },
-        confirmButton = {},
-        dismissButton = {
-            TextButton(onClick = onDismiss) {
-                Text("Cancel")
-            }
-        }
+        // Root library option only makes sense when the file currently lives in a folder
+        showRoot = file.folderId != null,
+        folders = folders.filter { it.id != file.folderId },
+        emptyText = "No other folders created yet.",
+        onMove = onMove,
+        onDismiss = onDismiss
     )
 }
 
@@ -748,14 +664,39 @@ internal fun MoveMultipleFilesDialog(
     onMove: (String?) -> Unit,
     onDismiss: () -> Unit
 ) {
-    AlertDialog(
-        onDismissRequest = onDismiss,
+    MoveDestinationDialog(
         title = {
             Text(
                 text = if (filesCount == 1) "Move 1 file" else "Move $filesCount files",
                 fontWeight = FontWeight.Bold
             )
         },
+        showRoot = true,
+        folders = folders,
+        emptyText = "No folders created yet.",
+        onMove = onMove,
+        onDismiss = onDismiss
+    )
+}
+
+/**
+ * Shared "pick a destination folder" dialog behind [MoveFileDialog] and [MoveMultipleFilesDialog].
+ *
+ * @param showRoot Whether to offer the "Library Root" destination (`onMove(null)`).
+ * @param folders Destination folders to list; [emptyText] is shown when there are none.
+ */
+@Composable
+private fun MoveDestinationDialog(
+    title: @Composable () -> Unit,
+    showRoot: Boolean,
+    folders: List<Folder>,
+    emptyText: String,
+    onMove: (String?) -> Unit,
+    onDismiss: () -> Unit
+) {
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = title,
         text = {
             Column(
                 modifier = Modifier.fillMaxWidth(),
@@ -767,67 +708,20 @@ internal fun MoveMultipleFilesDialog(
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
 
-                // Root library option
-                Surface(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .clip(RoundedCornerShape(10.dp))
-                        .clickable { onMove(null) },
-                    color = MaterialTheme.colorScheme.surfaceVariant
-                ) {
-                    Row(
-                        modifier = Modifier.padding(12.dp),
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.spacedBy(8.dp)
-                    ) {
-                        Icon(
-                            painter = painterResource(R.drawable.ic_home),
-                            contentDescription = null,
-                            modifier = Modifier.size(20.dp),
-                            tint = MaterialTheme.colorScheme.primary
-                        )
-                        Text(
-                            text = "Library Root",
-                            style = MaterialTheme.typography.bodyMedium,
-                            fontWeight = FontWeight.Medium
-                        )
-                    }
+                if (showRoot) {
+                    FolderDestinationRow(R.drawable.ic_home, "Library Root") { onMove(null) }
                 }
 
                 if (folders.isEmpty()) {
                     Text(
-                        text = "No folders created yet.",
+                        text = emptyText,
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                         modifier = Modifier.padding(vertical = 4.dp)
                     )
                 } else {
                     folders.forEach { folder ->
-                        Surface(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .clip(RoundedCornerShape(10.dp))
-                                .clickable { onMove(folder.id) },
-                            color = MaterialTheme.colorScheme.surfaceVariant
-                        ) {
-                            Row(
-                                modifier = Modifier.padding(12.dp),
-                                verticalAlignment = Alignment.CenterVertically,
-                                horizontalArrangement = Arrangement.spacedBy(8.dp)
-                            ) {
-                                Icon(
-                                    painter = painterResource(R.drawable.ic_folder),
-                                    contentDescription = null,
-                                    modifier = Modifier.size(20.dp),
-                                    tint = MaterialTheme.colorScheme.primary
-                                )
-                                Text(
-                                    text = folder.name,
-                                    style = MaterialTheme.typography.bodyMedium,
-                                    fontWeight = FontWeight.Medium
-                                )
-                            }
-                        }
+                        FolderDestinationRow(R.drawable.ic_folder, folder.name) { onMove(folder.id) }
                     }
                 }
             }
@@ -839,6 +733,36 @@ internal fun MoveMultipleFilesDialog(
             }
         }
     )
+}
+
+/** One tappable destination (root or folder) inside [MoveDestinationDialog]. */
+@Composable
+private fun FolderDestinationRow(iconRes: Int, label: String, onClick: () -> Unit) {
+    Surface(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clip(RoundedCornerShape(10.dp))
+            .clickable(onClick = onClick),
+        color = MaterialTheme.colorScheme.surfaceVariant
+    ) {
+        Row(
+            modifier = Modifier.padding(12.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(8.dp)
+        ) {
+            Icon(
+                painter = painterResource(iconRes),
+                contentDescription = null,
+                modifier = Modifier.size(20.dp),
+                tint = MaterialTheme.colorScheme.primary
+            )
+            Text(
+                text = label,
+                style = MaterialTheme.typography.bodyMedium,
+                fontWeight = FontWeight.Medium
+            )
+        }
+    }
 }
 
 /**

@@ -49,6 +49,7 @@ import androidx.core.net.toUri
 import coil.compose.AsyncImage
 import coil.compose.AsyncImagePainter
 import coil.request.ImageRequest
+import com.localfind.index.Indexer
 import com.localfind.R
 import com.localfind.data.FileOpener
 import kotlinx.coroutines.Dispatchers
@@ -91,8 +92,11 @@ fun ImageViewerScreen(
 
     // Detect if this image is a GIF (animated or static)
     val isGif = remember(params.fileName, params.uri) {
-        params.fileName.endsWith(".gif", ignoreCase = true) ||
-            try { context.contentResolver.getType(params.uri.toUri()) == "image/gif" } catch (_: Exception) { false }
+        Indexer.isGifNameOrMime(params.fileName, null) ||
+            Indexer.isGifNameOrMime(
+                "",
+                try { context.contentResolver.getType(params.uri.toUri()) } catch (_: Exception) { null }
+            )
     }
 
     // GIF animation state using Android's native ImageDecoder / AnimatedImageDrawable
@@ -257,7 +261,7 @@ fun ImageViewerScreen(
                 }
                 .pointerInput(params.uri) {
                     detectTransformGestures { _, pan, zoom, _ ->
-                        val newScale = (scale * zoom).coerceIn(1f, 5f)
+                        val newScale = PdfViewerHelper.clampZoom(scale, zoom, maxScale = 5f)
                         scale = newScale
                         if (newScale > 1f) {
                             offset += pan

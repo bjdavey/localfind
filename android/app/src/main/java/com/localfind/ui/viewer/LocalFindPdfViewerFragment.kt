@@ -61,22 +61,20 @@ class LocalFindPdfViewerFragment : PdfViewerFragment() {
      * Programmatically scrolls to a 1-based page number within the loaded document.
      */
     fun jumpToPage(pageOneBased: Int) {
-        val targetPage = pageOneBased.coerceAtLeast(1)
+        // toZeroBasedPage clamps to the document bounds (pages < 1 become the first page)
+        fun scrollToTarget() {
+            val count = pdfView.pdfDocument?.pageCount ?: 0
+            pdfView.scrollToPage(PdfViewerHelper.toZeroBasedPage(pageOneBased, count))
+        }
 
         val runScroll = Runnable {
             try {
-                val doc = pdfView.pdfDocument
-                val count = doc?.pageCount ?: 0
-                val zeroBasedPage = PdfViewerHelper.toZeroBasedPage(targetPage, count)
-                pdfView.scrollToPage(zeroBasedPage)
+                scrollToTarget()
             } catch (_: Exception) {
                 // If page layout has not yet finished, retry once after a short delay
                 view?.postDelayed({
                     try {
-                        val doc = pdfView.pdfDocument
-                        val count = doc?.pageCount ?: 0
-                        val zeroBasedPage = PdfViewerHelper.toZeroBasedPage(targetPage, count)
-                        pdfView.scrollToPage(zeroBasedPage)
+                        scrollToTarget()
                     } catch (_: Exception) {}
                 }, 150)
             }

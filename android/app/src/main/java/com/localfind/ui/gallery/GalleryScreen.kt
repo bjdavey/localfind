@@ -92,6 +92,7 @@ import com.localfind.index.IndexingProgress
 @Composable
 fun GalleryScreen(
     importedFiles: List<ImportedFile>,
+    availableCategories: List<GalleryCategory>,
     isIndexing: Boolean,
     statusMessage: String,
     indexingProgress: IndexingProgress = IndexingProgress(),
@@ -136,16 +137,30 @@ fun GalleryScreen(
     var showBatchMoveDialog by remember { mutableStateOf(false) }
     var showBatchDeleteDialog by remember { mutableStateOf(false) }
 
+    /** Leaves multi-select mode and forgets the current selection. */
+    fun exitSelectionMode() {
+        isSelectionMode = false
+        selectedFileUris = emptySet()
+    }
+
+    /** Adds [uri] to the selection, or removes it if it is already selected. */
+    fun toggleSelection(uri: String) {
+        selectedFileUris = if (uri in selectedFileUris) selectedFileUris - uri else selectedFileUris + uri
+    }
+
+    /** Files currently ticked in multi-select mode (used by the batch move and delete dialogs). */
+    val selectedFiles = remember(importedFiles, selectedFileUris) {
+        importedFiles.filter { it.uri in selectedFileUris }
+    }
+
     LaunchedEffect(currentFolderId) {
         if (isSelectionMode) {
-            isSelectionMode = false
-            selectedFileUris = emptySet()
+            exitSelectionMode()
         }
     }
 
     BackHandler(enabled = isSelectionMode) {
-        isSelectionMode = false
-        selectedFileUris = emptySet()
+        exitSelectionMode()
     }
 
     // Folder and navigation state
@@ -168,12 +183,6 @@ fun GalleryScreen(
             curr = folders.firstOrNull { it.id == curr.parentId }
         }
         chain
-    }
-
-    // Only show categories that have imported files in the library (plus ALL).
-    // Hides filter chips for categories with 0 files in the app.
-    val availableCategories = remember(importedFiles) {
-        ThumbnailHelper.getAvailableCategories(importedFiles)
     }
 
     LaunchedEffect(availableCategories) {
@@ -243,17 +252,13 @@ fun GalleryScreen(
 
     // Batch Move dialog for multiple selected files
     if (showBatchMoveDialog) {
-        val selectedFiles = remember(importedFiles, selectedFileUris) {
-            importedFiles.filter { it.uri in selectedFileUris }
-        }
         MoveMultipleFilesDialog(
             filesCount = selectedFiles.size,
             folders = folders,
             onMove = { targetFolderId ->
                 val targets = selectedFiles
                 showBatchMoveDialog = false
-                isSelectionMode = false
-                selectedFileUris = emptySet()
+                exitSelectionMode()
                 onMoveMultipleFiles(targets, targetFolderId)
             },
             onDismiss = { showBatchMoveDialog = false }
@@ -262,16 +267,12 @@ fun GalleryScreen(
 
     // Batch Delete confirmation dialog for multiple selected files
     if (showBatchDeleteDialog) {
-        val selectedFiles = remember(importedFiles, selectedFileUris) {
-            importedFiles.filter { it.uri in selectedFileUris }
-        }
         DeleteMultipleFilesDialog(
             filesCount = selectedFiles.size,
             onConfirm = {
                 val targets = selectedFiles
                 showBatchDeleteDialog = false
-                isSelectionMode = false
-                selectedFileUris = emptySet()
+                exitSelectionMode()
                 onDeleteMultipleFiles(targets)
             },
             onDismiss = { showBatchDeleteDialog = false }
@@ -363,8 +364,7 @@ fun GalleryScreen(
                     ) {
                         IconButton(
                             onClick = {
-                                isSelectionMode = false
-                                selectedFileUris = emptySet()
+                                exitSelectionMode()
                             }
                         ) {
                             Icon(
@@ -1167,11 +1167,7 @@ fun GalleryScreen(
                             isSelected = isSelected,
                             onClick = {
                                 if (isSelectionMode) {
-                                    selectedFileUris = if (isSelected) {
-                                        selectedFileUris - file.uri
-                                    } else {
-                                        selectedFileUris + file.uri
-                                    }
+                                    toggleSelection(file.uri)
                                 } else {
                                     onFileClick(file)
                                 }
@@ -1181,11 +1177,7 @@ fun GalleryScreen(
                                     isSelectionMode = true
                                     selectedFileUris = setOf(file.uri)
                                 } else {
-                                    selectedFileUris = if (isSelected) {
-                                        selectedFileUris - file.uri
-                                    } else {
-                                        selectedFileUris + file.uri
-                                    }
+                                    toggleSelection(file.uri)
                                 }
                             },
                             onMoreOptionsClick = {

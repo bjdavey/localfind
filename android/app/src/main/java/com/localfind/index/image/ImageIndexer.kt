@@ -9,6 +9,7 @@ import com.google.mediapipe.tasks.core.ImagePart
 import com.google.mediapipe.tasks.retrieval.model.RetrievalRecord
 import com.localfind.data.DEFAULT_MAX_IMAGE_DIMENSION
 import com.localfind.data.ImportedFile
+import com.localfind.index.INDEXING_CANCELLED_MESSAGE
 import com.localfind.index.IndexResult
 import com.localfind.index.Indexer
 import com.localfind.index.IndexingResumeManager
@@ -94,7 +95,7 @@ fun Indexer.indexImageFile(
         return IndexResult(0, false, "Not a supported image file")
     }
     if (isCancelled()) {
-        return IndexResult(0, false, "Indexing cancelled")
+        return IndexResult(0, false, INDEXING_CANCELLED_MESSAGE)
     }
 
     val uri = file.uri.toUri()
@@ -106,7 +107,7 @@ fun Indexer.indexImageFile(
 
     if (isCancelled()) {
         bitmap.recycle()
-        return IndexResult(0, false, "Indexing cancelled")
+        return IndexResult(0, false, INDEXING_CANCELLED_MESSAGE)
     }
 
     onProgress?.invoke(1, 1)
@@ -119,11 +120,11 @@ fun Indexer.indexImageFile(
     }
 
     if (isCancelled()) {
-        return IndexResult(0, false, "Indexing cancelled")
+        return IndexResult(0, false, INDEXING_CANCELLED_MESSAGE)
     }
 
     // Delete existing chunks for this file before storing the updated embedding
-    embeddingStore.deleteByMetadata(mapOf("fileId" to file.uri))
+    embeddingStore.deleteByFileUri(file.uri)
 
     val record = RetrievalRecord(
         "${file.uri}_0",

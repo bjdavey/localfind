@@ -9,6 +9,7 @@ import com.google.mediapipe.tasks.core.Part
 import com.google.mediapipe.tasks.core.TextPart
 import com.google.mediapipe.tasks.retrieval.model.RetrievalRecord
 import com.localfind.data.ImportedFile
+import com.localfind.index.INDEXING_CANCELLED_MESSAGE
 import com.localfind.index.IndexResult
 import com.localfind.index.Indexer
 import com.localfind.index.IndexingResumeLogic
@@ -50,7 +51,7 @@ fun Indexer.indexVideoFile(
         return IndexResult(0, false, "Not a supported video file")
     }
     if (isCancelled()) {
-        return IndexResult(0, false, "Indexing cancelled")
+        return IndexResult(0, false, INDEXING_CANCELLED_MESSAGE)
     }
 
     val uri = file.uri.toUri()
@@ -100,7 +101,7 @@ fun Indexer.indexVideoFile(
 
         val startChunk = IndexingResumeManager.getResumeChunk(context, file.uri, file.size, windows.size)
         if (IndexingResumeLogic.shouldDeleteExistingChunks(startChunk)) {
-            embeddingStore.deleteByMetadata(mapOf("fileId" to file.uri))
+            embeddingStore.deleteByFileUri(file.uri)
         } else {
             indexedChunksCount = startChunk
             onProgress?.invoke(startChunk, windows.size)
@@ -114,7 +115,7 @@ fun Indexer.indexVideoFile(
                     records.clear()
                 }
                 IndexingResumeManager.setResumeChunk(context, file.uri, index, file.size)
-                return IndexResult(index, false, "Indexing cancelled")
+                return IndexResult(index, false, INDEXING_CANCELLED_MESSAGE)
             }
             onProgress?.invoke(index + 1, windows.size)
 
@@ -205,7 +206,7 @@ fun Indexer.indexVideoFile(
                     records.clear()
                 }
                 IndexingResumeManager.setResumeChunk(context, file.uri, index, file.size)
-                return IndexResult(index, false, "Indexing cancelled")
+                return IndexResult(index, false, INDEXING_CANCELLED_MESSAGE)
             }
 
             val embedding = try {
@@ -253,7 +254,7 @@ fun Indexer.indexVideoFile(
     }
 
     if (isCancelled()) {
-        return IndexResult(indexedChunksCount, false, "Indexing cancelled")
+        return IndexResult(indexedChunksCount, false, INDEXING_CANCELLED_MESSAGE)
     }
 
     IndexingResumeManager.clearResumeChunk(context, file.uri)

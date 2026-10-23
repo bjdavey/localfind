@@ -8,6 +8,16 @@ import android.graphics.pdf.PdfRenderer
 import android.media.MediaMetadataRetriever
 import android.net.Uri
 import android.util.LruCache
+import androidx.compose.ui.graphics.Color as ComposeColor
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
+import androidx.compose.ui.platform.LocalContext
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
 import androidx.core.net.toUri
 import com.localfind.R
 import com.localfind.data.Folder
@@ -15,6 +25,12 @@ import com.localfind.data.ImportedFile
 import com.localfind.index.Indexer
 import com.localfind.search.SearchResult
 import com.localfind.ui.search.SearchResultFormatter
+import com.localfind.ui.theme.BadgeAudio
+import com.localfind.ui.theme.BadgeImage
+import com.localfind.ui.theme.BadgePdf
+import com.localfind.ui.theme.BadgeText
+import com.localfind.ui.theme.BadgeVideo
+import com.localfind.ui.viewer.PdfViewerHelper
 import java.io.BufferedReader
 import java.io.InputStreamReader
 import kotlin.math.max
@@ -56,6 +72,59 @@ val GalleryCategory.iconResId: Int
         GalleryCategory.TEXT -> R.drawable.ic_description
         GalleryCategory.AUDIO -> R.drawable.ic_audiotrack
     }
+
+/**
+ * Accent color of the modality badge shown on gallery tiles and search result cards.
+ */
+val GalleryCategory.badgeColor: ComposeColor
+    get() = when (this) {
+        GalleryCategory.PHOTOS, GalleryCategory.ALL -> BadgeImage
+        GalleryCategory.VIDEOS -> BadgeVideo
+        GalleryCategory.PDFS -> BadgePdf
+        GalleryCategory.TEXT -> BadgeText
+        GalleryCategory.AUDIO -> BadgeAudio
+    }
+
+/**
+ * Loads (and caches) the rich preview of a library file for a tile or search result card.
+ *
+ * Returns the cached [FilePreviewData] immediately when available and otherwise loads it on
+ * [Dispatchers.IO]. Pass [skip] = true for photos, which are rendered directly by Coil.
+ *
+ * @param timeOffsetMs Video keyframe offset for search hits (null = default thumbnail time).
+ * @param pageNumber 1-based PDF page for search hits (null = first page).
+ */
+@Composable
+fun rememberFilePreview(
+    uri: String,
+    fileName: String,
+    mimeType: String?,
+    skip: Boolean,
+    timeOffsetMs: Long? = null,
+    pageNumber: Int? = null
+): FilePreviewData? {
+    val context = LocalContext.current
+    var preview by remember(uri, timeOffsetMs, pageNumber) {
+        mutableStateOf(
+            if (uri.isNotBlank()) ThumbnailHelper.getCachedPreview(uri, timeOffsetMs, pageNumber) else null
+        )
+    }
+    LaunchedEffect(uri, timeOffsetMs, pageNumber) {
+        if (preview == null && uri.isNotBlank() && !skip) {
+            preview = withContext(Dispatchers.IO) {
+                ThumbnailHelper.loadPreviewBlocking(
+                    context = context,
+                    uriString = uri,
+                    fileName = fileName,
+                    mimeType = mimeType,
+                    timeOffsetMs = timeOffsetMs,
+                    pageNumber = pageNumber
+                )
+            }
+        }
+    }
+    return preview
+}
 
 /**
  * Cached preview data for a single file in the gallery or search results.
@@ -119,9 +188,7 @@ object ThumbnailHelper {
      * @return 0-based page index clamped to [0, pageCount - 1].
      */
     fun computePdfTargetPageIndex(pageNumber: Int?, pageCount: Int): Int {
-        if (pageCount <= 0) return 0
-        val target1Based = (pageNumber ?: 1).coerceIn(1, pageCount)
-        return target1Based - 1
+        return PdfViewerHelper.toZeroBasedPage(pageNumber ?: 1, pageCount)
     }
 
     /**

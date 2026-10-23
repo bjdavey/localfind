@@ -180,7 +180,7 @@ fun FallbackPdfRendererView(
             try {
                 val bitmap = synchronized(rendererLock) {
                     if (pdfRenderer !== renderer) return@withContext
-                    val zeroBasedIndex = (currentPageNumber - 1).coerceIn(0, totalPages - 1)
+                    val zeroBasedIndex = PdfViewerHelper.toZeroBasedPage(currentPageNumber, totalPages)
                     renderer.openPage(zeroBasedIndex).use { page ->
                         val density = context.resources.displayMetrics.density.coerceIn(1.5f, 3f)
                         val width = (page.width * density).toInt().coerceAtLeast(1)
