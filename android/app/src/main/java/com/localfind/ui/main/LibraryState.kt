@@ -17,6 +17,7 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.core.net.toUri
 import androidx.work.WorkManager
 import com.localfind.core.library.UriGrantLimit
+import com.localfind.core.model.EmbeddingSpace
 import com.localfind.core.model.Folder
 import com.localfind.core.model.ImportedFile
 import com.localfind.core.model.IndexingStatus
@@ -447,6 +448,19 @@ class LibraryState(
             IndexingQueue.enqueue(context, replace = true)
             withContext(Dispatchers.Main) {
                 Toast.makeText(context, "Retrying failed files...", Toast.LENGTH_SHORT).show()
+            }
+        }
+    }
+
+    /** Re-queues every file indexed in another embedding space than [currentSpaceId] (see [EmbeddingSpace]). */
+    fun reindexOutdated(currentSpaceId: String) {
+        scope.launch(Dispatchers.IO) {
+            val store = FileStore.getInstance(context)
+            val queued = store.markStaleAsPending(currentSpaceId)
+            importedFiles = store.getAll()
+            if (queued > 0) IndexingQueue.enqueue(context, replace = true)
+            withContext(Dispatchers.Main) {
+                Toast.makeText(context, "Re-analyzing $queued file(s)...", Toast.LENGTH_SHORT).show()
             }
         }
     }

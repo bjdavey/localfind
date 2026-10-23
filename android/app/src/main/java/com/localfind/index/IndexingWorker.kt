@@ -315,6 +315,10 @@ class IndexingWorker(
                         if (result.isSuccess) {
                             Log.i(TAG_INDEXING, "Indexed ${file.displayName}: ${result.chunksCount} chunks")
                             fileStore.updateStatus(file.uri, IndexingStatus.INDEXED, result.chunksCount)
+                            // Tag the file with the embedding space it was indexed in, so a later change of
+                            // model / accelerator can be detected (see EmbeddingSpace). GPU <-> CPU switches
+                            // during the file keep the same id, an NPU change needs a Settings change.
+                            fileStore.setEmbeddingSpace(file.uri, EngineManager.embeddingSpaceId.value)
                             IndexingResumeManager.clearAttempts(context, file.uri)
                             val doneMsg = "Analyzed $fileIndex/$totalInBatch: ${file.displayName}"
                             IndexingProgressState.update(

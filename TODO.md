@@ -87,7 +87,7 @@
 - [x] Storage checks: free-space check before model staging and indexing; pause with "Storage full" on `SQLiteFullException` / I/O errors
 - [x] AI pack: switch `fast-follow` to `install-time` so the model is present at first launch (copied once into `filesDir`; check Play's size limits for the larger NPU files before release)
 - [x] Use the NPU model file for GPU/CPU fallback on NPU devices (remove the separate fallback-model branch)
-- [ ] Embedding-space id stored per file; mark files "needs re-index" when it differs from the current one
+- [x] Embedding-space id stored per file; banner offers re-analysis when it differs from the current one (GPU vs CPU vectors assumed to agree; unmeasured)
 - [ ] Foreground service timeout (Android 15+): save the checkpoint and re-enqueue the indexing worker
 - [ ] Use `NpuCompatibilityChecker` for the NPU availability check (ask before adding a dependency)
 - [ ] Load only the needed encoders (audio on demand), if `UniversalEmbedder` supports it
@@ -97,7 +97,6 @@
 - [ ] UI Fix: advanced settings item subtitle overflow
 - [x] Fix bundle script for emulator and make sure model is loaded
 - [ ] Privacy: `allowBackup="true"` with empty `data_extraction_rules.xml` lets cloud backup / device transfer include the vector DB (text snippets), shared copies and the file list; share import accepts `file://` URIs (can copy LocalFind's own private files)
-- [ ] Mixed embedding spaces: the index does not record which model file / accelerator produced a vector (NPU vs GPU/CPU), so changing it can degrade matching; consider storing an embedding-space id and re-indexing on change
 - [ ] Search waits for the in-flight indexing chunk because inference is synchronized (slow queries while indexing)
 - [ ] File identity is the URI: the same file imported via share and via picker becomes two entries; re-importing resets status / folder; same-named folders are merged
 - [ ] Model delivery: `/sdcard` model staging should be debug-only

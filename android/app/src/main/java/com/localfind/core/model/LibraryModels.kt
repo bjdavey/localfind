@@ -39,6 +39,8 @@ enum class IndexingStatus {
  * @property indexingStatus Current background indexing lifecycle status ([IndexingStatus]).
  * @property chunksCount Number of semantic chunks extracted and stored for this file.
  * @property folderId ID of the containing [Folder], or null if the file resides at the library root.
+ * @property embeddingSpace [EmbeddingSpace] id the file's vectors were created in, or null if unknown
+ *   (not indexed yet, or indexed before ids were recorded).
  */
 data class ImportedFile(
     val uri: String,
@@ -48,5 +50,6 @@ data class ImportedFile(
     val addedAt: Long = System.currentTimeMillis(),
     val indexingStatus: IndexingStatus = IndexingStatus.INDEXED,
     val chunksCount: Int = 0,
-    val folderId: String? = null
+    val folderId: String? = null,
+    val embeddingSpace: String? = null
 )

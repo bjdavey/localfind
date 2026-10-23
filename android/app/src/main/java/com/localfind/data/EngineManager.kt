@@ -76,6 +76,10 @@ object EngineManager {
     private val _modelStatus = MutableStateFlow<ModelStatus>(ModelStatus.Loading)
     val modelStatus: StateFlow<ModelStatus> = _modelStatus.asStateFlow()
 
+    /** [com.localfind.core.model.EmbeddingSpace] id of the loaded embedder, or null before one is loaded. */
+    private val _embeddingSpaceId = MutableStateFlow<String?>(null)
+    val embeddingSpaceId: StateFlow<String?> = _embeddingSpaceId.asStateFlow()
+
     /**
      * Verifies that the model is loaded in internal storage and initializes [Embedder].
      *
@@ -171,6 +175,7 @@ object EngineManager {
         embedder = null
         embedder = Embedder(context.applicationContext, configured).also {
             Log.i(TAG, "Initialized singleton Embedder instance with configured=$configured (effective=$effective).")
+            _embeddingSpaceId.value = it.embeddingSpaceId
             val activeFile = SocDetector.getActiveModelFile(context, effective)
             if (activeFile.exists()) {
                 _modelStatus.value = ModelStatus.Loaded(activeFile.length())

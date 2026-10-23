@@ -1,6 +1,7 @@
 package com.localfind.embed
 
 import com.localfind.core.model.DEFAULT_VISION_TOKENS_PER_IMAGE
+import com.localfind.core.model.EmbeddingSpace
 import com.localfind.core.model.MODEL_FILE_NAME
 import android.content.Context
 import android.graphics.Bitmap
@@ -55,6 +56,12 @@ class Embedder(
      * When false, vision encoding executes via CPU (XNNPack).
      */
     val isGpuVisionEnabled: Boolean
+
+    /**
+     * [EmbeddingSpace] id of the vectors this instance produces. Reflects what actually loaded (an NPU request
+     * that fell back to GPU/CPU gives another id), so files are tagged with the space they really got.
+     */
+    val embeddingSpaceId: String
 
     init {
         // Locate the model file (from Play AI Pack or internal storage), copying from staging paths if missing.
@@ -187,6 +194,12 @@ class Embedder(
         isNpuVisionEnabled = npuVisionSuccess
         isNpuTextEnabled = npuTextSuccess
         isGpuVisionEnabled = gpuVisionSuccess
+        embeddingSpaceId = EmbeddingSpace.id(
+            activationDataType = ACTIVATION_DATA_TYPE.name,
+            modelBytes = model.length(),
+            textOnNpu = npuTextSuccess,
+            visionOnNpu = npuVisionSuccess
+        )
     }
 
     /**
@@ -274,6 +287,9 @@ class Embedder(
     companion object {
         private const val TAG = "Embedder"
 
+        /** Activation precision; part of the [EmbeddingSpace] id because it changes the vectors. */
+        private val ACTIVATION_DATA_TYPE = UniversalEmbedderOptions.ActivationDataType.FLOAT32
+
         /**
          * Options shared by every accelerator path, so they cannot drift apart:
          * - L2 normalization, so cosine similarity is a plain dot product.
@@ -289,7 +305,7 @@ class Embedder(
                 .setL2Normalize(true)
                 .setVisionTokensPerImage(DEFAULT_VISION_TOKENS_PER_IMAGE)
                 .setCacheDir(context.cacheDir.absolutePath)
-                .setActivationDataType(UniversalEmbedderOptions.ActivationDataType.FLOAT32)
+                .setActivationDataType(ACTIVATION_DATA_TYPE)
 
         /**
          * Ensures that the on-device model file exists in [context.filesDir].

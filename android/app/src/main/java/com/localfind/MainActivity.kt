@@ -166,6 +166,8 @@ fun MainScreen(
 
     // Observable on-device multimodal model lifecycle status
     val modelStatus by EngineManager.modelStatus.collectAsState()
+    // Embedding space of the loaded model / accelerator; files indexed in another one are flagged for re-analysis
+    val embeddingSpaceId by EngineManager.embeddingSpaceId.collectAsState()
 
     // Observable background indexing state from WorkManager
     val indexingProgress by IndexingProgressState.progress.collectAsState()
@@ -364,6 +366,8 @@ fun MainScreen(
             },
             onRetryIndexFile = library::retryFile,
             onRetryAllFailed = library::retryAllFailed,
+            currentEmbeddingSpaceId = embeddingSpaceId,
+            onReindexOutdated = library::reindexOutdated,
             onPauseIndexing = library::pauseIndexing,
             onResumeIndexing = library::resumeIndexing,
             onCancelIndexing = library::cancelIndexing,

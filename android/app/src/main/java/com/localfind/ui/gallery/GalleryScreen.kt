@@ -84,6 +84,8 @@ fun GalleryScreen(
     onRequestDeleteFile: (ImportedFile) -> Unit,
     onRetryIndexFile: (ImportedFile) -> Unit,
     onRetryAllFailed: () -> Unit,
+    currentEmbeddingSpaceId: String? = null,
+    onReindexOutdated: (String) -> Unit = {},
     onPauseIndexing: () -> Unit,
     onResumeIndexing: () -> Unit,
     onCancelIndexing: () -> Unit,
@@ -356,6 +358,11 @@ fun GalleryScreen(
             // 2.5. FAILED INDEXING BANNER (With Retry All button)
             // =====================================================================
             FailedIndexingBanner(importedFiles = importedFiles, onRetryAllFailed = onRetryAllFailed)
+            OutdatedIndexBanner(
+                importedFiles = importedFiles,
+                currentSpaceId = currentEmbeddingSpaceId,
+                onReindexOutdated = onReindexOutdated
+            )
             // =====================================================================
             // 3. CATEGORY FILTER CHIPS ROW (Hidden if library has no files or only 1 category)
             // =====================================================================

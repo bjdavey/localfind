@@ -42,6 +42,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import com.localfind.R
+import com.localfind.core.model.EmbeddingSpace
 import com.localfind.core.model.ImportedFile
 import com.localfind.core.model.IndexingProgress
 import com.localfind.core.model.IndexingStatus
@@ -421,6 +422,79 @@ internal fun ColumnScope.FailedIndexingBanner(importedFiles: List<ImportedFile>,
                     Spacer(modifier = Modifier.width(4.dp))
                     Text(
                         text = "Try again",
+                        style = MaterialTheme.typography.labelSmall,
+                        fontWeight = FontWeight.Bold
+                    )
+                }
+            }
+        }
+    }
+}
+
+/**
+ * Banner shown when some indexed files were analyzed in another embedding space than the one now loaded
+ * (e.g. after switching the hardware accelerator between NPU and GPU/CPU), with a button to re-analyze them.
+ * Files with an unknown space (indexed before ids were recorded) are not counted, see [EmbeddingSpace.isStale].
+ */
+@Composable
+internal fun ColumnScope.OutdatedIndexBanner(
+    importedFiles: List<ImportedFile>,
+    currentSpaceId: String?,
+    onReindexOutdated: (String) -> Unit
+) {
+    val outdatedCount = remember(importedFiles, currentSpaceId) {
+        importedFiles.count {
+            it.indexingStatus == IndexingStatus.INDEXED && EmbeddingSpace.isStale(it.embeddingSpace, currentSpaceId)
+        }
+    }
+    AnimatedVisibility(
+        visible = outdatedCount > 0 && currentSpaceId != null,
+        enter = fadeIn() + expandVertically(),
+        exit = fadeOut() + shrinkVertically()
+    ) {
+        Surface(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 16.dp, vertical = 4.dp),
+            shape = RoundedCornerShape(12.dp),
+            color = MaterialTheme.colorScheme.tertiaryContainer
+        ) {
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 14.dp, vertical = 10.dp),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.SpaceBetween
+            ) {
+                Column(modifier = Modifier.weight(1f)) {
+                    Text(
+                        text = if (outdatedCount == 1) "1 file needs re-analysis" else "$outdatedCount files need re-analysis",
+                        style = MaterialTheme.typography.labelMedium,
+                        fontWeight = FontWeight.SemiBold,
+                        color = MaterialTheme.colorScheme.onTertiaryContainer
+                    )
+                    Text(
+                        text = "Analyzed with another AI setting, so search may miss them",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onTertiaryContainer.copy(alpha = 0.8f),
+                        maxLines = 2,
+                        overflow = TextOverflow.Ellipsis
+                    )
+                }
+                Spacer(modifier = Modifier.width(8.dp))
+                FilledTonalButton(
+                    onClick = { currentSpaceId?.let(onReindexOutdated) },
+                    contentPadding = PaddingValues(horizontal = 12.dp, vertical = 4.dp),
+                    modifier = Modifier.height(34.dp)
+                ) {
+                    Icon(
+                        painter = painterResource(R.drawable.ic_refresh),
+                        contentDescription = null,
+                        modifier = Modifier.size(16.dp)
+                    )
+                    Spacer(modifier = Modifier.width(4.dp))
+                    Text(
+                        text = "Re-analyze",
                         style = MaterialTheme.typography.labelSmall,
                         fontWeight = FontWeight.Bold
                     )

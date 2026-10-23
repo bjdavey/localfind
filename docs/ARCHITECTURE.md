@@ -120,6 +120,7 @@ Data is stored locally using MediaPipe's `SqliteVectorStore` (`RetrievalRecord`)
   - `location`: Location offset (char offset, page number, or ms timestamp)
 
 - Removing a file deletes all chunks matching the file's `fileId` via `EmbeddingStore.deleteByFileUri`.
+- **Embedding space:** `FileStore` records per file an `EmbeddingSpace` id (activation precision + model file size + whether text / vision ran on the NPU; GPU and CPU count as one class). A file whose id differs from the loaded embedder's is offered for re-analysis through a banner in the library. Files indexed before the id existed have none and are treated as compatible.
 
 ## 7. Search
 

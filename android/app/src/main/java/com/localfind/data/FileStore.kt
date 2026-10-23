@@ -32,7 +32,7 @@ class FileStore(context: Context) : SQLiteOpenHelper(
 
     companion object {
         const val DATABASE_NAME = "localfind_files.db"
-        const val DATABASE_VERSION = 1
+        const val DATABASE_VERSION = 2
         const val TABLE_FILES = "imported_files"
         const val TABLE_FOLDERS = "folders"
 
@@ -45,7 +45,8 @@ class FileStore(context: Context) : SQLiteOpenHelper(
             "added_at",
             "indexing_status",
             "chunks_count",
-            "folder_id"
+            "folder_id",
+            "embedding_space"
         )
 
         @Volatile
@@ -72,7 +73,8 @@ class FileStore(context: Context) : SQLiteOpenHelper(
                 added_at INTEGER NOT NULL,
                 indexing_status TEXT NOT NULL DEFAULT 'INDEXED',
                 chunks_count INTEGER NOT NULL DEFAULT 0,
-                folder_id TEXT
+                folder_id TEXT,
+                embedding_space TEXT
             )
             """.trimIndent()
         )
@@ -89,7 +91,11 @@ class FileStore(context: Context) : SQLiteOpenHelper(
     }
 
     override fun onUpgrade(db: SQLiteDatabase, oldVersion: Int, newVersion: Int) {
-        // No-op
+        // v2: which embedding space (model / accelerator class) a file's vectors were created in.
+        // NULL for files indexed before: unknown, treated as compatible (see EmbeddingSpace.isStale).
+        if (oldVersion < 2) {
+            db.execSQL("ALTER TABLE $TABLE_FILES ADD COLUMN embedding_space TEXT")
+        }
     }
 
     // =========================================================================
@@ -244,6 +250,7 @@ class FileStore(context: Context) : SQLiteOpenHelper(
                     } else {
                         putNull("folder_id")
                     }
+                    put("embedding_space", file.embeddingSpace)
                 }
                 insertWithOnConflict(
                     TABLE_FILES,
@@ -266,6 +273,30 @@ class FileStore(context: Context) : SQLiteOpenHelper(
             }
         }
         writableDatabase.update(TABLE_FILES, values, "uri = ?", arrayOf(uri))
+    }
+
+    /** Records the [com.localfind.core.model.EmbeddingSpace] id the vectors of [uri] were just created in. */
+    fun setEmbeddingSpace(uri: String, spaceId: String?) {
+        val values = ContentValues().apply { put("embedding_space", spaceId) }
+        writableDatabase.update(TABLE_FILES, values, "uri = ?", arrayOf(uri))
+    }
+
+    /**
+     * Re-queues every indexed file whose recorded embedding space differs from [currentSpaceId]
+     * (files with an unknown space are left alone, see [com.localfind.core.model.EmbeddingSpace.isStale]).
+     *
+     * @return the number of files queued.
+     */
+    fun markStaleAsPending(currentSpaceId: String): Int {
+        val values = ContentValues().apply {
+            put("indexing_status", IndexingStatus.PENDING.name)
+        }
+        return writableDatabase.update(
+            TABLE_FILES,
+            values,
+            "indexing_status = ? AND embedding_space IS NOT NULL AND embedding_space != ?",
+            arrayOf(IndexingStatus.INDEXED.name, currentSpaceId)
+        )
     }
 
     /**
@@ -386,7 +417,8 @@ class FileStore(context: Context) : SQLiteOpenHelper(
             addedAt = getLong(4),
             indexingStatus = status,
             chunksCount = getIntOrNull(6) ?: 0,
-            folderId = getStringOrNull(7)
+            folderId = getStringOrNull(7),
+            embeddingSpace = getStringOrNull(8)
         )
     }
 }
