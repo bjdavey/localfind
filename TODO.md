@@ -91,7 +91,7 @@
 - [x] Foreground service timeout (Android 15+): checkpoint + retry already existed on stop; now the user is told why indexing paused (`STOP_REASON_FOREGROUND_SERVICE_TIMEOUT`)
 - [x] ~~Use `NpuCompatibilityChecker`~~ skipped (needs the `litert` dependency and is documented for `CompiledModel`, not the MediaPipe path); fixed the `SocDetector` bugs directly: `"unknown"` handling and `sun` vs `sunfish` board match
 - [x] ~~Load only the needed encoders~~ spike result: `UniversalEmbedderOptions` (MediaPipe 1.1.1) has no per-modality switch (only delegates, `maxInputLength`, `visionTokensPerImage`), so nothing to do now; see Backlog
-- [ ] Decide: LiteRT 2.3.0 Maven NPU packages vs current Feature Delivery modules + fetch scripts
+- [x] Decide: LiteRT 2.3.0 Maven NPU packages vs current Feature Delivery modules + fetch scripts. Decision: keep Feature Delivery (it already uses the Maven dispatch libraries); documented in ARCHITECTURE §3.1
 
 ## Bugs / Issues
 - [ ] UI Fix: advanced settings item subtitle overflow

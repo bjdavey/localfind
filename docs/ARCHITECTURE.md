@@ -57,6 +57,8 @@ The text query uses the same model, so a text query can match an image, an audio
 
 Running on hardware NPUs requires both the **pre-compiled model file** (delivered via Google Play AI Pack `:ai_pack:embedding_model` with `#group_<Vendor>_<Model>` device targeting) and the vendor's **native driver binaries (`.so`)** (delivered via Play Feature Delivery `:litert_npu_runtime_libraries:*`):
 
+How the native libraries are packaged: the `libLiteRtDispatch_*.so` dispatch libraries come from the LiteRT 2.3.0 Maven artifacts (`litert-npu-runtime-*`), pulled in by each Feature Delivery module. The vendor SDK libraries (Qualcomm QAIRT `libQnn*`, MediaTek NeuroPilot) are downloaded into those modules by `fetch_qualcomm_library.sh` / `fetch_mediatek_library.sh`. Each phone installs only the modules matching its chipset. (Decision: keep Feature Delivery instead of putting every vendor's libraries into the base APK.)
+
 | Platform / Chipset | Marketing Name | Hardware Target | Delivery Module(s) | Native Binary Requirement |
 | :--- | :--- | :--- | :--- | :--- |
 | **Qualcomm SM8550** | Snapdragon 8 Gen 2 (S23 series, OnePlus 11) | Hexagon HTP v73 NPU | `qualcomm_runtime_common` + `htp` + `v73` | Maven `litert-npu-runtime-qualcomm` (`libLiteRtDispatch_Qualcomm.so`) + QAIRT `libQnnSystem.so`, `libQnnHtp.so`, `libQnnHtpV73Stub.so`, `libQnnHtpV73Skel.so` (`fetch_qualcomm_library.sh`). |
