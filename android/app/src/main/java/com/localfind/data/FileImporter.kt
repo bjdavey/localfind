@@ -45,6 +45,10 @@ object FileImporter {
     fun isSupported(displayName: String, mimeType: String?): Boolean =
         FileTypes.isSupported(displayName, mimeType)
 
+    /** Number of persisted URI grants this app currently holds (compare with [UriGrantLimit]). */
+    fun persistedGrantCount(contentResolver: ContentResolver): Int =
+        contentResolver.persistedUriPermissions.size
+
     /**
      * Resolves the human-readable display name for a given [Uri] from its content provider,
      * falling back to the last path segment or "image".
@@ -245,15 +249,10 @@ object FileImporter {
                             traverse(childId, subfolder.id)
                         } else {
                             if (isSupported(name, mimeType)) {
+                                // No per-file grant: the root tree grant above already covers every descendant.
+                                // Taking one per file would burn through Android's persisted-grant limit
+                                // (see UriGrantLimit) with a single large folder.
                                 val fileDocUri = DocumentsContract.buildDocumentUriUsingTree(treeUri, childId)
-                                try {
-                                    contentResolver.takePersistableUriPermission(
-                                        fileDocUri,
-                                        Intent.FLAG_GRANT_READ_URI_PERMISSION
-                                    )
-                                } catch (_: Exception) {
-                                    // Covered by root tree grant
-                                }
                                 importedFiles.add(
                                     ImportedFile(
                                         uri = fileDocUri.toString(),

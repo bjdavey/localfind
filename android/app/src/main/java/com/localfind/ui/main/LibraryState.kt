@@ -16,6 +16,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.platform.LocalContext
 import androidx.core.net.toUri
 import androidx.work.WorkManager
+import com.localfind.core.library.UriGrantLimit
 import com.localfind.core.model.Folder
 import com.localfind.core.model.ImportedFile
 import com.localfind.core.model.IndexingStatus
@@ -174,6 +175,22 @@ class LibraryState(
         }
     }
 
+    /**
+     * Warns when the app is close to Android's persisted-URI-grant limit: past it the system silently drops
+     * the oldest grants and those files stop opening. Importing whole folders costs one grant per folder.
+     */
+    private suspend fun warnIfGrantsNearLimit() {
+        val grants = withContext(Dispatchers.IO) { FileImporter.persistedGrantCount(context.contentResolver) }
+        if (UriGrantLimit.isNearLimit(grants)) {
+            Toast.makeText(
+                context,
+                "Android only lets LocalFind keep access to ${UriGrantLimit.MAX_GRANTS} picked files " +
+                    "($grants used). Import whole folders instead of single files to avoid losing access to older ones.",
+                Toast.LENGTH_LONG
+            ).show()
+        }
+    }
+
     /** Imports the files chosen in the system document picker into the current folder. */
     fun importPicked(uris: List<Uri>) {
         if (uris.isNotEmpty()) {
@@ -216,6 +233,7 @@ class LibraryState(
                     status = msg
                     Toast.makeText(context, msg, Toast.LENGTH_LONG).show()
                 }
+                warnIfGrantsNearLimit()
             }
         }
     }
