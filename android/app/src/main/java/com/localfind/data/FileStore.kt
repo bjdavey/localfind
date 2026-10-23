@@ -32,7 +32,7 @@ class FileStore(context: Context) : SQLiteOpenHelper(
 
     companion object {
         const val DATABASE_NAME = "localfind_files.db"
-        const val DATABASE_VERSION = 2
+        const val DATABASE_VERSION = 1
         const val TABLE_FILES = "imported_files"
         const val TABLE_FOLDERS = "folders"
 
@@ -91,11 +91,7 @@ class FileStore(context: Context) : SQLiteOpenHelper(
     }
 
     override fun onUpgrade(db: SQLiteDatabase, oldVersion: Int, newVersion: Int) {
-        // v2: which embedding space (model / accelerator class) a file's vectors were created in.
-        // NULL for files indexed before: unknown, treated as compatible (see EmbeddingSpace.isStale).
-        if (oldVersion < 2) {
-            db.execSQL("ALTER TABLE $TABLE_FILES ADD COLUMN embedding_space TEXT")
-        }
+        // No-op: the app is not released yet, so the schema is changed in onCreate without migrations
     }
 
     // =========================================================================
