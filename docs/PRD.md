@@ -14,17 +14,21 @@ Everything runs **100% offline on the device**.
 | :--- | :--- | :--- |
 | Text | `.txt`, `.md` | Matching passage |
 | PDF | `.pdf` (text-based only, no OCR) | Matching page |
-| Image | `.jpg`, `.png` | The image |
+| Image | `.jpg`, `.jpeg`, `.png`, `.gif` | The image |
 | Audio | `.mp3`, `.m4a`, `.wav` | Matching time |
 | Video | `.mp4` | Matching time |
 
 ### Features
 
-1. **Import** - Pick files from device storage and index them.
-2. **Search** - Type a natural language query and get ranked results.
-3. **Results** - Each result shows the file name, type, and location (time or page).
-4. **Open** - Tapping a result opens the file at the matching location.
-5. **Library** - See indexed files and remove one.
+1. **Import** - Pick files (or whole folders) from device storage, or share them from another app, and index them.
+2. **Search** - Type a natural language query and get ranked results; filter by type (All, Photos, Videos, PDFs, Text, Audio).
+3. **Search by image** - Use a photo as the query to find similar images and matching video moments; also available from a photo's details.
+4. **Search inside a file** - Scope a search to one document, video or audio file.
+5. **Results** - Each result shows the file name, type, and location (time or page).
+6. **Open** - Tapping a result opens the file in the built-in viewer at the matching location (landscape supported). Any file can also be opened in the phone gallery or its own app.
+7. **Library** - See indexed files in a grid with per-file progress, organise them in folders, select several at once, view file details (including the original path), retry failed files and remove files.
+8. **Background indexing** - Indexing continues when the app is closed, can be paused, resumed and cancelled (also from the notification), and resumes after the app is killed.
+9. **Settings** - Light/dark theme, similarity threshold and other tuning values, and advanced options such as the hardware accelerator (NPU, GPU, CPU or Smart).
 
 ### Out of scope (MVP)
 

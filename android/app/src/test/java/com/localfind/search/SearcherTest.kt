@@ -253,7 +253,7 @@ class SearcherTest {
         val defaultResults = searcher.search("query", topK = 10, threshold = 0.0f)
         assertEquals(3, defaultResults.size)
 
-        // With user-requested default threshold 0.6f: exact (1.0) and partial (0.707) returned, orthogonal (0.0) filtered out
+        // With a threshold of 0.6f: exact (1.0) and partial (0.707) returned, orthogonal (0.0) filtered out
         val threshold06Results = searcher.search("query", topK = 10, threshold = 0.6f)
         assertEquals(2, threshold06Results.size)
         assertEquals("file1_c0", threshold06Results[0].chunkId)

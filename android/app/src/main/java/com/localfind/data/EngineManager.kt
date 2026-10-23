@@ -45,9 +45,9 @@ object EngineManager {
     /**
      * Verifies that the model is loaded in internal storage and initializes [Embedder].
      *
-     * Embedder automatically enables GPU acceleration for vision (images and video frames)
-     * and seamlessly falls back to CPU if GPU acceleration is unavailable on the device.
-     * Text and audio run safely on CPU (XNNPack).
+     * The [Embedder] uses the accelerator chosen in Settings (NPU by default on supported devices,
+     * otherwise Smart/GPU/CPU) for vision and text, and falls back to CPU when a delegate is unavailable.
+     * Audio always runs on CPU (XNNPack).
      *
      * Emits state to [modelStatus] for live UI observation.
      */
@@ -70,8 +70,8 @@ object EngineManager {
         }
 
         try {
-            // Delegate through getEmbedder so coroutine and synchronous callers share the same monitor lock,
-            // preventing concurrent initialization of two ~485MB native Embedder instances.
+            // The mutex serializes concurrent model-load requests from coroutines, and getEmbedder
+            // synchronizes on the engine as well, so two ~485MB native Embedder instances are never created at once.
             engineMutex.withLock {
                 getEmbedder(context.applicationContext)
             }
@@ -187,8 +187,8 @@ object EngineManager {
 
     /**
      * Executes a semantic search query with [Searcher].
-     * Coordinates cooperatively with background indexing tasks, completing searches in ~50ms
-     * even while files are actively indexing.
+     * Shares the single [Embedder] with background indexing; inference calls are synchronized per
+     * embedder, so a query may wait for an in-flight indexing chunk to finish.
      */
     suspend fun <T> withSearcher(
         context: Context,

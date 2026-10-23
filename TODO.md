@@ -73,11 +73,14 @@
     4. Simplify / tech debt (always-non-null nullable callbacks, IndexingWorker pause logic, MainActivity state; ask before adding a ViewModel)
     5. Folder/package structure: try to isolate services in core folder that can be easily ported into different platforms later
     6. Review design decisions & update docs
+- Grouping matches by file
 - What else?
 - Final E2E test with edge cases
 - Publish
 
 ## Bugs / Issues
+- [ ] UI Fix: advanced settings item subtitle overflow
+- [ ] Fix bundle script for emulator and make sure model is loaded
 - [ ] `POST_NOTIFICATIONS` is declared but never requested at runtime, so the indexing notification is hidden on Android 13+
 - [ ] FileProvider `files-path "."` exposes all of `filesDir` (including DB and model); `data_extraction_rules.xml` is still an empty template (decide what to back up)
 - [x] App-wide crash resilience: defensive gallery grid keys, viewer fallbacks, and global crash guard
@@ -96,7 +99,6 @@
 - [x] Fix PDF indexing progress bar repeating after 15%
 - [x] Fix: PDF search result doesn't open at that page
 - [x] GPU vs. CPU switch in Advanced Settings and micro-pacing frame yielding to prevent UI lag
-- [ ] fix bundle script for emulator and make sure model is loaded
 
 
 ## Backlog
