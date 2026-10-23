@@ -56,7 +56,13 @@ object SocDetector {
     /**
      * Inspects system build properties to detect the device's SoC manufacturer, model, and marketing name.
      */
-    fun detectSoc(): SocInfo {
+    fun detectSoc(): SocInfo = detectedSoc
+
+    /**
+     * The SoC never changes while the process lives, so the system property reads and parsing
+     * run once (lazily, thread-safe) instead of on every call.
+     */
+    private val detectedSoc: SocInfo by lazy {
         val rawManufacturer = firstKnown(
             getSystemProperty("ro.soc.manufacturer"), Build.SOC_MANUFACTURER, Build.MANUFACTURER
         )
@@ -66,7 +72,7 @@ object SocDetector {
         val rawHardware = Build.HARDWARE.lowercase()
         val rawBoard = Build.BOARD.lowercase()
 
-        return parseSocInfo(
+        parseSocInfo(
             rawManufacturer = rawManufacturer,
             rawModel = rawModel,
             rawHardware = rawHardware,
