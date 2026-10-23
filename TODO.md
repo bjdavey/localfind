@@ -90,7 +90,7 @@
 - [x] Embedding-space id stored per file; banner offers re-analysis when it differs from the current one (GPU vs CPU vectors assumed to agree; unmeasured)
 - [x] Foreground service timeout (Android 15+): checkpoint + retry already existed on stop; now the user is told why indexing paused (`STOP_REASON_FOREGROUND_SERVICE_TIMEOUT`)
 - [x] ~~Use `NpuCompatibilityChecker`~~ skipped (needs the `litert` dependency and is documented for `CompiledModel`, not the MediaPipe path); fixed the `SocDetector` bugs directly: `"unknown"` handling and `sun` vs `sunfish` board match
-- [ ] Load only the needed encoders (audio on demand), if `UniversalEmbedder` supports it
+- [x] ~~Load only the needed encoders~~ spike result: `UniversalEmbedderOptions` (MediaPipe 1.1.1) has no per-modality switch (only delegates, `maxInputLength`, `visionTokensPerImage`), so nothing to do now; see Backlog
 - [ ] Decide: LiteRT 2.3.0 Maven NPU packages vs current Feature Delivery modules + fetch scripts
 
 ## Bugs / Issues
@@ -152,6 +152,7 @@
 ### Indexing & Performance
 - Battery / thermal-friendly indexing (pause on low battery / charging-only option)
 - Vector quantization (FP16 / INT8 embeddings)
+- Lower RAM: load only the needed encoders (the 300M audio encoder is rarely used). The model supports on-demand modality loading but `UniversalEmbedder` 1.1.1 exposes no option; recheck on MediaPipe / ML Kit updates
 - PDF OCR (ML Kit / on-device OCR for scanned documents)
 - File staleness detection (handle deleted or modified files)
 - fMP4 remuxing for seekable video (see ARCHITECTURE.md, Indexing)
