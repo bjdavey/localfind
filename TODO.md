@@ -66,12 +66,20 @@
 ## Milestone 6: First publish
 - [x] Hardware NPU acceleration support
 - [x] Dynamic SoC-specific NPU runtime & model delivery: Play AI Pack, Play Feature Delivery & NPU default
-- Refactor, optimize, check dead code, technical debt, folder/files structure and design decisions
+- [x] Refacto: 
+    1. Remove dead code, 
+    2. Merge duplicated logic 
+    3. Split files over ~500 LOC (GalleryScreen, MainActivity, GalleryDialogs, SettingsScreen, GalleryTiles, IndexingWorker)
+    4. Simplify / tech debt (always-non-null nullable callbacks, IndexingWorker pause logic, MainActivity state; ask before adding a ViewModel)
+    5. Folder/package structure
+    6. Review design decisions & update docs
 - What else?
 - Final E2E test with edge cases
 - Publish
 
 ## Bugs / Issues
+- [ ] `POST_NOTIFICATIONS` is declared but never requested at runtime, so the indexing notification is hidden on Android 13+
+- [ ] FileProvider `files-path "."` exposes all of `filesDir` (including DB and model); `data_extraction_rules.xml` is still an empty template (decide what to back up)
 - [x] App-wide crash resilience: defensive gallery grid keys, viewer fallbacks, and global crash guard
 - [x] Anything under search view is still clickable
 - [x] Fix app crash due to duplicate keys in search results list (LazyColumn crash on device)
@@ -93,6 +101,7 @@
 ## Backlog
 
 ### Core
+- Refactor: Performance (measure first), Security & config (see the two bugs below)
 - Import from URL without saving the file (streaming keyframe indexing)
 - Export / Backup index and "Clear Database" reset
 - Allow other media files format

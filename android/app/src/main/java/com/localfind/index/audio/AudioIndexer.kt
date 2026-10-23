@@ -20,24 +20,24 @@ import com.localfind.ui.search.SearchResultFormatter
  */
 fun Indexer.indexAudioFile(
     file: ImportedFile,
-    isCancelled: () -> Boolean = { false },
-    onProgress: ((current: Int, total: Int) -> Unit)? = null
+    isCancelled: () -> Boolean,
+    onProgress: ((current: Int, total: Int) -> Unit)?
 ): IndexResult {
     if (!isAudioFile(file)) {
-        return IndexResult(file.uri, 0, false, "Not a supported audio file")
+        return IndexResult(0, false, "Not a supported audio file")
     }
     if (isCancelled()) {
-        return IndexResult(file.uri, 0, false, "Indexing cancelled")
+        return IndexResult(0, false, "Indexing cancelled")
     }
 
     val pcm = try {
         AudioDecoder.decodeToMono16k(context, file.uri.toUri(), isCancelled)
     } catch (e: Exception) {
-        return IndexResult(file.uri, 0, false, "Audio decode failed: ${e.message}")
+        return IndexResult(0, false, "Audio decode failed: ${e.message}")
     }
 
     if (isCancelled()) {
-        return IndexResult(file.uri, 0, false, "Indexing cancelled")
+        return IndexResult(0, false, "Indexing cancelled")
     }
 
     val windows = AudioChunker.windows(

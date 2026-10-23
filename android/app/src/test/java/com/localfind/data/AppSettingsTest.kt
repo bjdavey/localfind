@@ -141,7 +141,6 @@ class AppSettingsTest {
         val store = SettingsStore(fakePrefs)
 
         // When phone is in dark theme, uncustomized store should load dark mode = true
-        assertEquals(false, store.hasCustomTheme())
         val systemDarkSettings = store.load(defaultDarkMode = true)
         assertEquals(true, systemDarkSettings.darkMode)
 
@@ -151,13 +150,11 @@ class AppSettingsTest {
 
         // Explicitly saving custom theme
         store.save(systemLightSettings.copy(darkMode = true))
-        assertEquals(true, store.hasCustomTheme())
         // Even if system theme is light, saved preference wins
         assertEquals(true, store.load(defaultDarkMode = false).darkMode)
 
         // Resetting restores fallback to phone system setting
         val resetSettings = store.reset(defaultDarkMode = true)
-        assertEquals(false, store.hasCustomTheme())
         assertEquals(true, resetSettings.darkMode)
     }
 

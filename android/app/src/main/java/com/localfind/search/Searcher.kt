@@ -52,18 +52,6 @@ class Searcher(
     private val embedImageQuery: ((Bitmap) -> FloatArray)? = null
 ) {
     /**
-     * Test and lightweight constructor using [EmbeddingStore] and a query text embedding lambda.
-     */
-    constructor(
-        embeddingStore: EmbeddingStore,
-        embedQuery: (String) -> FloatArray
-    ) : this(
-        embeddingStore = embeddingStore,
-        embedQuery = embedQuery,
-        embedImageQuery = null
-    )
-
-    /**
      * Production constructor using [EmbeddingStore] and on-device [Embedder].
      * Configures multimodal embedding delegates for both text and image queries.
      */
@@ -86,7 +74,6 @@ class Searcher(
      * @param fileTypes Optional collection of file type values (`"text"`, `"pdf"`, `"image"`, `"audio"`, `"video"`).
      *                  When specified, filtering is performed at query time inside SQLite ("Search after filter,
      *                  not filter search results"), preventing unrelated modalities from consuming the topK budget.
-     * @param excludeFileUri Optional source file URI to exclude from results (e.g. to avoid returning a query file).
      * @return Ranked list of [SearchResult], sorted by descending similarity score (up to [topK]).
      */
     fun search(
@@ -94,8 +81,7 @@ class Searcher(
         topK: Int = DEFAULT_TOP_K,
         threshold: Float = 0.0f,
         metadataFilter: Map<String, String> = emptyMap(),
-        fileTypes: Collection<String>? = null,
-        excludeFileUri: String? = null
+        fileTypes: Collection<String>? = null
     ): List<SearchResult> {
         val trimmed = query.trim()
         if (trimmed.isEmpty() || topK <= 0) {
@@ -111,8 +97,7 @@ class Searcher(
             topK = topK,
             threshold = threshold,
             metadataFilter = metadataFilter,
-            fileTypes = fileTypes,
-            excludeFileUri = excludeFileUri
+            fileTypes = fileTypes
         )
     }
 
@@ -125,42 +110,10 @@ class Searcher(
     }
 
     /**
-     * Executes a visual similarity search using an image [Bitmap] and returns ranked results.
-     *
-     * Encodes the query image into the shared 768-dimensional multimodal vector space and
-     * retrieves the nearest visually and semantically related items in the library.
-     *
-     * @param bitmap Decoded software ARGB_8888 bitmap of the query image.
-     * @param topK Maximum number of results to retrieve (default: [DEFAULT_TOP_K]).
-     * @param threshold Minimum cosine similarity score required for a result to be included (default: 0.0f).
-     * @param metadataFilter Optional metadata filter criteria (e.g. `mapOf("fileId" to uri)`).
-     * @param fileTypes Optional collection of file type values (`"image"`, `"video"`, etc.).
-     * @param excludeFileUri Optional source file URI to exclude from results (e.g. to avoid returning the query image itself).
-     * @return Ranked list of [SearchResult], sorted by descending similarity score (up to [topK]).
-     */
-    fun searchImage(
-        bitmap: Bitmap,
-        topK: Int = DEFAULT_TOP_K,
-        threshold: Float = 0.0f,
-        metadataFilter: Map<String, String> = emptyMap(),
-        fileTypes: Collection<String>? = null,
-        excludeFileUri: String? = null
-    ): List<SearchResult> {
-        val queryEmbedding = embedImage(bitmap)
-        return searchByEmbedding(
-            queryEmbedding = queryEmbedding,
-            topK = topK,
-            threshold = threshold,
-            metadataFilter = metadataFilter,
-            fileTypes = fileTypes,
-            excludeFileUri = excludeFileUri
-        )
-    }
-
-    /**
      * Core nearest-neighbor search logic against [EmbeddingStore] given a precomputed 768-dimensional float embedding.
      *
-     * Reused by both text search and visual similarity image search.
+     * Reused by text search and by visual similarity (search by image) queries, which pass an
+     * image embedding obtained from [embedImage].
      *
      * @param queryEmbedding Normalized 768-dimensional float embedding vector.
      * @param topK Maximum number of results to retrieve.

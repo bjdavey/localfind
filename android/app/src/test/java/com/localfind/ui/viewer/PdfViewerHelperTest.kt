@@ -11,21 +11,14 @@ import org.junit.Test
 class PdfViewerHelperTest {
 
     @Test
-    fun isJetpackPdfSupported_requiresAndroidSAndExtension13() {
-        // Below Android S (API < 31) -> false regardless of extension level
-        assertFalse(PdfViewerHelper.isJetpackPdfSupported(sdkInt = 30) { 13 })
-
-        // Android S (API 31) with extension < 13 -> false
-        assertFalse(PdfViewerHelper.isJetpackPdfSupported(sdkInt = 31) { 12 })
-
-        // Android S (API 31) with extension 13 -> true
-        assertTrue(PdfViewerHelper.isJetpackPdfSupported(sdkInt = 31) { 13 })
-
-        // Android 14/15 (API 34/35) with extension >= 13 -> true
-        assertTrue(PdfViewerHelper.isJetpackPdfSupported(sdkInt = 35) { 14 })
+    fun isJetpackPdfSupported_requiresExtension13() {
+        // minSdk is 31, so only the SDK extension level (S extension >= 13) decides support
+        assertFalse(PdfViewerHelper.isJetpackPdfSupported { 12 })
+        assertTrue(PdfViewerHelper.isJetpackPdfSupported { 13 })
+        assertTrue(PdfViewerHelper.isJetpackPdfSupported { 14 })
 
         // Exception during extension check -> safely false
-        assertFalse(PdfViewerHelper.isJetpackPdfSupported(sdkInt = 31) { throw RuntimeException("Unsupported") })
+        assertFalse(PdfViewerHelper.isJetpackPdfSupported { throw RuntimeException("Unsupported") })
     }
 
     @Test

@@ -1,5 +1,6 @@
 package com.localfind.data
 
+import com.google.mediapipe.tasks.core.TextPart
 import com.google.mediapipe.tasks.retrieval.components.VectorStore
 import com.google.mediapipe.tasks.retrieval.model.RetrievalRecord
 import org.junit.Assert.assertEquals
@@ -62,13 +63,22 @@ class EmbeddingStoreTest {
         }
     }
 
+    /** Test helper: writes one record through the production batch API (the only write path used in the app). */
+    private fun EmbeddingStore.put(
+        id: String,
+        embedding: FloatArray,
+        text: String? = null,
+        metadata: Map<String, String> = emptyMap()
+    ) = storeBatch(
+        listOf(RetrievalRecord(id, if (text != null) listOf(TextPart(text)) else emptyList(), embedding, metadata))
+    )
+
     @Test
     fun storeAndRetrieveRecord() {
         // Validates storing a vector with metadata and retrieving it by ID
         val store = EmbeddingStore(FakeVectorStore())
         val embedding = floatArrayOf(0.1f, 0.2f, 0.3f)
-        store.store(
-            id = "doc1_chunk0",
+        store.put(id = "doc1_chunk0",
             embedding = embedding,
             text = "Hello local search",
             metadata = mapOf("fileId" to "doc1", "type" to "text")
@@ -83,32 +93,17 @@ class EmbeddingStoreTest {
     }
 
     @Test
-    fun deleteRecordById() {
-        // Validates deleting a specific record by unique ID
-        val store = EmbeddingStore(FakeVectorStore())
-        store.store("id1", floatArrayOf(1f))
-        store.store("id2", floatArrayOf(2f))
-
-        assertEquals(2, store.getAllRecordIds().size)
-
-        store.delete("id1")
-        assertNull(store.get("id1"))
-        assertNotNull(store.get("id2"))
-        assertEquals(listOf("id2"), store.getAllRecordIds())
-    }
-
-    @Test
     fun deleteByMetadata() {
         // Validates deleting all chunks matching metadata criteria (e.g., fileId)
         val store = EmbeddingStore(FakeVectorStore())
-        store.store("f1_c1", floatArrayOf(1f), metadata = mapOf("fileId" to "f1"))
-        store.store("f1_c2", floatArrayOf(2f), metadata = mapOf("fileId" to "f1"))
-        store.store("f2_c1", floatArrayOf(3f), metadata = mapOf("fileId" to "f2"))
+        store.put("f1_c1", floatArrayOf(1f), metadata = mapOf("fileId" to "f1"))
+        store.put("f1_c2", floatArrayOf(2f), metadata = mapOf("fileId" to "f1"))
+        store.put("f2_c1", floatArrayOf(3f), metadata = mapOf("fileId" to "f2"))
 
-        assertEquals(3, store.getAllRecordIds().size)
+        assertEquals(3, store.count())
 
         store.deleteByMetadata(mapOf("fileId" to "f1"))
-        assertEquals(1, store.getAllRecordIds().size)
+        assertEquals(1, store.count())
         assertNotNull(store.get("f2_c1"))
         assertNull(store.get("f1_c1"))
         assertNull(store.get("f1_c2"))
@@ -121,16 +116,16 @@ class EmbeddingStoreTest {
         val uri1 = "content://com.android.providers.media.documents/document/123"
         val uri2 = "content://com.android.providers.media.documents/document/456"
 
-        store.store("chunk1", floatArrayOf(0.1f), text = "Snippet 1", metadata = mapOf("fileId" to uri1))
-        store.store("chunk2", floatArrayOf(0.2f), text = "Snippet 2", metadata = mapOf("fileId" to uri1))
-        store.store("chunk3", floatArrayOf(0.3f), text = "Snippet 3", metadata = mapOf("fileId" to uri2))
+        store.put("chunk1", floatArrayOf(0.1f), text = "Snippet 1", metadata = mapOf("fileId" to uri1))
+        store.put("chunk2", floatArrayOf(0.2f), text = "Snippet 2", metadata = mapOf("fileId" to uri1))
+        store.put("chunk3", floatArrayOf(0.3f), text = "Snippet 3", metadata = mapOf("fileId" to uri2))
 
-        assertEquals(3, store.getAllRecordIds().size)
+        assertEquals(3, store.count())
 
         // Delete all chunks for uri1
         store.deleteByFileUri(uri1)
 
-        assertEquals(1, store.getAllRecordIds().size)
+        assertEquals(1, store.count())
         assertNull(store.get("chunk1"))
         assertNull(store.get("chunk2"))
         assertNotNull(store.get("chunk3"))

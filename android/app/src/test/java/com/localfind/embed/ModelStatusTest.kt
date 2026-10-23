@@ -26,11 +26,7 @@ class ModelStatusTest {
         val loading = ModelStatus.Loading
         assertTrue(loading is ModelStatus)
 
-        val loaded = ModelStatus.Loaded(
-            modelPath = "/data/user/0/com.localfind/files/embeddinggemma-2-740m.litertlm",
-            sizeBytes = 484_622_336L
-        )
-        assertEquals("/data/user/0/com.localfind/files/embeddinggemma-2-740m.litertlm", loaded.modelPath)
+        val loaded = ModelStatus.Loaded(sizeBytes = 484_622_336L)
         assertEquals(484_622_336L, loaded.sizeBytes)
         // Verify formatted size in MB
         assertEquals(462L, loaded.sizeBytes / (1024 * 1024))

@@ -90,8 +90,6 @@ fun MediaGalleryTile(
     onMoreOptionsClick: (() -> Unit)? = null,
     onCancelIndex: (() -> Unit)? = null,
     onRetryIndex: (() -> Unit)? = null,
-    onPauseIndex: (() -> Unit)? = null,
-    onResumeIndex: (() -> Unit)? = null,
     modifier: Modifier = Modifier
 ) {
     val context = LocalContext.current
@@ -186,7 +184,6 @@ fun MediaGalleryTile(
                                     )
                             )
                         }
-                        // Centered Play Button removed per user request
                     }
 
                     GalleryCategory.PDFS, GalleryCategory.TEXT -> {
@@ -302,19 +299,11 @@ fun MediaGalleryTile(
                                 strokeWidth = 3.5.dp
                             )
                         }
-                        // Actively indexing: show Pause and Cancel only
+                        // Actively indexing: show Cancel only (pausing is queue-wide, from the status banner)
                         Row(
                             horizontalArrangement = Arrangement.spacedBy(6.dp),
                             verticalAlignment = Alignment.CenterVertically
                         ) {
-                            // if (onPauseIndex != null) {
-                            //     StatusActionButton(
-                            //         text = "Pause",
-                            //         iconRes = R.drawable.ic_pause,
-                            //         contentColor = Color.White,
-                            //         onClick = onPauseIndex
-                            //     )
-                            // }
                             if (onCancelIndex != null) {
                                 StatusActionButton(
                                     text = "Cancel",
@@ -352,20 +341,11 @@ fun MediaGalleryTile(
                                     modifier = Modifier.size(16.dp)
                                 )
                             }
-                            // Paused: show Resume and Cancel only
+                            // Paused: show Cancel only (resuming is queue-wide, from the status banner)
                             Row(
                                 horizontalArrangement = Arrangement.spacedBy(6.dp),
                                 verticalAlignment = Alignment.CenterVertically
                             ) {
-                                // if (onResumeIndex != null) {
-                                //     StatusActionButton(
-                                //         text = "Resume",
-                                //         iconRes = R.drawable.ic_play_arrow,
-                                //         contentColor = Color.White,
-                                //         backgroundColor = MaterialTheme.colorScheme.primary.copy(alpha = 0.85f),
-                                //         onClick = onResumeIndex
-                                //     )
-                                // }
                                 if (onCancelIndex != null) {
                                     StatusActionButton(
                                         text = "Cancel",

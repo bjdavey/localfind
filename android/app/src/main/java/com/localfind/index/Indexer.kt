@@ -1,13 +1,10 @@
 package com.localfind.index
 
 import android.content.Context
-import android.graphics.Bitmap
-import android.net.Uri
 import android.os.PowerManager
 import com.google.mediapipe.tasks.core.TextPart
 import com.google.mediapipe.tasks.retrieval.model.RetrievalRecord
 import com.localfind.data.AppSettings
-import com.localfind.data.DEFAULT_MAX_IMAGE_DIMENSION
 import com.localfind.data.EmbeddingStore
 import com.localfind.data.EngineManager
 import com.localfind.data.HardwareAccelerator
@@ -16,28 +13,17 @@ import com.localfind.embed.Embedder
 import com.localfind.index.audio.indexAudioFile
 import com.localfind.index.document.indexPdfFile
 import com.localfind.index.document.indexTextFile
-import com.localfind.index.image.ImageIndexer
 import com.localfind.index.image.indexImageFile
 import com.localfind.index.video.indexVideoFile
 
 /**
- * Maximum width or height (in pixels) used when decoding an image for embedding.
- *
- * Aliases [DEFAULT_MAX_IMAGE_DIMENSION] (512px) to keep intermediate pixel buffers small (~1 MB)
- * and speed up ImageDecoder subsampling before the vision encoder resizes to its patch grid.
- */
-const val MAX_IMAGE_DIMENSION = DEFAULT_MAX_IMAGE_DIMENSION
-
-/**
  * Result report from indexing a file.
  *
- * @property fileUri Document URI identifying the indexed file.
  * @property chunksCount Number of chunks extracted, embedded, and saved.
  * @property isSuccess Whether indexing succeeded without errors.
  * @property errorMessage Descriptive error message if indexing failed.
  */
 data class IndexResult(
-    val fileUri: String,
     val chunksCount: Int,
     val isSuccess: Boolean,
     val errorMessage: String? = null
@@ -58,7 +44,7 @@ internal class ChunkEmbeddingData(
  *
  * Modality-specific pipelines are organized into dedicated subpackages:
  * - [indexTextFile] & [indexPdfFile] in `index/document/`
- * - [indexImageFile] & [ImageIndexer] in `index/image/`
+ * - [indexImageFile] & `ImageIndexer` in `index/image/`
  * - [indexAudioFile] in `index/audio/`
  * - [indexVideoFile] in `index/video/`
  *
@@ -109,10 +95,6 @@ class Indexer(
     fun isImageFile(file: ImportedFile): Boolean =
         isImageNameOrMime(file.displayName, file.mimeType)
 
-    /** Determines whether an imported file is a GIF image (.gif). */
-    fun isGifFile(file: ImportedFile): Boolean =
-        isGifNameOrMime(file.displayName, file.mimeType)
-
     /** Determines whether an imported file is a supported audio file (.mp3, .m4a, .wav). */
     fun isAudioFile(file: ImportedFile): Boolean =
         isAudioNameOrMime(file.displayName, file.mimeType)
@@ -120,10 +102,6 @@ class Indexer(
     /** Determines whether an imported file is a supported video file (.mp4). */
     fun isVideoFile(file: ImportedFile): Boolean =
         isVideoNameOrMime(file.displayName, file.mimeType)
-
-    /** Determines whether an imported file is supported by the indexer and has a builtin viewer. */
-    fun isSupported(file: ImportedFile): Boolean =
-        isSupported(file.displayName, file.mimeType)
 
     /**
      * Automatically dispatches indexing based on the file format
@@ -140,7 +118,7 @@ class Indexer(
             isAudioFile(file) -> indexAudioFile(file, isCancelled, onProgress)
             isVideoFile(file) -> indexVideoFile(file, isCancelled, onProgress)
             isTextFile(file) -> indexTextFile(file, isCancelled, onProgress)
-            else -> IndexResult(file.uri, 0, false, "Unsupported file format")
+            else -> IndexResult(0, false, "Unsupported file format")
         }
     }
 
@@ -173,14 +151,14 @@ class Indexer(
         type: String,
         items: List<T>,
         batchSize: Int,
-        deleteOnEmpty: Boolean = true,
+        deleteOnEmpty: Boolean,
         errorPrefix: String? = null,
         isCancelled: () -> Boolean,
         noinline onProgress: ((current: Int, total: Int) -> Unit)?,
         embedItem: (item: T) -> ChunkEmbeddingData
     ): IndexResult {
         if (isCancelled()) {
-            return IndexResult(file.uri, 0, false, "Indexing cancelled")
+            return IndexResult(0, false, "Indexing cancelled")
         }
 
         if (items.isEmpty()) {
@@ -189,7 +167,7 @@ class Indexer(
             }
             IndexingResumeManager.clearResumeChunk(context, file.uri)
             onProgress?.invoke(1, 1)
-            return IndexResult(file.uri, 0, true)
+            return IndexResult(0, true)
         }
 
         val startChunk = IndexingResumeManager.getResumeChunk(context, file.uri, file.size, items.size)
@@ -208,7 +186,7 @@ class Indexer(
                         records.clear()
                     }
                     IndexingResumeManager.setResumeChunk(context, file.uri, index, file.size)
-                    return IndexResult(file.uri, index, false, "Indexing cancelled")
+                    return IndexResult(index, false, "Indexing cancelled")
                 }
 
                 onProgress?.invoke(index + 1, items.size)
@@ -233,7 +211,7 @@ class Indexer(
             // Discard uncommitted in-memory batch on error to prevent duplicate insertions when retrying
             records.clear()
             if (errorPrefix != null) {
-                return IndexResult(file.uri, 0, false, "$errorPrefix: ${e.message}")
+                return IndexResult(0, false, "$errorPrefix: ${e.message}")
             }
             throw e
         }
@@ -245,11 +223,11 @@ class Indexer(
         }
 
         if (isCancelled()) {
-            return IndexResult(file.uri, items.size, false, "Indexing cancelled")
+            return IndexResult(items.size, false, "Indexing cancelled")
         }
 
         IndexingResumeManager.clearResumeChunk(context, file.uri)
-        return IndexResult(file.uri, items.size, true)
+        return IndexResult(items.size, true)
     }
 
     companion object {
@@ -271,9 +249,7 @@ class Indexer(
             val mime = mimeType?.lowercase() ?: ""
             return name.endsWith(".txt") ||
                 name.endsWith(".md") ||
-                mime.startsWith("text/") ||
-                mime == "text/plain" ||
-                mime == "text/markdown"
+                mime.startsWith("text/")
         }
 
         /** Checks whether a file name or MIME type corresponds to a supported PDF document. */
@@ -316,19 +292,5 @@ class Indexer(
             val mime = mimeType?.lowercase() ?: ""
             return name.endsWith(".gif") || mime == "image/gif"
         }
-
-        /** Delegates to [ImageIndexer.calculateTargetDimensions]. */
-        fun calculateTargetDimensions(
-            width: Int,
-            height: Int,
-            maxDimension: Int = MAX_IMAGE_DIMENSION
-        ): Pair<Int, Int> = ImageIndexer.calculateTargetDimensions(width, height, maxDimension)
-
-        /** Delegates to [ImageIndexer.decodeNormalizedBitmap]. */
-        fun decodeNormalizedBitmap(
-            context: Context,
-            uri: Uri,
-            maxDimension: Int = MAX_IMAGE_DIMENSION
-        ): Bitmap = ImageIndexer.decodeNormalizedBitmap(context, uri, maxDimension)
     }
 }

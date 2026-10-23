@@ -59,7 +59,7 @@ class PdfIndexingIntegrationTest {
                 val indexer = Indexer(context, embedder, store)
 
                 assertTrue("File should be recognized as PDF", indexer.isPdfFile(importedFile))
-                assertTrue("File should be supported", indexer.isSupported(importedFile))
+                assertTrue("File should be supported", Indexer.isSupported(importedFile.displayName, importedFile.mimeType))
 
                 val result = indexer.indexFile(importedFile)
                 assertTrue("PDF indexing must succeed: ${result.errorMessage}", result.isSuccess)

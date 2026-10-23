@@ -7,11 +7,11 @@ import android.net.Uri
 import androidx.core.net.toUri
 import com.google.mediapipe.tasks.core.ImagePart
 import com.google.mediapipe.tasks.retrieval.model.RetrievalRecord
+import com.localfind.data.DEFAULT_MAX_IMAGE_DIMENSION
 import com.localfind.data.ImportedFile
 import com.localfind.index.IndexResult
 import com.localfind.index.Indexer
 import com.localfind.index.IndexingResumeManager
-import com.localfind.index.MAX_IMAGE_DIMENSION
 
 /**
  * Image (`.jpg`, `.jpeg`, `.png`) indexing pipeline and hardware-subsampled bitmap decoding utilities.
@@ -24,13 +24,13 @@ object ImageIndexer {
      *
      * @param width Original image width in pixels.
      * @param height Original image height in pixels.
-     * @param maxDimension Maximum allowed width or height (default [MAX_IMAGE_DIMENSION]).
+     * @param maxDimension Maximum allowed width or height (default [DEFAULT_MAX_IMAGE_DIMENSION]).
      * @return Pair of (targetWidth, targetHeight), each guaranteed to be >= 1.
      */
     fun calculateTargetDimensions(
         width: Int,
         height: Int,
-        maxDimension: Int = MAX_IMAGE_DIMENSION
+        maxDimension: Int = DEFAULT_MAX_IMAGE_DIMENSION
     ): Pair<Int, Int> {
         val safeW = width.coerceAtLeast(1)
         val safeH = height.coerceAtLeast(1)
@@ -55,7 +55,7 @@ object ImageIndexer {
     fun decodeNormalizedBitmap(
         context: Context,
         uri: Uri,
-        maxDimension: Int = MAX_IMAGE_DIMENSION
+        maxDimension: Int = DEFAULT_MAX_IMAGE_DIMENSION
     ): Bitmap {
         val source = ImageDecoder.createSource(context.contentResolver, uri)
         return ImageDecoder.decodeBitmap(source) { decoder, info, _ ->
@@ -74,12 +74,12 @@ object ImageIndexer {
 }
 
 /**
- * Decodes, normalizes, embeds, and stores an imported image file (.jpg, .png).
+ * Decodes, normalizes, embeds, and stores an imported image file (.jpg, .png, .gif).
  *
  * Execution flow (ARCHITECTURE.md §5 & GOOGLE_AI_EDGE_GALLERY.md §6.3):
- * 1. Validates that the file is a supported image format (.jpg, .jpeg, .png).
+ * 1. Validates that the file is a supported image format (.jpg, .jpeg, .png, .gif).
  * 2. Decodes the image from the SAF URI into a software-backed ARGB_8888 [Bitmap],
- *    applying EXIF orientation corrections and bounding dimensions to [MAX_IMAGE_DIMENSION]
+ *    applying EXIF orientation corrections and bounding dimensions to [DEFAULT_MAX_IMAGE_DIMENSION]
  *    to keep memory usage low.
  * 3. Computes a 768-dimensional normalized vector for the whole image via [com.localfind.embed.Embedder.embedImage].
  * 4. Deletes any pre-existing chunks for this file from [com.localfind.data.EmbeddingStore].
@@ -87,39 +87,39 @@ object ImageIndexer {
  */
 fun Indexer.indexImageFile(
     file: ImportedFile,
-    isCancelled: () -> Boolean = { false },
-    onProgress: ((current: Int, total: Int) -> Unit)? = null
+    isCancelled: () -> Boolean,
+    onProgress: ((current: Int, total: Int) -> Unit)?
 ): IndexResult {
     if (!isImageFile(file)) {
-        return IndexResult(file.uri, 0, false, "Not a supported image file")
+        return IndexResult(0, false, "Not a supported image file")
     }
     if (isCancelled()) {
-        return IndexResult(file.uri, 0, false, "Indexing cancelled")
+        return IndexResult(0, false, "Indexing cancelled")
     }
 
     val uri = file.uri.toUri()
     val bitmap = try {
         ImageIndexer.decodeNormalizedBitmap(context, uri, maxDimension = settings.maxImageDimension)
     } catch (e: Exception) {
-        return IndexResult(file.uri, 0, false, "Image decode failed: ${e.message}")
+        return IndexResult(0, false, "Image decode failed: ${e.message}")
     }
 
     if (isCancelled()) {
         bitmap.recycle()
-        return IndexResult(file.uri, 0, false, "Indexing cancelled")
+        return IndexResult(0, false, "Indexing cancelled")
     }
 
     onProgress?.invoke(1, 1)
     val embedding = try {
         getActiveEmbedder().embedImage(bitmap)
     } catch (e: Exception) {
-        return IndexResult(file.uri, 0, false, "Image embedding failed: ${e.message}")
+        return IndexResult(0, false, "Image embedding failed: ${e.message}")
     } finally {
         bitmap.recycle()
     }
 
     if (isCancelled()) {
-        return IndexResult(file.uri, 0, false, "Indexing cancelled")
+        return IndexResult(0, false, "Indexing cancelled")
     }
 
     // Delete existing chunks for this file before storing the updated embedding
@@ -134,5 +134,5 @@ fun Indexer.indexImageFile(
 
     embeddingStore.storeBatch(listOf(record))
     IndexingResumeManager.clearResumeChunk(context, file.uri)
-    return IndexResult(file.uri, 1, true)
+    return IndexResult(1, true)
 }

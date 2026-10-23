@@ -49,7 +49,6 @@ import com.localfind.data.AppSettings
 import com.localfind.data.HardwareAccelerator
 import com.localfind.data.ModelStatus
 import com.localfind.data.ThemeMode
-import java.util.Locale
 import kotlin.math.roundToInt
 
 /**

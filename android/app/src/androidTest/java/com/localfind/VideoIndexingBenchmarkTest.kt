@@ -1,5 +1,6 @@
 package com.localfind
 
+import com.localfind.index.image.ImageIndexer
 import android.content.Context
 import android.graphics.Bitmap
 import android.graphics.BitmapFactory
@@ -136,7 +137,7 @@ class VideoIndexingBenchmarkTest {
                 val frames = frameTimes.map { timeMs ->
                     val bmp = retriever.getFrameAtTime(timeMs * 1000, MediaMetadataRetriever.OPTION_CLOSEST_SYNC)
                     bmp?.let {
-                        val (w, h) = Indexer.calculateTargetDimensions(it.width, it.height, 512)
+                        val (w, h) = ImageIndexer.calculateTargetDimensions(it.width, it.height, 512)
                         val scaled = if (w != it.width || h != it.height) {
                             val s = Bitmap.createScaledBitmap(it, w, h, true)
                             if (s != it) it.recycle()
@@ -243,7 +244,7 @@ class VideoIndexingBenchmarkTest {
         val durationMs = retriever.extractMetadata(MediaMetadataRetriever.METADATA_KEY_DURATION)?.toLongOrNull() ?: 300026L
         val rawW = retriever.extractMetadata(MediaMetadataRetriever.METADATA_KEY_VIDEO_WIDTH)?.toIntOrNull() ?: 1280
         val rawH = retriever.extractMetadata(MediaMetadataRetriever.METADATA_KEY_VIDEO_HEIGHT)?.toIntOrNull() ?: 720
-        val (targetW, targetH) = Indexer.calculateTargetDimensions(rawW, rawH, 256) // 256px hardware target!
+        val (targetW, targetH) = ImageIndexer.calculateTargetDimensions(rawW, rawH, 256) // 256px hardware target!
         val windows = VideoChunker.windows(durationMs, windowMs = 5000L, stepMs = 4000L)
 
         val totalStart = System.currentTimeMillis()
@@ -398,7 +399,7 @@ class VideoIndexingBenchmarkTest {
         val durationMs = retriever.extractMetadata(MediaMetadataRetriever.METADATA_KEY_DURATION)?.toLongOrNull() ?: 300026L
         val rawW = retriever.extractMetadata(MediaMetadataRetriever.METADATA_KEY_VIDEO_WIDTH)?.toIntOrNull() ?: 1280
         val rawH = retriever.extractMetadata(MediaMetadataRetriever.METADATA_KEY_VIDEO_HEIGHT)?.toIntOrNull() ?: 720
-        val (targetW, targetH) = Indexer.calculateTargetDimensions(rawW, rawH, 256)
+        val (targetW, targetH) = ImageIndexer.calculateTargetDimensions(rawW, rawH, 256)
         val windows = VideoChunker.windows(durationMs, windowMs = 5000L, stepMs = 4000L)
 
         val totalStart = System.currentTimeMillis()
@@ -559,7 +560,7 @@ class VideoIndexingBenchmarkTest {
             val durationMs = retriever.extractMetadata(MediaMetadataRetriever.METADATA_KEY_DURATION)?.toLongOrNull() ?: 300026L
             val rawW = retriever.extractMetadata(MediaMetadataRetriever.METADATA_KEY_VIDEO_WIDTH)?.toIntOrNull() ?: 1280
             val rawH = retriever.extractMetadata(MediaMetadataRetriever.METADATA_KEY_VIDEO_HEIGHT)?.toIntOrNull() ?: 720
-            val (targetW, targetH) = Indexer.calculateTargetDimensions(rawW, rawH, 256)
+            val (targetW, targetH) = ImageIndexer.calculateTargetDimensions(rawW, rawH, 256)
             val windows = VideoChunker.windows(durationMs, windowMs = 5000L, stepMs = 4000L)
 
             val totalStart = System.currentTimeMillis()

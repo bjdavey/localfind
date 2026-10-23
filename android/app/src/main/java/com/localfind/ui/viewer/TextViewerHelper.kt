@@ -89,10 +89,9 @@ object TextViewerHelper {
      */
     fun findTargetLineIndex(lines: List<TextLine>, targetOffset: Int): Int {
         if (lines.isEmpty() || targetOffset <= 0) return 0
-        val clampedOffset = targetOffset.coerceAtLeast(0)
 
         for (line in lines) {
-            if (clampedOffset in line.startOffset..line.endOffset) {
+            if (targetOffset in line.startOffset..line.endOffset) {
                 return line.lineIndex
             }
         }

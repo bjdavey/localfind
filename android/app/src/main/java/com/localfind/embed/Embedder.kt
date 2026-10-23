@@ -57,9 +57,6 @@ class Embedder(
     /** Concrete accelerator in use after resolving any dynamic policy (e.g. [HardwareAccelerator.SMART]). */
     val effectiveAccelerator: HardwareAccelerator = configuredAccelerator.resolveEffective(context)
 
-    /** Backward-compatible property exposing the configured accelerator. */
-    val accelerator: HardwareAccelerator get() = configuredAccelerator
-
     /**
      * Whether NPU acceleration is actively enabled for the vision encoder.
      * When true, vision encoding executes via dedicated hardware NPU (e.g. Qualcomm Hexagon HTP).
@@ -78,11 +75,6 @@ class Embedder(
      */
     val isGpuVisionEnabled: Boolean
 
-    /**
-     * Whether GPU acceleration is actively enabled for text encoding (e.g. PDF indexing, text files, queries).
-     */
-    val isGpuTextEnabled: Boolean
-
     init {
         // Locate the model file (from Play AI Pack or internal storage), copying from staging paths if missing.
         val model = SocDetector.ensureModelFile(context, effectiveAccelerator, preferredModelName)
@@ -97,7 +89,6 @@ class Embedder(
         var npuVisionSuccess = false
         var npuTextSuccess = false
         var gpuVisionSuccess = false
-        var gpuTextSuccess = false
 
         if (effectiveAccelerator == HardwareAccelerator.NPU) {
             // Link NPU dispatch and QNN/NeuroPilot runtime libraries from nativeLibraryDir into filesDir
@@ -190,7 +181,6 @@ class Embedder(
                 candidate.embedText("localfind gpu warmup")
                 createdEmbedder = candidate
                 gpuVisionSuccess = true
-                gpuTextSuccess = true
                 Log.i(TAG, "UniversalEmbedder initialized with GPU text and vision acceleration (configured=$configuredAccelerator, effective=$fallbackEffective).")
             } catch (t: Throwable) {
                 Log.w(TAG, "GPU text acceleration unavailable or failed to initialize (${t.message}). Falling back to GPU vision only.", t)
@@ -210,7 +200,6 @@ class Embedder(
 
                     createdEmbedder = UniversalEmbedder.createFromOptions(context, visionOnlyGpuOptions)
                     gpuVisionSuccess = true
-                    gpuTextSuccess = false
                     Log.i(TAG, "UniversalEmbedder initialized with GPU vision acceleration (configured=$configuredAccelerator, effective=$fallbackEffective).")
                 } catch (t: Throwable) {
                     Log.w(TAG, "GPU vision acceleration unavailable or failed to initialize (${t.message}). Falling back to CPU vision.", t)
@@ -237,7 +226,6 @@ class Embedder(
         isNpuVisionEnabled = npuVisionSuccess
         isNpuTextEnabled = npuTextSuccess
         isGpuVisionEnabled = gpuVisionSuccess
-        isGpuTextEnabled = gpuTextSuccess
     }
 
     /**
@@ -299,7 +287,7 @@ class Embedder(
      *
      * Synchronized on `this` to ensure thread-safe native inference.
      *
-     * @param parts [TextPart] time markers, [AudioPart] slices and [ImagePart] JPEG frames.
+     * @param parts `TextPart` time markers, [AudioPart] slices and `ImagePart` JPEG frames.
      * @return FloatArray of 768 elements representing the semantic vector.
      */
     fun embedVideoWindow(parts: List<Part>): FloatArray = synchronized(this) {

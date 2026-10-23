@@ -10,20 +10,24 @@ import org.junit.Test
 /** JVM tests for [VideoChunker]: sliding windows, frame times, token budget and audio ranges. */
 class VideoChunkerTest {
 
+    // 5 s windows every 4 s: neighbouring windows overlap by 1 s (production defaults)
+    private val windowMs = 5_000L
+    private val stepMs = 4_000L
+
     @Test
     fun emptyVideo_hasNoWindows() {
-        assertTrue(VideoChunker.windows(0).isEmpty())
+        assertTrue(VideoChunker.windows(0, windowMs, stepMs).isEmpty())
     }
 
     @Test
     fun shortVideo_isSingleWindow() {
-        assertEquals(listOf(VideoWindow(0, 3_000)), VideoChunker.windows(3_000))
+        assertEquals(listOf(VideoWindow(0, 3_000)), VideoChunker.windows(3_000, windowMs, stepMs))
     }
 
     @Test
     fun windowsOverlapAndEndAtDuration() {
         // 5 s windows every 4 s over 10 s: [0,5] [4,9] [8,10]
-        val w = VideoChunker.windows(10_000)
+        val w = VideoChunker.windows(10_000, windowMs, stepMs)
         assertEquals(listOf(0L, 4_000L, 8_000L), w.map { it.startMs })
         assertEquals(10_000L, w.last().endMs)
     }
@@ -31,16 +35,16 @@ class VideoChunkerTest {
     @Test
     fun exactFit_doesNotAddRedundantWindow() {
         // [0,5] already reaches the end of a 5 s video
-        assertEquals(1, VideoChunker.windows(5_000).size)
+        assertEquals(1, VideoChunker.windows(5_000, windowMs, stepMs).size)
     }
 
     @Test
     fun tinyTail_isSkipped() {
         // 8.5 s: [0,5] [4,8.5] -> next start 8 s would be a 0.5 s tail, but [4,8.5] already reached the end
-        val w = VideoChunker.windows(8_500)
+        val w = VideoChunker.windows(8_500, windowMs, stepMs)
         assertEquals(2, w.size)
         // 9.2 s: [0,5] [4,9] then [8,9.2] is 1.2 s long and kept
-        assertEquals(3, VideoChunker.windows(9_200).size)
+        assertEquals(3, VideoChunker.windows(9_200, windowMs, stepMs).size)
     }
 
     @Test

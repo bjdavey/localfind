@@ -13,7 +13,6 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
-import java.io.File
 
 /**
  * Observable lifecycle status of the on-device embedding model.
@@ -25,10 +24,9 @@ sealed interface ModelStatus {
     /**
      * Model is verified in internal storage and initialized in memory.
      *
-     * @property modelPath Absolute file path inside the app's internal files directory.
      * @property sizeBytes File size in bytes.
      */
-    data class Loaded(val modelPath: String, val sizeBytes: Long) : ModelStatus
+    data class Loaded(val sizeBytes: Long) : ModelStatus
 
     /**
      * Model is not loaded or failed to initialize.
@@ -36,7 +34,7 @@ sealed interface ModelStatus {
      * @property message Descriptive explanation of the issue.
      * @property instructions Clear action steps for loading the model on device or emulator.
      */
-    data class Error(val message: String, val instructions: String = "") : ModelStatus
+    data class Error(val message: String, val instructions: String) : ModelStatus
 }
 
 /**
@@ -96,7 +94,7 @@ object EngineManager {
             engineMutex.withLock {
                 getEmbedder(context.applicationContext)
             }
-            val loaded = ModelStatus.Loaded(modelFile.absolutePath, modelFile.length())
+            val loaded = ModelStatus.Loaded(modelFile.length())
             _modelStatus.value = loaded
             Log.i(TAG, "Embedding model successfully loaded.")
             loaded
@@ -151,7 +149,7 @@ object EngineManager {
                     embedder = it
                     val activeFile = SocDetector.getActiveModelFile(context, targetEffective)
                     if (activeFile.exists()) {
-                        _modelStatus.value = ModelStatus.Loaded(activeFile.absolutePath, activeFile.length())
+                        _modelStatus.value = ModelStatus.Loaded(activeFile.length())
                     }
                 }
             }
@@ -220,26 +218,4 @@ object EngineManager {
         val searcher = Searcher(st, emb)
         return block(searcher)
     }
-
-    /**
-     * Releases native memory and closes open database connections.
-     * Intended for application teardown or testing teardown.
-     */
-    fun close() {
-        try {
-            embedder?.close()
-        } catch (_: Exception) {
-            // Ignore teardown errors
-        }
-        embedder = null
-        _modelStatus.value = ModelStatus.Loading
-
-        try {
-            store?.close()
-        } catch (_: Exception) {
-            // Ignore teardown errors
-        }
-        store = null
-    }
 }
-

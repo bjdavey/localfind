@@ -12,14 +12,12 @@ import java.io.File
  * Information about the host device's System-on-Chip (SoC) processor and Neural Processing Unit (NPU).
  *
  * @property vendor Standardized SoC manufacturer (e.g. "Qualcomm", "MediaTek", "Google", or "Unknown").
- * @property model Standardized SoC chipset model (e.g. "SM8650", "SM8550", "SM8750", "SM8850", "MT6991", "Tensor_G5").
  * @property marketingName Human-readable marketing name (e.g. "Snapdragon 8 Gen 3", "Dimensity 9400").
  * @property expectedNpuModelName Expected pre-compiled model file name from Hugging Face LiteRT repository.
  * @property htpArchitecture Qualcomm Hexagon HTP architecture version (e.g. "V73", "V75", "V79", "V81").
  */
 data class SocInfo(
     val vendor: String,
-    val model: String,
     val marketingName: String,
     val expectedNpuModelName: String?,
     val htpArchitecture: String? = null
@@ -114,7 +112,7 @@ object SocDetector {
             } else {
                 null
             }
-            return SocInfo(vendor, chipModel, marketing, expectedModel, htpArch)
+            return SocInfo(vendor, marketing, expectedModel, htpArch)
         }
 
         // 2. MediaTek Dimensity
@@ -135,7 +133,7 @@ object SocDetector {
             } else {
                 null
             }
-            return SocInfo(vendor, chipModel, marketing, expectedModel)
+            return SocInfo(vendor, marketing, expectedModel)
         }
 
         // 3. Google Tensor
@@ -156,20 +154,20 @@ object SocDetector {
             } else {
                 null
             }
-            return SocInfo(vendor, chipModel, marketing, expectedModel)
+            return SocInfo(vendor, marketing, expectedModel)
         }
 
         // Generic / Unknown SoC
         val cleanVendor = rawManufacturer.ifBlank { "Generic" }
         val cleanModel = rawModel.ifBlank { "Unknown" }
-        return SocInfo(cleanVendor, cleanModel, "$cleanVendor $cleanModel", null)
+        return SocInfo(cleanVendor, "$cleanVendor $cleanModel", null)
     }
 
     /**
      * Checks if Google Play AI Pack (`fast-follow`) has already extracted the targeted model file on disk.
      *
      * Because `fast-follow` AI packs are extracted directly to internal storage by Google Play,
-     * `EmbeddingEngine` can load the file path directly without duplicating 485 MB into `context.filesDir`.
+     * [Embedder] can load the file path directly without duplicating 485 MB into `context.filesDir`.
      */
     fun getAiPackModelFile(context: Context): File? {
         return try {

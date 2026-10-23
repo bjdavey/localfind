@@ -27,7 +27,6 @@ import kotlin.math.roundToInt
  */
 enum class GalleryCategory(
     val label: String,
-    val icon: String,
     /**
      * Chunk metadata "type" values associated with this category.
      * Used by Searcher to restrict nearest-neighbor vector search directly in SQLite
@@ -37,12 +36,12 @@ enum class GalleryCategory(
      */
     val types: List<String>? = null
 ) {
-    ALL("All", "✦", null),
-    PHOTOS("Photos", "🖼", listOf("image")),
-    VIDEOS("Videos", "🎬", listOf("video")),
-    PDFS("PDFs", "📄", listOf("pdf")),
-    TEXT("Text", "📝", listOf("text")),
-    AUDIO("Audio", "🎵", listOf("audio"))
+    ALL("All", null),
+    PHOTOS("Photos", listOf("image")),
+    VIDEOS("Videos", listOf("video")),
+    PDFS("PDFs", listOf("pdf")),
+    TEXT("Text", listOf("text")),
+    AUDIO("Audio", listOf("audio"))
 }
 
 /**
@@ -62,7 +61,7 @@ val GalleryCategory.iconResId: Int
  * Cached preview data for a single file in the gallery or search results.
  *
  * @property bitmap Rendered thumbnail bitmap (PDF page 1, video keyframe, or audio cover art).
- * @property badgeText Corner badge label (e.g., "14 p." for PDFs, "02:45" for video/audio, "MD" / "TXT").
+ * @property badgeText Duration label ("02:45") for video/audio, or the "VIDEO" / "AUDIO" placeholder when unreadable.
  * @property textSnippet First lines of text for `.txt` and `.md` files to render as a mini document sheet.
  */
 data class FilePreviewData(
@@ -151,7 +150,7 @@ object ThumbnailHelper {
             Indexer.isVideoNameOrMime(fileName, mimeType) -> GalleryCategory.VIDEOS
             Indexer.isAudioNameOrMime(fileName, mimeType) -> GalleryCategory.AUDIO
             Indexer.isPdfNameOrMime(fileName, mimeType) -> GalleryCategory.PDFS
-            Indexer.isTextNameOrMime(fileName, mimeType) -> GalleryCategory.TEXT
+            // Plain text, Markdown and any other supported file fall back to the text category
             else -> GalleryCategory.TEXT
         }
     }
@@ -261,7 +260,6 @@ object ThumbnailHelper {
      */
     fun evictPreview(uri: String) {
         synchronized(previewCache) {
-            previewCache.remove(uri)
             val keysToRemove = previewCache.snapshot().keys.filter { it == uri || it.startsWith("$uri@") }
             for (key in keysToRemove) {
                 previewCache.remove(key)
@@ -312,7 +310,7 @@ object ThumbnailHelper {
 
     /**
      * Renders a specific page (or page 1 if not specified) of a PDF document into a downsampled [Bitmap]
-     * and returns the page count badge (e.g., `"p. 4 of 12"` or `"PDF • 12 p."`).
+     * (the tile shows no badge text for PDFs, only the rendered page).
      */
     private fun loadPdfPreview(
         context: Context,
@@ -324,7 +322,7 @@ object ThumbnailHelper {
                 PdfRenderer(pfd).use { renderer ->
                     val pageCount = renderer.pageCount
                     if (pageCount <= 0) {
-                        return FilePreviewData(badgeText = "PDF")
+                        return FilePreviewData()
                     }
                     val pageIndex = computePdfTargetPageIndex(pageNumber, pageCount)
                     renderer.openPage(pageIndex).use { page ->
@@ -337,23 +335,14 @@ object ThumbnailHelper {
                         bitmap.eraseColor(AndroidColor.WHITE)
                         page.render(bitmap, null, null, PdfRenderer.Page.RENDER_MODE_FOR_DISPLAY)
 
-                        val badge = if (pageNumber != null) {
-                            "p. ${pageIndex + 1} of $pageCount"
-                        } else {
-                            "PDF • $pageCount p."
-                        }
-
-                        return FilePreviewData(
-                            bitmap = bitmap,
-                            badgeText = badge
-                        )
+                        return FilePreviewData(bitmap = bitmap)
                     }
                 }
             }
         } catch (_: Exception) {
             // Fallback gracefully if PDF is encrypted or unreadable
         }
-        return FilePreviewData(badgeText = "PDF")
+        return FilePreviewData()
     }
 
     /**
@@ -451,30 +440,19 @@ object ThumbnailHelper {
      * as a miniature page preview in the gallery grid.
      */
     private fun loadTextPreview(context: Context, uri: Uri, fileName: String): FilePreviewData {
-        val extBadge = if (fileName.lowercase().endsWith(".md") ||
-            fileName.lowercase().endsWith(".markdown")
-        ) {
-            "MD"
-        } else {
-            "TXT"
-        }
-
         try {
             context.contentResolver.openInputStream(uri)?.use { stream ->
                 BufferedReader(InputStreamReader(stream, Charsets.UTF_8)).use { reader ->
                     val buffer = CharArray(TEXT_PREVIEW_MAX_CHARS * 2)
                     val readCount = reader.read(buffer, 0, buffer.size)
                     val raw = if (readCount > 0) String(buffer, 0, readCount) else ""
-                    return FilePreviewData(
-                        badgeText = extBadge,
-                        textSnippet = formatFirstLinesPreview(raw)
-                    )
+                    return FilePreviewData(textSnippet = formatFirstLinesPreview(raw))
                 }
             }
         } catch (_: Exception) {
             // Ignore stream errors
         }
-        return FilePreviewData(badgeText = extBadge, textSnippet = fileName)
+        return FilePreviewData(textSnippet = fileName)
     }
 
     /**

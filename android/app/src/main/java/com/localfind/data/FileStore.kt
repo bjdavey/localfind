@@ -6,7 +6,6 @@ import android.database.Cursor
 import android.database.sqlite.SQLiteDatabase
 import android.database.sqlite.SQLiteOpenHelper
 import androidx.core.database.getIntOrNull
-import androidx.core.database.getLongOrNull
 import androidx.core.database.getStringOrNull
 import androidx.core.database.sqlite.transaction
 import java.util.Locale
@@ -166,8 +165,8 @@ class FileStore(context: Context) : SQLiteOpenHelper(
     /**
      * Creates and stores a new [Folder] entry in the database.
      */
-    fun createFolder(name: String, parentId: String? = null, id: String = UUID.randomUUID().toString()): Folder {
-        val folder = Folder(id = id, name = name.trim(), parentId = parentId)
+    fun createFolder(name: String, parentId: String? = null): Folder {
+        val folder = Folder(id = UUID.randomUUID().toString(), name = name.trim(), parentId = parentId)
         val values = ContentValues().apply {
             put("id", folder.id)
             put("name", folder.name)
@@ -430,11 +429,9 @@ class FileStore(context: Context) : SQLiteOpenHelper(
 
     /**
      * Deletes an imported file record by its URI.
-     *
-     * @return True if a row was deleted, false otherwise.
      */
-    fun delete(uri: String): Boolean {
-        return writableDatabase.delete(TABLE_FILES, "uri = ?", arrayOf(uri)) > 0
+    fun delete(uri: String) {
+        writableDatabase.delete(TABLE_FILES, "uri = ?", arrayOf(uri))
     }
 
     /**

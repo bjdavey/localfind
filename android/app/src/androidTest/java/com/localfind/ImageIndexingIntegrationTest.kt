@@ -1,5 +1,6 @@
 package com.localfind
 
+import com.localfind.index.image.ImageIndexer
 import android.graphics.Bitmap
 import android.graphics.Canvas
 import android.graphics.Color
@@ -49,12 +50,12 @@ class ImageIndexingIntegrationTest {
         val blueUri = Uri.fromFile(blueJpgFile)
 
         // 2. Verify decodeNormalizedBitmap produces valid ARGB_8888 bitmaps
-        val decodedRed = Indexer.decodeNormalizedBitmap(context, redUri)
+        val decodedRed = ImageIndexer.decodeNormalizedBitmap(context, redUri)
         assertNotNull("Decoded PNG bitmap must not be null", decodedRed)
         assertEquals(Bitmap.Config.ARGB_8888, decodedRed.config)
         decodedRed.recycle()
 
-        val decodedBlue = Indexer.decodeNormalizedBitmap(context, blueUri)
+        val decodedBlue = ImageIndexer.decodeNormalizedBitmap(context, blueUri)
         assertNotNull("Decoded JPG bitmap must not be null", decodedBlue)
         assertEquals(Bitmap.Config.ARGB_8888, decodedBlue.config)
         decodedBlue.recycle()
@@ -79,8 +80,8 @@ class ImageIndexingIntegrationTest {
 
                 assertTrue(indexer.isImageFile(redImported))
                 assertTrue(indexer.isImageFile(blueImported))
-                assertTrue(indexer.isSupported(redImported))
-                assertTrue(indexer.isSupported(blueImported))
+                assertTrue(Indexer.isSupported(redImported.displayName, redImported.mimeType))
+                assertTrue(Indexer.isSupported(blueImported.displayName, blueImported.mimeType))
 
                 val resRed = indexer.indexFile(redImported)
                 assertTrue("PNG indexing must succeed: ${resRed.errorMessage}", resRed.isSuccess)

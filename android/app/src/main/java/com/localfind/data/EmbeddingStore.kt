@@ -1,18 +1,16 @@
 package com.localfind.data
 
 import android.content.Context
-import com.google.mediapipe.tasks.core.Part
-import com.google.mediapipe.tasks.core.TextPart
 import com.google.mediapipe.tasks.retrieval.components.SqliteVectorStore
 import com.google.mediapipe.tasks.retrieval.components.VectorStore
 import com.google.mediapipe.tasks.retrieval.model.RetrievalRecord
 import java.io.File
 
 /** Default filename for the SQLite-backed vector database in app files dir. */
-const val DEFAULT_DATABASE_NAME = "localfind_vectors.db"
+private const val DATABASE_NAME = "localfind_vectors.db"
 
 /** Dimension of the embeddings output by EmbeddingGemma 2 740M model. */
-const val DEFAULT_EMBEDDING_DIMENSION = 768
+private const val EMBEDDING_DIMENSION = 768
 
 /**
  * Local vector store backed by MediaPipe's [SqliteVectorStore].
@@ -36,38 +34,12 @@ class EmbeddingStore(
          * Factory function to create an instance of [EmbeddingStore] using [SqliteVectorStore].
          *
          * @param context Application context used to resolve the internal database path.
-         * @param databaseName Filename of the SQLite database inside context.filesDir.
-         * @param dimension Vector length (768 for EmbeddingGemma 2).
          */
-        fun create(
-            context: Context,
-            databaseName: String = DEFAULT_DATABASE_NAME,
-            dimension: Int = DEFAULT_EMBEDDING_DIMENSION
-        ): EmbeddingStore {
-            val dbFile = File(context.filesDir, databaseName)
-            val store = SqliteVectorStore(context, dbFile.absolutePath, dimension)
+        fun create(context: Context): EmbeddingStore {
+            val dbFile = File(context.filesDir, DATABASE_NAME)
+            val store = SqliteVectorStore(context, dbFile.absolutePath, EMBEDDING_DIMENSION)
             return EmbeddingStore(store)
         }
-    }
-
-    /**
-     * Stores or updates a single embedding record.
-     * Synchronized on `this` for thread-safe SQLite writes during background indexing.
-     *
-     * @param id Unique record identifier (e.g., `"<fileUri>_<chunkIndex>"`).
-     * @param embedding 768-dimensional normalized float vector.
-     * @param text Optional raw text of the chunk (stored as a [TextPart] for snippet display).
-     * @param metadata Map of key-value attributes (fileId, uri, name, type, location).
-     */
-    fun store(
-        id: String,
-        embedding: FloatArray,
-        text: String? = null,
-        metadata: Map<String, String> = emptyMap()
-    ) = synchronized(this) {
-        val parts: List<Part> = if (text != null) listOf(TextPart(text)) else emptyList()
-        val record = RetrievalRecord(id, parts, embedding, metadata)
-        vectorStore.upsert(listOf(record))
     }
 
     /**
@@ -87,24 +59,10 @@ class EmbeddingStore(
     }
 
     /**
-     * Returns a list of all record IDs currently stored in the vector database.
-     */
-    fun getAllRecordIds(): List<String> = synchronized(this) {
-        vectorStore.allRecordIds
-    }
-
-    /**
      * Returns the total number of embedded chunk records stored in the vector database.
      */
     fun count(): Int = synchronized(this) {
         vectorStore.allRecordIds.size
-    }
-
-    /**
-     * Deletes a record by its unique chunk ID.
-     */
-    fun delete(id: String) = synchronized(this) {
-        vectorStore.delete(listOf(id))
     }
 
     /**
@@ -128,13 +86,6 @@ class EmbeddingStore(
     }
 
     /**
-     * Clears all records and embeddings from the vector store.
-     */
-    fun deleteAll() = synchronized(this) {
-        vectorStore.deleteAll()
-    }
-
-    /**
      * Searches for the top-K nearest neighbors to the given query embedding using cosine similarity.
      * Synchronized on `this` to coordinate safely with ongoing SQLite transactions from indexing.
      *
@@ -145,8 +96,8 @@ class EmbeddingStore(
      */
     fun search(
         queryEmbedding: FloatArray,
-        topK: Int = 10,
-        metadataFilter: Map<String, String> = emptyMap()
+        topK: Int,
+        metadataFilter: Map<String, String>
     ): List<RetrievalRecord> = synchronized(this) {
         if (metadataFilter.isEmpty()) {
             vectorStore.search(queryEmbedding, topK)

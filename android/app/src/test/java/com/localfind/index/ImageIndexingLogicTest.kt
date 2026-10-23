@@ -1,5 +1,6 @@
 package com.localfind.index
 
+import com.localfind.index.image.ImageIndexer
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
@@ -10,7 +11,7 @@ import org.junit.Test
  *
  * Tests:
  * - Supported image extension and MIME type detection (.jpg, .jpeg, .png).
- * - Aspect-ratio-preserving target dimension downscaling within [MAX_IMAGE_DIMENSION] (512px).
+ * - Aspect-ratio-preserving target dimension downscaling within [DEFAULT_MAX_IMAGE_DIMENSION] (512px).
  */
 class ImageIndexingLogicTest {
 
@@ -36,20 +37,20 @@ class ImageIndexingLogicTest {
 
     @Test
     fun calculateTargetDimensions_preservesSmallerImages() {
-        val (w, h) = Indexer.calculateTargetDimensions(width = 400, height = 300, maxDimension = 512)
+        val (w, h) = ImageIndexer.calculateTargetDimensions(width = 400, height = 300, maxDimension = 512)
         assertEquals(400, w)
         assertEquals(300, h)
     }
 
     @Test
     fun calculateTargetDimensions_scalesDownLandscapeAndPortraitProportionally() {
-        // Landscape 4000x3000 -> 512x384 (default MAX_IMAGE_DIMENSION = 512)
-        val (landW, landH) = Indexer.calculateTargetDimensions(width = 4000, height = 3000)
+        // Landscape 4000x3000 -> 512x384 (default DEFAULT_MAX_IMAGE_DIMENSION = 512)
+        val (landW, landH) = ImageIndexer.calculateTargetDimensions(width = 4000, height = 3000)
         assertEquals(512, landW)
         assertEquals(384, landH)
 
         // Portrait 1500x3000 -> 256x512
-        val (portW, portH) = Indexer.calculateTargetDimensions(width = 1500, height = 3000)
+        val (portW, portH) = ImageIndexer.calculateTargetDimensions(width = 1500, height = 3000)
         assertEquals(256, portW)
         assertEquals(512, portH)
     }

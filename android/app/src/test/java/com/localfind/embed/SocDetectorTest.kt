@@ -22,7 +22,6 @@ class SocDetectorTest {
             rawBoard = "pineapple"
         )
         assertEquals("Qualcomm", soc.vendor)
-        assertEquals("SM8650", soc.model)
         assertEquals("Snapdragon 8 Gen 3", soc.marketingName)
         assertEquals("embeddinggemma-2-740m_Qualcomm_SM8650.litertlm", soc.expectedNpuModelName)
         assertEquals("V75", soc.htpArchitecture)
@@ -37,7 +36,6 @@ class SocDetectorTest {
             rawBoard = "kalama"
         )
         assertEquals("Qualcomm", soc.vendor)
-        assertEquals("SM8550", soc.model)
         assertEquals("Snapdragon 8 Gen 2", soc.marketingName)
         assertEquals("embeddinggemma-2-740m_Qualcomm_SM8550.litertlm", soc.expectedNpuModelName)
         assertEquals("V73", soc.htpArchitecture)
@@ -52,7 +50,6 @@ class SocDetectorTest {
             rawBoard = "sun"
         )
         assertEquals("Qualcomm", soc.vendor)
-        assertEquals("SM8750", soc.model)
         assertEquals("Snapdragon 8 Elite", soc.marketingName)
         assertEquals("embeddinggemma-2-740m_Qualcomm_SM8750.litertlm", soc.expectedNpuModelName)
         assertEquals("V79", soc.htpArchitecture)
@@ -67,7 +64,6 @@ class SocDetectorTest {
             rawBoard = "canoe"
         )
         assertEquals("Qualcomm", soc.vendor)
-        assertEquals("SM8850", soc.model)
         assertEquals("Snapdragon 8 Elite Gen 5", soc.marketingName)
         assertEquals("embeddinggemma-2-740m_Qualcomm_SM8850.litertlm", soc.expectedNpuModelName)
         assertEquals("V81", soc.htpArchitecture)
@@ -82,7 +78,8 @@ class SocDetectorTest {
             rawBoard = "sm7150"
         )
         assertEquals("Qualcomm", soc.vendor)
-        assertEquals("SM7150", soc.model)
+        // Unlisted Snapdragon: the raw chip model is surfaced through the marketing name
+        assertEquals("Snapdragon (SM7150)", soc.marketingName)
         assertNull(soc.expectedNpuModelName)
         assertNull(soc.htpArchitecture)
     }
@@ -96,7 +93,6 @@ class SocDetectorTest {
             rawBoard = "k6991v1"
         )
         assertEquals("MediaTek", soc.vendor)
-        assertEquals("MT6991", soc.model)
         assertEquals("Dimensity 9400", soc.marketingName)
         assertEquals("embeddinggemma-2-740m_MediaTek_MT6991.litertlm", soc.expectedNpuModelName)
     }
@@ -110,7 +106,6 @@ class SocDetectorTest {
             rawBoard = "laguna"
         )
         assertEquals("Google", soc.vendor)
-        assertEquals("Tensor_G5", soc.model)
         assertEquals("Google Tensor G5", soc.marketingName)
         assertEquals("embeddinggemma-2-740m_Google_Tensor_G5.litertlm", soc.expectedNpuModelName)
     }
@@ -124,7 +119,6 @@ class SocDetectorTest {
             rawBoard = "generic"
         )
         assertEquals("UnknownVendor", soc.vendor)
-        assertEquals("XYZ123", soc.model)
         assertNull(soc.expectedNpuModelName)
     }
 }

@@ -3,7 +3,6 @@ package com.localfind.index.video
 import android.graphics.Bitmap
 import android.media.MediaMetadataRetriever
 import android.os.PowerManager
-import android.util.Log
 import androidx.core.net.toUri
 import com.google.mediapipe.tasks.core.ImagePart
 import com.google.mediapipe.tasks.core.Part
@@ -39,7 +38,7 @@ import java.io.ByteArrayOutputStream
  *    is >= [com.localfind.data.AppSettings.videoSimilarityThreshold] (default 85%) similar to the previous window,
  *    the entire window is skipped (no second frame decode, no model inference, no redundant SQLite rows).
  * 5. Adaptive Thermal Mitigation: Uses native Android 12+ [PowerManager.getThermalHeadroom] and
- *    [PowerManager.getCurrentThermalStatus] to insert pacing micro-pauses (40ms - 150ms), preventing
+ *    [PowerManager.getCurrentThermalStatus] to insert pacing micro-pauses (40ms - 150ms; 2 s at SEVERE thermal status), preventing
  *    Linux kernel thermal governor downclocking cliffs.
  */
 fun Indexer.indexVideoFile(
@@ -48,10 +47,10 @@ fun Indexer.indexVideoFile(
     onProgress: ((current: Int, total: Int) -> Unit)? = null
 ): IndexResult {
     if (!isVideoFile(file)) {
-        return IndexResult(file.uri, 0, false, "Not a supported video file")
+        return IndexResult(0, false, "Not a supported video file")
     }
     if (isCancelled()) {
-        return IndexResult(file.uri, 0, false, "Indexing cancelled")
+        return IndexResult(0, false, "Indexing cancelled")
     }
 
     val uri = file.uri.toUri()
@@ -79,7 +78,7 @@ fun Indexer.indexVideoFile(
     try {
         retriever.setDataSource(context, uri)
         val durationMs = retriever.extractMetadata(MediaMetadataRetriever.METADATA_KEY_DURATION)
-            ?.toLongOrNull() ?: return IndexResult(file.uri, 0, false, "Could not read video duration")
+            ?.toLongOrNull() ?: return IndexResult(0, false, "Could not read video duration")
 
         val rawW = retriever.extractMetadata(MediaMetadataRetriever.METADATA_KEY_VIDEO_WIDTH)?.toIntOrNull() ?: 1280
         val rawH = retriever.extractMetadata(MediaMetadataRetriever.METADATA_KEY_VIDEO_HEIGHT)?.toIntOrNull() ?: 720
@@ -96,7 +95,7 @@ fun Indexer.indexVideoFile(
         if (windows.isEmpty()) {
             IndexingResumeManager.clearResumeChunk(context, file.uri)
             onProgress?.invoke(1, 1)
-            return IndexResult(file.uri, 0, true)
+            return IndexResult(0, true)
         }
 
         val startChunk = IndexingResumeManager.getResumeChunk(context, file.uri, file.size, windows.size)
@@ -115,7 +114,7 @@ fun Indexer.indexVideoFile(
                     records.clear()
                 }
                 IndexingResumeManager.setResumeChunk(context, file.uri, index, file.size)
-                return IndexResult(file.uri, index, false, "Indexing cancelled")
+                return IndexResult(index, false, "Indexing cancelled")
             }
             onProgress?.invoke(index + 1, windows.size)
 
@@ -182,7 +181,6 @@ fun Indexer.indexVideoFile(
                 VideoChunker.estimateTokens(windowMs, allJpegs.size, true) <= MAX_INPUT_TOKENS
 
             val currentEmbedder = getActiveEmbedder()
-            Log.i("VideoIndexer", "Chunk $index/${windows.size}: Active delegate=${currentEmbedder.effectiveAccelerator} (screenOn=${powerManager?.isInteractive})")
 
             // Interleave: [time] audio-slice [time] frame ... one pair per sampled frame
             val parts = mutableListOf<Part>()
@@ -207,7 +205,7 @@ fun Indexer.indexVideoFile(
                     records.clear()
                 }
                 IndexingResumeManager.setResumeChunk(context, file.uri, index, file.size)
-                return IndexResult(file.uri, index, false, "Indexing cancelled")
+                return IndexResult(index, false, "Indexing cancelled")
             }
 
             val embedding = try {
@@ -242,7 +240,7 @@ fun Indexer.indexVideoFile(
     } catch (e: Exception) {
         // Discard uncommitted in-memory batch on error to prevent duplicate insertions when retrying
         records.clear()
-        return IndexResult(file.uri, 0, false, "Video indexing failed: ${e.message}")
+        return IndexResult(0, false, "Video indexing failed: ${e.message}")
     } finally {
         audioDeferred?.cancel()
         retriever.release()
@@ -255,11 +253,11 @@ fun Indexer.indexVideoFile(
     }
 
     if (isCancelled()) {
-        return IndexResult(file.uri, indexedChunksCount, false, "Indexing cancelled")
+        return IndexResult(indexedChunksCount, false, "Indexing cancelled")
     }
 
     IndexingResumeManager.clearResumeChunk(context, file.uri)
-    return IndexResult(file.uri, indexedChunksCount.coerceAtLeast(if (totalWindows > 0) 1 else 0), true)
+    return IndexResult(indexedChunksCount.coerceAtLeast(if (totalWindows > 0) 1 else 0), true)
 }
 
 /**
@@ -273,7 +271,7 @@ const val DEFAULT_MICRO_PACING_DELAY_MS = 20L
  * Calculates an adaptive pacing delay in milliseconds based on real-time device thermal headroom
  * and thermal status (Android 12+ / minSdk 31).
  *
- * Inserting small micro-pauses (40ms-150ms) during intensive video embedding loops keeps the SoC
+ * Inserting small micro-pauses (40ms-150ms, or 2 s once the device reports SEVERE thermal status) during intensive video embedding loops keeps the SoC
  * below the thermal cliff, preventing Linux kernel thermal governor downclocking that otherwise
  * degrades inference speeds by 4x-5x on physical hardware.
  */
@@ -339,9 +337,9 @@ private fun extractScaledVideoFrame(
 /**
  * Compresses this [Bitmap] to a JPEG byte array (quality 80) and immediately recycles the bitmap.
  */
-private fun Bitmap.toJpegBytesAndRecycle(quality: Int = 80): ByteArray {
+private fun Bitmap.toJpegBytesAndRecycle(): ByteArray {
     return ByteArrayOutputStream().use { out ->
-        compress(Bitmap.CompressFormat.JPEG, quality, out)
+        compress(Bitmap.CompressFormat.JPEG, 80, out)
         recycle()
         out.toByteArray()
     }

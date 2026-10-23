@@ -13,25 +13,14 @@ object PdfViewerHelper {
      * AndroidX Jetpack PDF library (`androidx.pdf:pdf-viewer-fragment`).
      *
      * Requirements according to official Android documentation:
-     * - Minimum Android S (API level 31)
+     * - Minimum Android S (API level 31), which is always satisfied because the app's minSdk is 31
      * - SDK extension level 13 or higher (or Android 15+ where extension level >= 13 is native)
      */
     fun isJetpackPdfSupported(
-        sdkInt: Int = Build.VERSION.SDK_INT,
-        extensionVersionProvider: () -> Int = {
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
-                SdkExtensions.getExtensionVersion(Build.VERSION_CODES.S)
-            } else {
-                0
-            }
-        }
+        extensionVersionProvider: () -> Int = { SdkExtensions.getExtensionVersion(Build.VERSION_CODES.S) }
     ): Boolean {
         return try {
-            if (sdkInt >= Build.VERSION_CODES.S) {
-                extensionVersionProvider() >= 13
-            } else {
-                false
-            }
+            extensionVersionProvider() >= 13
         } catch (_: Throwable) {
             false
         }

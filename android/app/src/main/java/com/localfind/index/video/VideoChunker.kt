@@ -2,15 +2,6 @@ package com.localfind.index.video
 
 import com.localfind.index.audio.AUDIO_SAMPLE_RATE
 
-/** Video window length (ARCHITECTURE.md §5). Starting value, to be tuned later. */
-const val VIDEO_WINDOW_MS = 5_000L
-
-/** Distance between window starts. Smaller than the window, so neighbouring windows overlap by 1 s. */
-const val VIDEO_STEP_MS = 4_000L
-
-/** Frames sampled per window. */
-const val VIDEO_FRAMES_PER_WINDOW = 2
-
 /** Model input limit in tokens (GOOGLE_AI_EDGE_GALLERY.md §6.2). Longer windows fall back to frames only. */
 const val MAX_INPUT_TOKENS = 1024
 
@@ -32,8 +23,8 @@ object VideoChunker {
      */
     fun windows(
         durationMs: Long,
-        windowMs: Long = VIDEO_WINDOW_MS,
-        stepMs: Long = VIDEO_STEP_MS
+        windowMs: Long,
+        stepMs: Long
     ): List<VideoWindow> {
         if (durationMs <= 0) return emptyList()
         val result = mutableListOf<VideoWindow>()
@@ -50,7 +41,7 @@ object VideoChunker {
     }
 
     /** Timestamps of [count] frames, taken at the middle of [count] equal slices of the window. */
-    fun frameTimes(window: VideoWindow, count: Int = VIDEO_FRAMES_PER_WINDOW): List<Long> {
+    fun frameTimes(window: VideoWindow, count: Int): List<Long> {
         val len = window.endMs - window.startMs
         return List(count) { i -> window.startMs + (2L * i + 1) * len / (2L * count) }
     }
@@ -67,9 +58,9 @@ object VideoChunker {
     /**
      * Sample range [from, to) of 16 kHz audio for the time range, clamped to [totalSamples].
      */
-    fun sampleRange(startMs: Long, endMs: Long, totalSamples: Int, sampleRate: Int = AUDIO_SAMPLE_RATE): IntRange {
-        val from = (startMs * sampleRate / 1000).toInt().coerceIn(0, totalSamples)
-        val to = (endMs * sampleRate / 1000).toInt().coerceIn(from, totalSamples)
+    fun sampleRange(startMs: Long, endMs: Long, totalSamples: Int): IntRange {
+        val from = (startMs * AUDIO_SAMPLE_RATE / 1000).toInt().coerceIn(0, totalSamples)
+        val to = (endMs * AUDIO_SAMPLE_RATE / 1000).toInt().coerceIn(from, totalSamples)
         return from until to
     }
 

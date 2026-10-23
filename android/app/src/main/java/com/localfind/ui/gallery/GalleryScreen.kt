@@ -71,7 +71,6 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.unit.sp
 import com.localfind.R
 import com.localfind.data.FileOpener
 import com.localfind.data.Folder
@@ -93,7 +92,6 @@ import com.localfind.index.IndexingProgress
 @Composable
 fun GalleryScreen(
     importedFiles: List<ImportedFile>,
-    indexedChunksCount: Int,
     isIndexing: Boolean,
     statusMessage: String,
     indexingProgress: IndexingProgress = IndexingProgress(),
@@ -449,7 +447,7 @@ fun GalleryScreen(
                         )
                         val fileCountLabel = if (importedFiles.size == 1) "1 file" else "${importedFiles.size} files"
                         Text(
-                            text = "$fileCountLabel",
+                            text = fileCountLabel,
                             style = MaterialTheme.typography.labelMedium,
                             color = MaterialTheme.colorScheme.onSurfaceVariant
                         )
@@ -665,8 +663,7 @@ fun GalleryScreen(
                             .fillMaxWidth()
                             .padding(horizontal = 14.dp, vertical = 10.dp)
                     ) {
-                        val isPaused = isQueuePaused
-                        val statusHeader = if (isPaused) {
+                        val statusHeader = if (isQueuePaused) {
                             val pendingCount = importedFiles.count {
                                 it.indexingStatus == IndexingStatus.PENDING || it.indexingStatus == IndexingStatus.INDEXING
                             }
@@ -682,7 +679,7 @@ fun GalleryScreen(
                             "Analyzing files..."
                         }
 
-                        val showPercent = !isPaused && (indexingProgress.progressFraction > 0f || indexingProgress.currentChunk > 0)
+                        val showPercent = !isQueuePaused && (indexingProgress.progressFraction > 0f || indexingProgress.currentChunk > 0)
                         val percentText = if (showPercent) "${(indexingProgress.progressFraction * 100).toInt()}%" else ""
 
                         val activeFileName = indexingProgress.currentFileName
@@ -814,7 +811,7 @@ fun GalleryScreen(
 
                         // Row 3: Full-width progress bar
                         Spacer(modifier = Modifier.height(6.dp))
-                        if (isPaused) {
+                        if (isQueuePaused) {
                             LinearProgressIndicator(
                                 progress = { indexingProgress.progressFraction.coerceIn(0f, 1f) },
                                 modifier = Modifier
@@ -1195,9 +1192,7 @@ fun GalleryScreen(
                                 inspectedFile = file
                             },
                             onCancelIndex = onCancelIndexFile?.let { { it(file) } },
-                            onRetryIndex = onRetryIndexFile?.let { { it(file) } },
-                            onPauseIndex = onPauseIndexing,
-                            onResumeIndex = onResumeIndexing
+                            onRetryIndex = onRetryIndexFile?.let { { it(file) } }
                         )
                     }
                 }

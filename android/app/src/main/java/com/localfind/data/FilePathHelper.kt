@@ -5,7 +5,6 @@ import android.content.ClipboardManager
 import android.content.ContentUris
 import android.content.Context
 import android.net.Uri
-import android.provider.DocumentsContract
 import android.provider.MediaStore
 import java.io.ByteArrayOutputStream
 
@@ -352,13 +351,6 @@ object FilePathHelper {
     }
 
     /**
-     * Copies the given text string to the system clipboard.
-     *
-     * @param context Android context.
-     * @param text Text content to place on clipboard.
-     * @param label Human-readable clip description.
-     */
-    /**
      * Converts a fully resolved filesystem path into a clean, human-readable display path.
      *
      * Simplifications:
@@ -395,6 +387,13 @@ object FilePathHelper {
         return fullPath
     }
 
+    /**
+     * Copies the given text string to the system clipboard.
+     *
+     * @param context Android context.
+     * @param text Text content to place on clipboard.
+     * @param label Human-readable clip description.
+     */
     fun copyToClipboard(context: Context, text: String, label: String = "File Path") {
         try {
             val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as? ClipboardManager

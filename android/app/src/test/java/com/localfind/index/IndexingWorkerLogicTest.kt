@@ -65,7 +65,6 @@ class IndexingWorkerLogicTest {
             fileIndex = 1,
             totalFiles = 3,
             currentChunk = 2,
-            totalChunks = 4,
             progressFraction = 0.5f,
             message = "Indexing 1/3: test.mp4 (50%)"
         )
@@ -77,7 +76,6 @@ class IndexingWorkerLogicTest {
         assertEquals(1, updated.fileIndex)
         assertEquals(3, updated.totalFiles)
         assertEquals(2, updated.currentChunk)
-        assertEquals(4, updated.totalChunks)
         assertEquals(0.5f, updated.progressFraction, 0.001f)
         assertEquals("Indexing 1/3: test.mp4 (50%)", updated.message)
 
@@ -89,7 +87,6 @@ class IndexingWorkerLogicTest {
             fileIndex = 1,
             totalFiles = 3,
             currentChunk = 5,
-            totalChunks = 4,
             progressFraction = 1.25f,
             message = "Indexing 1/3: test.mp4 (100%)"
         )
@@ -102,7 +99,6 @@ class IndexingWorkerLogicTest {
             fileIndex = 1,
             totalFiles = 3,
             currentChunk = 0,
-            totalChunks = 4,
             progressFraction = -0.5f,
             message = "Indexing 1/3: test.mp4 (0%)"
         )
@@ -159,7 +155,6 @@ class IndexingWorkerLogicTest {
             fileIndex = 1,
             totalFiles = 1,
             currentChunk = 0,
-            totalChunks = 10,
             progressFraction = 0f,
             message = "Indexing 1/1: stuck.pdf..."
         )
@@ -403,7 +398,7 @@ class IndexingWorkerLogicTest {
         assertFalse(IndexingProgressState.progress.value.isPaused)
 
         // Set paused
-        IndexingProgressState.setPaused(isPaused = true, message = "Paused (3 pending)")
+        IndexingProgressState.setPaused(message = "Paused (3 pending)")
         val paused = IndexingProgressState.progress.value
         assertFalse(paused.isIndexing)
         assertTrue(paused.isPaused)
@@ -417,10 +412,8 @@ class IndexingWorkerLogicTest {
             fileIndex = 1,
             totalFiles = 3,
             currentChunk = 0,
-            totalChunks = 10,
             progressFraction = 0f,
-            message = "Analyzing 1/3: resume.pdf (0%)",
-            isPaused = false
+            message = "Analyzing 1/3: resume.pdf (0%)"
         )
         val resumed = IndexingProgressState.progress.value
         assertTrue(resumed.isIndexing)

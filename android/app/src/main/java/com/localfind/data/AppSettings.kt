@@ -75,7 +75,7 @@ fun HardwareAccelerator.resolveEffective(context: Context): HardwareAccelerator 
     }
 }
 
-/** Default minimum cosine similarity score required for search results (user-requested default: 0.6). */
+/** Default minimum cosine similarity score required for search results (tuned for NPU embeddings). */
 const val DEFAULT_SIMILARITY_THRESHOLD = 0.3f
 
 /** Default maximum number of top nearest-neighbor search results returned. */
@@ -131,7 +131,7 @@ const val DEFAULT_ENABLE_FOLDER_IMPORT = false
  * @property videoSkipSimilarChunks Whether to skip consecutive video windows with visually redundant content.
  * @property videoSimilarityThreshold Similarity cutoff (0.5 .. 1.0) for detecting redundant video windows.
  * @property enableFolderImport Whether importing entire directories is exposed in the gallery UI.
- * @property accelerator Preferred hardware accelerator for vision indexing ([HardwareAccelerator.GPU] or [HardwareAccelerator.CPU]).
+ * @property accelerator Preferred hardware accelerator for vision indexing ([HardwareAccelerator.NPU], [HardwareAccelerator.GPU], [HardwareAccelerator.CPU] or the dynamic [HardwareAccelerator.SMART]).
  */
 data class AppSettings(
     val themeMode: ThemeMode = DEFAULT_THEME_MODE,
@@ -156,8 +156,6 @@ data class AppSettings(
     fun sanitized(): AppSettings {
         val safeTextChunkSize = textChunkSize.coerceIn(100, 5000)
         return copy(
-            themeMode = themeMode,
-            darkMode = darkMode,
             similarityThreshold = similarityThreshold.coerceIn(0.0f, 1.0f),
             topK = topK.coerceIn(1, 100),
             textChunkSize = safeTextChunkSize,
@@ -166,11 +164,7 @@ data class AppSettings(
             videoWindowSeconds = videoWindowSeconds.coerceIn(1, 60),
             videoFramesPerWindow = videoFramesPerWindow.coerceIn(1, 10),
             maxImageDimension = maxImageDimension.coerceIn(128, 2048),
-            videoIncludeAudio = videoIncludeAudio,
-            videoSkipSimilarChunks = videoSkipSimilarChunks,
-            videoSimilarityThreshold = videoSimilarityThreshold.coerceIn(0.5f, 1.0f),
-            enableFolderImport = enableFolderImport,
-            accelerator = accelerator
+            videoSimilarityThreshold = videoSimilarityThreshold.coerceIn(0.5f, 1.0f)
         )
     }
 }
@@ -186,17 +180,6 @@ class SettingsStore(private val prefs: SharedPreferences) {
     constructor(context: Context) : this(
         context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
     )
-
-    /**
-     * Checks if the user has explicitly chosen an override for dark mode in settings.
-     */
-    fun hasCustomTheme(): Boolean {
-        if (prefs.contains(KEY_THEME_MODE)) {
-            val mode = prefs.getString(KEY_THEME_MODE, null)
-            return mode != null && mode != ThemeMode.SYSTEM.name
-        }
-        return prefs.contains(KEY_DARK_MODE)
-    }
 
     /**
      * Loads the current persisted settings, applying defaults for any unset keys and

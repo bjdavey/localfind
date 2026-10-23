@@ -11,12 +11,10 @@ import com.tom_roush.pdfbox.text.PDFTextStripper
 import java.io.BufferedReader
 import java.io.InputStreamReader
 
-/**
- * Text/Markdown (`.txt`, `.md`) and PDF (`.pdf`) indexing pipelines for [Indexer].
- *
- * Uses [Indexer.indexChunkedItems] to share resumable checkpointing, batch SQLite commits,
- * cooperative cancellation, and metadata formatting across document modalities.
- */
+// Text/Markdown (`.txt`, `.md`) and PDF (`.pdf`) indexing pipelines for [Indexer].
+//
+// Uses [Indexer.indexChunkedItems] to share resumable checkpointing, batch SQLite commits,
+// cooperative cancellation, and metadata formatting across document modalities.
 
 /**
  * Reads, chunks, embeds, and stores an imported text or Markdown file.
@@ -31,27 +29,27 @@ import java.io.InputStreamReader
  */
 fun Indexer.indexTextFile(
     file: ImportedFile,
-    isCancelled: () -> Boolean = { false },
-    onProgress: ((current: Int, total: Int) -> Unit)? = null
+    isCancelled: () -> Boolean,
+    onProgress: ((current: Int, total: Int) -> Unit)?
 ): IndexResult {
     if (!isTextFile(file)) {
-        return IndexResult(file.uri, 0, false, "Not a supported text file")
+        return IndexResult(0, false, "Not a supported text file")
     }
     if (isCancelled()) {
-        return IndexResult(file.uri, 0, false, "Indexing cancelled")
+        return IndexResult(0, false, "Indexing cancelled")
     }
 
     val uri = file.uri.toUri()
     val content = try {
         val inputStream = context.contentResolver.openInputStream(uri)
-            ?: return IndexResult(file.uri, 0, false, "Could not open stream for URI")
+            ?: return IndexResult(0, false, "Could not open stream for URI")
         BufferedReader(InputStreamReader(inputStream, Charsets.UTF_8)).use { it.readText() }
     } catch (e: Exception) {
-        return IndexResult(file.uri, 0, false, "Read failed: ${e.message}")
+        return IndexResult(0, false, "Read failed: ${e.message}")
     }
 
     if (isCancelled()) {
-        return IndexResult(file.uri, 0, false, "Indexing cancelled")
+        return IndexResult(0, false, "Indexing cancelled")
     }
 
     val chunks = TextChunker.chunk(
@@ -91,14 +89,14 @@ fun Indexer.indexTextFile(
  */
 fun Indexer.indexPdfFile(
     file: ImportedFile,
-    isCancelled: () -> Boolean = { false },
-    onProgress: ((current: Int, total: Int) -> Unit)? = null
+    isCancelled: () -> Boolean,
+    onProgress: ((current: Int, total: Int) -> Unit)?
 ): IndexResult {
     if (!isPdfFile(file)) {
-        return IndexResult(file.uri, 0, false, "Not a supported PDF file")
+        return IndexResult(0, false, "Not a supported PDF file")
     }
     if (isCancelled()) {
-        return IndexResult(file.uri, 0, false, "Indexing cancelled")
+        return IndexResult(0, false, "Indexing cancelled")
     }
 
     try {
@@ -106,14 +104,14 @@ fun Indexer.indexPdfFile(
             PDFBoxResourceLoader.init(context)
         }
     } catch (e: Exception) {
-        return IndexResult(file.uri, 0, false, "PDFBox initialization failed: ${e.message}")
+        return IndexResult(0, false, "PDFBox initialization failed: ${e.message}")
     }
 
     val uri = file.uri.toUri()
     val chunks = mutableListOf<PdfChunk>()
     try {
         val inputStream = context.contentResolver.openInputStream(uri)
-            ?: return IndexResult(file.uri, 0, false, "Could not open stream for URI")
+            ?: return IndexResult(0, false, "Could not open stream for URI")
 
         inputStream.use { stream ->
             PDDocument.load(stream).use { document ->
@@ -121,7 +119,7 @@ fun Indexer.indexPdfFile(
                 val totalPages = document.numberOfPages
                 for (pageNum in 1..totalPages) {
                     if (isCancelled()) {
-                        return IndexResult(file.uri, 0, false, "Indexing cancelled")
+                        return IndexResult(0, false, "Indexing cancelled")
                     }
                     // Phase 1 (Text extraction): 0% to 15%
                     onProgress?.invoke(pageNum * 15 / totalPages.coerceAtLeast(1), 100)
@@ -139,7 +137,7 @@ fun Indexer.indexPdfFile(
             }
         }
     } catch (e: Exception) {
-        return IndexResult(file.uri, 0, false, "PDF extraction failed: ${e.message}")
+        return IndexResult(0, false, "PDF extraction failed: ${e.message}")
     }
 
     // Phase 2 (Embedding & persistence): 15% to 100%

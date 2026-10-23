@@ -14,7 +14,6 @@ import java.util.Collections
  * @property fileIndex 1-based index of the active file within the current pending queue.
  * @property totalFiles Total number of files pending in the active batch.
  * @property currentChunk 1-based index of the chunk/page/window currently being embedded.
- * @property totalChunks Total chunks/pages/windows for the active file.
  * @property progressFraction Floating ratio (0.0f..1.0f) representing current file completion.
  * @property message Human-readable status string for top banner progress displays.
  */
@@ -26,7 +25,6 @@ data class IndexingProgress(
     val fileIndex: Int = 0,
     val totalFiles: Int = 0,
     val currentChunk: Int = 0,
-    val totalChunks: Int = 0,
     val progressFraction: Float = 0f,
     val message: String = ""
 )
@@ -48,20 +46,16 @@ object IndexingProgressState {
         fileIndex: Int,
         totalFiles: Int,
         currentChunk: Int,
-        totalChunks: Int,
         progressFraction: Float,
-        message: String,
-        isPaused: Boolean = false
+        message: String
     ) {
         _progress.value = IndexingProgress(
             isIndexing = isIndexing,
-            isPaused = isPaused,
             currentUri = currentUri,
             currentFileName = currentFileName,
             fileIndex = fileIndex,
             totalFiles = totalFiles,
             currentChunk = currentChunk,
-            totalChunks = totalChunks,
             progressFraction = progressFraction.coerceIn(0f, 1f),
             message = message
         )
@@ -70,11 +64,11 @@ object IndexingProgressState {
     /**
      * Updates state to reflect that the indexing queue has been paused.
      */
-    fun setPaused(isPaused: Boolean, message: String = "Paused") {
+    fun setPaused(message: String) {
         val cur = _progress.value
         _progress.value = cur.copy(
             isIndexing = false,
-            isPaused = isPaused,
+            isPaused = true,
             message = message
         )
     }

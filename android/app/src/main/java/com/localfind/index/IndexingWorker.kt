@@ -7,7 +7,6 @@ import android.app.PendingIntent
 import android.content.Context
 import android.content.Intent
 import android.content.pm.ServiceInfo
-import android.os.Build
 import android.util.Log
 import androidx.core.app.NotificationCompat
 import androidx.core.content.edit
@@ -17,7 +16,6 @@ import androidx.work.ForegroundInfo
 import androidx.work.OneTimeWorkRequestBuilder
 import androidx.work.WorkManager
 import androidx.work.WorkerParameters
-import androidx.work.workDataOf
 import com.localfind.MainActivity
 import com.localfind.R
 import com.localfind.data.EngineManager
@@ -53,13 +51,7 @@ class IndexingWorker(
         const val NOTIFICATION_CHANNEL_ID = "localfind_indexing_channel"
         const val NOTIFICATION_ID = 1001
 
-        const val KEY_CURRENT_FILE_URI = "key_current_file_uri"
-        const val KEY_CURRENT_FILE_NAME = "key_current_file_name"
-        const val KEY_FILE_INDEX = "key_file_index"
-        const val KEY_TOTAL_FILES = "key_total_files"
-        const val KEY_PROGRESS_FRACTION = "key_progress_fraction"
-
-        const val PREFS_NAME = IndexingResumeManager.PREFS_NAME
+        private const val PREFS_NAME = IndexingResumeManager.PREFS_NAME
         const val KEY_IS_PAUSED = "key_is_indexing_paused"
 
         /**
@@ -93,9 +85,7 @@ class IndexingWorker(
             setPausedPref(context, false)
             IndexingCancellationState.resume()
             IndexingCancellationState.resetAllCancelled()
-            val request = OneTimeWorkRequestBuilder<IndexingWorker>()
-                .addTag(TAG_INDEXING)
-                .build()
+            val request = OneTimeWorkRequestBuilder<IndexingWorker>().build()
 
             WorkManager.getInstance(context.applicationContext).enqueueUniqueWork(
                 WORK_NAME,
@@ -128,7 +118,7 @@ class IndexingWorker(
             val notificationManager = context.getSystemService(Context.NOTIFICATION_SERVICE) as? NotificationManager
             if (remainingCount > 0) {
                 val msg = "Paused ($remainingCount pending)"
-                IndexingProgressState.setPaused(isPaused = true, message = msg)
+                IndexingProgressState.setPaused(message = msg)
                 notificationManager?.notify(NOTIFICATION_ID, buildPausedNotification(context, remainingCount))
             } else {
                 IndexingProgressState.reset()
@@ -159,10 +149,8 @@ class IndexingWorker(
                 fileIndex = 0,
                 totalFiles = pending.size,
                 currentChunk = 0,
-                totalChunks = 1,
                 progressFraction = 0f,
-                message = msg,
-                isPaused = false
+                message = msg
             )
             enqueue(context, replace = true)
         }
@@ -217,27 +205,25 @@ class IndexingWorker(
         }
 
         fun createNotificationChannel(context: Context) {
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-                val channel = NotificationChannel(
-                    NOTIFICATION_CHANNEL_ID,
-                    "File Analysis",
-                    NotificationManager.IMPORTANCE_LOW
-                ).apply {
-                    description = "Shows progress while LocalFind analyzes files in the background"
-                    setShowBadge(false)
-                }
-                val notificationManager = context.getSystemService(Context.NOTIFICATION_SERVICE) as? NotificationManager
-                notificationManager?.createNotificationChannel(channel)
+            val channel = NotificationChannel(
+                NOTIFICATION_CHANNEL_ID,
+                "File Analysis",
+                NotificationManager.IMPORTANCE_LOW
+            ).apply {
+                description = "Shows progress while LocalFind analyzes files in the background"
+                setShowBadge(false)
             }
+            val notificationManager = context.getSystemService(Context.NOTIFICATION_SERVICE) as? NotificationManager
+            notificationManager?.createNotificationChannel(channel)
         }
 
         fun buildNotification(
             context: Context,
             message: String,
-            progressFraction: Float = 0f,
-            fileIndex: Int = 0,
-            totalFiles: Int = 0,
-            isPaused: Boolean = false
+            progressFraction: Float,
+            fileIndex: Int,
+            totalFiles: Int,
+            isPaused: Boolean
         ): Notification {
             createNotificationChannel(context)
 
@@ -328,10 +314,9 @@ class IndexingWorker(
      */
     fun createForegroundInfo(
         message: String,
-        progressFraction: Float = 0f,
-        fileIndex: Int = 0,
-        totalFiles: Int = 0,
-        isPaused: Boolean = false
+        progressFraction: Float,
+        fileIndex: Int,
+        totalFiles: Int
     ): ForegroundInfo {
         val notification = buildNotification(
             context = context,
@@ -339,17 +324,13 @@ class IndexingWorker(
             progressFraction = progressFraction,
             fileIndex = fileIndex,
             totalFiles = totalFiles,
-            isPaused = isPaused
+            isPaused = false
         )
-        return if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
-            ForegroundInfo(
-                NOTIFICATION_ID,
-                notification,
-                ServiceInfo.FOREGROUND_SERVICE_TYPE_DATA_SYNC
-            )
-        } else {
-            ForegroundInfo(NOTIFICATION_ID, notification)
-        }
+        return ForegroundInfo(
+            NOTIFICATION_ID,
+            notification,
+            ServiceInfo.FOREGROUND_SERVICE_TYPE_DATA_SYNC
+        )
     }
 
     override suspend fun getForegroundInfo(): ForegroundInfo {
@@ -357,8 +338,7 @@ class IndexingWorker(
             message = "Analyzing files for local search...",
             progressFraction = 0f,
             fileIndex = 0,
-            totalFiles = 0,
-            isPaused = false
+            totalFiles = 0
         )
     }
 
@@ -381,7 +361,7 @@ class IndexingWorker(
         }
         lastNotificationTime = now
         try {
-            val info = createForegroundInfo(message, progressFraction, fileIndex, totalFiles, isPaused = false)
+            val info = createForegroundInfo(message, progressFraction, fileIndex, totalFiles)
             try {
                 // Keep foreground service active and update ongoing notification via WorkManager
                 setForegroundAsync(info)
@@ -402,10 +382,10 @@ class IndexingWorker(
 
         try {
             // Check if the indexing queue is currently paused
-            if (isPaused(context) || IndexingCancellationState.isPaused()) {
+            if (isPaused(context)) {
                 val pending = fileStore.getPendingFiles()
                 val msg = if (pending.isNotEmpty()) "Paused (${pending.size} pending)" else "Paused"
-                IndexingProgressState.setPaused(true, msg)
+                IndexingProgressState.setPaused(msg)
                 return@withContext Result.success()
             }
 
@@ -420,7 +400,6 @@ class IndexingWorker(
                     fileIndex = 0,
                     totalFiles = 0,
                     currentChunk = 0,
-                    totalChunks = 0,
                     progressFraction = 0f,
                     message = "Paused: Model not loaded"
                 )
@@ -439,11 +418,11 @@ class IndexingWorker(
 
             // Process batches until no pending or interrupted files remain in FileStore
             while (true) {
-                if (isStopped || IndexingCancellationState.isAllCancelled() || isPaused(context) || IndexingCancellationState.isPaused()) {
-                    if (isPaused(context) || IndexingCancellationState.isPaused()) {
+                if (isStopped || IndexingCancellationState.isAllCancelled() || isPaused(context)) {
+                    if (isPaused(context)) {
                         val pending = fileStore.getPendingFiles()
                         val msg = if (pending.isNotEmpty()) "Paused (${pending.size} pending)" else "Paused"
-                        IndexingProgressState.setPaused(true, msg)
+                        IndexingProgressState.setPaused(msg)
                         return@withContext Result.success()
                     }
                     IndexingProgressState.reset()
@@ -458,12 +437,12 @@ class IndexingWorker(
                 val totalInBatch = pending.size
 
                 for ((idx, file) in pending.withIndex()) {
-                    if (isStopped || IndexingCancellationState.isAllCancelled() || isPaused(context) || IndexingCancellationState.isPaused()) {
-                        if (isPaused(context) || IndexingCancellationState.isPaused()) {
+                    if (isStopped || IndexingCancellationState.isAllCancelled() || isPaused(context)) {
+                        if (isPaused(context)) {
                             fileStore.updateStatus(file.uri, IndexingStatus.PENDING)
                             val remaining = fileStore.getPendingFiles()
                             val msg = if (remaining.isNotEmpty()) "Paused (${remaining.size} pending)" else "Paused"
-                            IndexingProgressState.setPaused(true, msg)
+                            IndexingProgressState.setPaused(msg)
                             return@withContext Result.success()
                         }
                         if (!IndexingCancellationState.isAllCancelled()) {
@@ -491,21 +470,10 @@ class IndexingWorker(
                         fileIndex = fileIndex,
                         totalFiles = totalInBatch,
                         currentChunk = 0,
-                        totalChunks = 1,
                         progressFraction = 0f,
                         message = startMessage
                     )
                     updateNotification(startMessage, 0f, fileIndex, totalInBatch, force = true)
-
-                    setProgress(
-                        workDataOf(
-                            KEY_CURRENT_FILE_URI to file.uri,
-                            KEY_CURRENT_FILE_NAME to file.displayName,
-                            KEY_FILE_INDEX to fileIndex,
-                            KEY_TOTAL_FILES to totalInBatch,
-                            KEY_PROGRESS_FRACTION to 0f
-                        )
-                    )
 
                     try {
                         val result = EngineManager.withIndexer(context, settings) { indexer ->
@@ -514,11 +482,10 @@ class IndexingWorker(
                                 isCancelled = {
                                     isStopped ||
                                     IndexingCancellationState.isCancelled(file.uri) ||
-                                    isPaused(context) ||
-                                    IndexingCancellationState.isPaused()
+                                    isPaused(context)
                                 },
                                 onProgress = { cur, tot ->
-                                    if (isPaused(context) || IndexingCancellationState.isPaused()) return@indexFile
+                                    if (isPaused(context)) return@indexFile
                                     val fraction = if (tot > 0) cur.toFloat() / tot.toFloat() else 0f
                                     val percent = (fraction * 100).toInt()
                                     val activeDelegate = indexer.getActiveEmbedder().effectiveAccelerator.name
@@ -530,7 +497,6 @@ class IndexingWorker(
                                         fileIndex = fileIndex,
                                         totalFiles = totalInBatch,
                                         currentChunk = cur,
-                                        totalChunks = tot,
                                         progressFraction = fraction,
                                         message = msg
                                     )
@@ -540,13 +506,13 @@ class IndexingWorker(
                         }
 
                         // Explicit user pause during file indexing
-                        if (isPaused(context) || IndexingCancellationState.isPaused()) {
+                        if (isPaused(context)) {
                             val resumeChunk = IndexingResumeManager.getResumeChunk(context, file.uri, file.size)
                             Log.i(TAG_INDEXING, "Indexing paused by user while indexing ${file.displayName} at chunk $resumeChunk, reverting to PENDING")
                             fileStore.updateStatus(file.uri, IndexingStatus.PENDING, resumeChunk)
                             val remaining = fileStore.getPendingFiles()
                             val msg = if (remaining.isNotEmpty()) "Paused (${remaining.size} pending)" else "Paused"
-                            IndexingProgressState.setPaused(true, msg)
+                            IndexingProgressState.setPaused(msg)
                             return@withContext Result.success()
                         }
 
@@ -596,7 +562,6 @@ class IndexingWorker(
                                 fileIndex = fileIndex,
                                 totalFiles = totalInBatch,
                                 currentChunk = result.chunksCount,
-                                totalChunks = result.chunksCount.coerceAtLeast(1),
                                 progressFraction = 1f,
                                 message = doneMsg
                             )
@@ -629,11 +594,11 @@ class IndexingWorker(
                     } catch (e: Throwable) {
                         Log.e(TAG_INDEXING, "Exception indexing ${file.displayName}", e)
                         val resumeChunk = IndexingResumeManager.getResumeChunk(context, file.uri, file.size)
-                        if (isPaused(context) || IndexingCancellationState.isPaused()) {
+                        if (isPaused(context)) {
                             fileStore.updateStatus(file.uri, IndexingStatus.PENDING, resumeChunk)
                             val remaining = fileStore.getPendingFiles()
                             val msg = if (remaining.isNotEmpty()) "Paused (${remaining.size} pending)" else "Paused"
-                            IndexingProgressState.setPaused(true, msg)
+                            IndexingProgressState.setPaused(msg)
                             return@withContext Result.success()
                         }
                         if (IndexingCancellationState.isCancelled(file.uri)) {
@@ -674,7 +639,7 @@ class IndexingWorker(
                     // Micro-pacing / Frame yielding: brief pause between consecutive files
                     // yields GPU and CPU time slices to SurfaceFlinger and HWUI compositor,
                     // keeping the phone's UI buttery smooth even during bulk image/file indexing.
-                    if (idx < pending.lastIndex && !isStopped && !isPaused(context) && !IndexingCancellationState.isPaused()) {
+                    if (idx < pending.lastIndex && !isStopped && !isPaused(context)) {
                         kotlinx.coroutines.delay(com.localfind.index.video.DEFAULT_MICRO_PACING_DELAY_MS)
                     }
                 }
@@ -685,7 +650,7 @@ class IndexingWorker(
             Log.e(TAG_INDEXING, "Fatal error in IndexingWorker", e)
             Result.failure()
         } finally {
-            if (isPaused(context) || IndexingCancellationState.isPaused()) {
+            if (isPaused(context)) {
                 val remaining = fileStore.getPendingFiles().size
                 if (remaining > 0) {
                     val notificationManager = context.getSystemService(Context.NOTIFICATION_SERVICE) as? NotificationManager
@@ -694,9 +659,7 @@ class IndexingWorker(
             } else {
                 val notificationManager = context.getSystemService(Context.NOTIFICATION_SERVICE) as? NotificationManager
                 notificationManager?.cancel(NOTIFICATION_ID)
-                if (!IndexingCancellationState.isPaused()) {
-                    IndexingProgressState.reset()
-                }
+                IndexingProgressState.reset()
             }
             // If worker was stopped by OS preemption (not user cancellation or pause), revert in-flight files from INDEXING to PENDING
             if (isStopped && !IndexingCancellationState.isAllCancelled()) {

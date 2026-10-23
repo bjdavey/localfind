@@ -25,7 +25,6 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.lazy.grid.rememberLazyGridState
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.material3.AlertDialog
-import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
@@ -40,7 +39,6 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
-import androidx.compose.ui.tooling.preview.Preview
 import androidx.core.net.toUri
 import androidx.work.WorkInfo
 import androidx.work.WorkManager
@@ -92,7 +90,7 @@ class MainActivity : FragmentActivity() {
         // sudden OS force-closes, logging the failure and gracefully recovering the user back to the library.
         val isRecoveredLaunch = intent.getBooleanExtra("crash_recovered", false)
         if (isRecoveredLaunch) {
-            android.widget.Toast.makeText(this, "Recovered from an unexpected error", android.widget.Toast.LENGTH_SHORT).show()
+            Toast.makeText(this, "Recovered from an unexpected error", Toast.LENGTH_SHORT).show()
         }
 
         val defaultHandler = Thread.getDefaultUncaughtExceptionHandler()
@@ -187,14 +185,13 @@ class MainActivity : FragmentActivity() {
  * - Tapping any media tile or search result transitions smoothly into its builtin viewer
  *   via [ViewerOverlayHost].
  */
-@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun MainScreen(
-    settings: AppSettings = AppSettings(),
-    pendingShareIntent: Intent? = null,
-    onShareIntentHandled: () -> Unit = {},
-    onSettingsChange: (AppSettings) -> Unit = {},
-    onResetDefaults: () -> Unit = {}
+    settings: AppSettings,
+    pendingShareIntent: Intent?,
+    onShareIntentHandled: () -> Unit,
+    onSettingsChange: (AppSettings) -> Unit,
+    onResetDefaults: () -> Unit
 ) {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
@@ -335,7 +332,7 @@ fun MainScreen(
             val pendingCount = store.getPendingFiles().size
             if (pendingCount > 0) {
                 if (IndexingWorker.isPaused(context)) {
-                    IndexingProgressState.setPaused(true, "Paused ($pendingCount pending)")
+                    IndexingProgressState.setPaused("Paused ($pendingCount pending)")
                 } else {
                     IndexingWorker.enqueue(context, replace = true)
                 }
@@ -374,7 +371,7 @@ fun MainScreen(
         if (result.importedFiles.isNotEmpty()) {
             if (IndexingWorker.isPaused(context)) {
                 val pendingCount = withContext(Dispatchers.IO) { FileStore.getInstance(context).getPendingFiles().size }
-                IndexingProgressState.setPaused(true, "Paused ($pendingCount pending)")
+                IndexingProgressState.setPaused("Paused ($pendingCount pending)")
             } else {
                 IndexingWorker.enqueue(context)
             }
@@ -737,7 +734,7 @@ fun MainScreen(
                 if (supportedFiles.isNotEmpty()) {
                     if (IndexingWorker.isPaused(context)) {
                         val pendingCount = withContext(Dispatchers.IO) { FileStore.getInstance(context).getPendingFiles().size }
-                        IndexingProgressState.setPaused(true, "Paused ($pendingCount pending)")
+                        IndexingProgressState.setPaused("Paused ($pendingCount pending)")
                     } else {
                         IndexingWorker.enqueue(context)
                     }
@@ -773,7 +770,7 @@ fun MainScreen(
                 if (result.importedFiles.isNotEmpty()) {
                     if (IndexingWorker.isPaused(context)) {
                         val pendingCount = withContext(Dispatchers.IO) { FileStore.getInstance(context).getPendingFiles().size }
-                        IndexingProgressState.setPaused(true, "Paused ($pendingCount pending)")
+                        IndexingProgressState.setPaused("Paused ($pendingCount pending)")
                     } else {
                         IndexingWorker.enqueue(context)
                     }
@@ -945,7 +942,6 @@ fun MainScreen(
         // 1. Gallery Base Screen
         GalleryScreen(
             importedFiles = importedFiles,
-            indexedChunksCount = indexedChunksCount,
             isIndexing = isIndexing,
             statusMessage = if (indexingProgress.isIndexing && indexingProgress.message.isNotBlank()) {
                 indexingProgress.message
@@ -1251,10 +1247,3 @@ fun MainScreen(
     }
 }
 
-@Preview(showBackground = true)
-@Composable
-fun MainScreenPreview() {
-    LocalFindTheme {
-        MainScreen()
-    }
-}

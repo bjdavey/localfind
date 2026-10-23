@@ -114,9 +114,9 @@ class SearcherTest {
         fakeStore.upsert(listOf(rec1, rec2, rec3))
 
         // Create Searcher with mock embedder returning [1.0, 0.0, 0.0] for "first"
-        val searcher = Searcher(embeddingStore) { _ ->
+        val searcher = Searcher(embeddingStore, embedQuery = { _ ->
             floatArrayOf(1.0f, 0.0f, 0.0f)
-        }
+        })
 
         val results = searcher.search("first", topK = 10)
 
@@ -152,7 +152,7 @@ class SearcherTest {
     fun blankOrEmptyQueryReturnsEmptyList() {
         val fakeStore = FakeVectorStore()
         val embeddingStore = EmbeddingStore(fakeStore)
-        val searcher = Searcher(embeddingStore) { floatArrayOf(1f, 0f) }
+        val searcher = Searcher(embeddingStore, embedQuery = { floatArrayOf(1f, 0f) })
 
         assertTrue(searcher.search("").isEmpty())
         assertTrue(searcher.search("   ").isEmpty())
@@ -176,7 +176,7 @@ class SearcherTest {
             )
         }
 
-        val searcher = Searcher(embeddingStore) { floatArrayOf(1f, 0f) }
+        val searcher = Searcher(embeddingStore, embedQuery = { floatArrayOf(1f, 0f) })
 
         val results = searcher.search("query", topK = 3)
         assertEquals(3, results.size)
@@ -205,7 +205,7 @@ class SearcherTest {
         )
         fakeStore.upsert(listOf(textRecord, pdfRecord))
 
-        val searcher = Searcher(embeddingStore) { floatArrayOf(1f, 0f) }
+        val searcher = Searcher(embeddingStore, embedQuery = { floatArrayOf(1f, 0f) })
 
         val textOnly = searcher.search("query", metadataFilter = mapOf("type" to "text"))
         assertEquals(1, textOnly.size)
@@ -270,7 +270,7 @@ class SearcherTest {
         )
         fakeStore.upsert(listOf(rec1, rec2, rec3))
 
-        val searcher = Searcher(embeddingStore) { _ -> floatArrayOf(1.0f, 0.0f, 0.0f) }
+        val searcher = Searcher(embeddingStore, embedQuery = { _ -> floatArrayOf(1.0f, 0.0f, 0.0f) })
 
         // With threshold 0.0: all 3 returned
         val defaultResults = searcher.search("query", topK = 10, threshold = 0.0f)
@@ -320,7 +320,7 @@ class SearcherTest {
 
         fakeStore.upsert(listOf(fileAChunk1, fileAChunk2, fileBChunk1))
 
-        val searcher = Searcher(embeddingStore) { _ -> floatArrayOf(1.0f, 0.0f, 0.0f) }
+        val searcher = Searcher(embeddingStore, embedQuery = { _ -> floatArrayOf(1.0f, 0.0f, 0.0f) })
 
         // Unfiltered search: returns all 3 records
         val allResults = searcher.search("query", topK = 10)
@@ -366,7 +366,7 @@ class SearcherTest {
         )
         embeddingStore.storeBatch(listOf(initialRecord))
 
-        val searcher = Searcher(embeddingStore) { _ -> floatArrayOf(1.0f, 0.0f, 0.0f) }
+        val searcher = Searcher(embeddingStore, embedQuery = { _ -> floatArrayOf(1.0f, 0.0f, 0.0f) })
 
         val indexingDone = java.util.concurrent.atomic.AtomicBoolean(false)
         val searchSuccessCount = java.util.concurrent.atomic.AtomicInteger(0)
@@ -382,7 +382,7 @@ class SearcherTest {
                         floatArrayOf(0.9f, 0.1f, 0.0f),
                         mapOf("fileId" to "content://com.localfind/stream", "uri" to "content://com.localfind/stream", "name" to "stream.txt", "type" to "text")
                     )
-                    embeddingStore.store(record.id, record.embeddings, "Streaming chunk $i", record.metadata)
+                    embeddingStore.storeBatch(listOf(record))
                     Thread.sleep(5)
                 }
             } catch (t: Throwable) {
@@ -414,7 +414,7 @@ class SearcherTest {
 
         assertTrue("No thread exceptions occurred during concurrent search and indexing", errors.isEmpty())
         assertTrue("At least 5 searches executed while indexing was active", searchSuccessCount.get() >= 5)
-        assertTrue("Store contains all chunks after concurrent indexing", embeddingStore.getAllRecordIds().size >= 21)
+        assertTrue("Store contains all chunks after concurrent indexing", embeddingStore.count() >= 21)
     }
 
     @Test
@@ -452,7 +452,7 @@ class SearcherTest {
             fakeStore.upsert(listOf(imgRec))
         }
 
-        val searcher = Searcher(embeddingStore) { _ -> floatArrayOf(1.0f, 0.0f) }
+        val searcher = Searcher(embeddingStore, embedQuery = { _ -> floatArrayOf(1.0f, 0.0f) })
 
         // Global search with topK = 10 returns all 10 text chunks because their scores are higher (> 0.87 vs < 0.46)
         val globalResults = searcher.search("sunset photo", topK = 10)
@@ -493,7 +493,7 @@ class SearcherTest {
 
         fakeStore.upsert(listOf(pdf1, pdf2, txt1, txt2, aud1))
 
-        val searcher = Searcher(embeddingStore) { floatArrayOf(1.0f, 0.0f) }
+        val searcher = Searcher(embeddingStore, embedQuery = { floatArrayOf(1.0f, 0.0f) })
 
         // Search for DOCUMENTS (types: "pdf", "text") with topK = 3
         val docResults = searcher.search("contract", topK = 3, fileTypes = listOf("pdf", "text"))
@@ -516,7 +516,7 @@ class SearcherTest {
         val txt = RetrievalRecord("txt_1", emptyList(), floatArrayOf(1f, 0f), mapOf("name" to "t.txt", "type" to "text"))
         fakeStore.upsert(listOf(img, txt))
 
-        val searcher = Searcher(embeddingStore) { floatArrayOf(1f, 0f) }
+        val searcher = Searcher(embeddingStore, embedQuery = { floatArrayOf(1f, 0f) })
 
         val nullFilterResults = searcher.search("test", fileTypes = null)
         assertEquals(2, nullFilterResults.size)
@@ -535,7 +535,7 @@ class SearcherTest {
         val rec2 = RetrievalRecord("img_2", emptyList(), floatArrayOf(0.1f, 0.99f, 0f), mapOf("name" to "different.jpg", "type" to "image"))
         fakeStore.upsert(listOf(rec1, rec2))
 
-        val searcher = Searcher(embeddingStore) { floatArrayOf(0f, 0f, 0f) }
+        val searcher = Searcher(embeddingStore, embedQuery = { floatArrayOf(0f, 0f, 0f) })
 
         val results = searcher.searchByEmbedding(targetVec, topK = 5)
         assertEquals(2, results.size)
@@ -567,7 +567,7 @@ class SearcherTest {
         )
         fakeStore.upsert(listOf(sourceRec, similarRec))
 
-        val searcher = Searcher(embeddingStore) { floatArrayOf(0f, 0f, 0f) }
+        val searcher = Searcher(embeddingStore, embedQuery = { floatArrayOf(0f, 0f, 0f) })
 
         // When excludeFileUri is null, source photo is returned at #1
         val withSource = searcher.searchByEmbedding(queryVec, topK = 5, excludeFileUri = null)
@@ -582,7 +582,7 @@ class SearcherTest {
     }
 
     @Test
-    fun searchImageInvokesEmbedImageQueryAndRanksMatches() {
+    fun imageQueryEmbeddingInvokesEmbedImageQueryAndRanksMatches() {
         val fakeStore = FakeVectorStore()
         val embeddingStore = EmbeddingStore(fakeStore)
 
@@ -610,7 +610,8 @@ class SearcherTest {
         val unsafe = unsafeField.get(null) as sun.misc.Unsafe
         val dummyBitmap = unsafe.allocateInstance(android.graphics.Bitmap::class.java) as android.graphics.Bitmap
 
-        val results = searcher.searchImage(dummyBitmap, topK = 5)
+        // Search by image: embed the bitmap, then run nearest-neighbor retrieval on its vector
+        val results = searcher.searchByEmbedding(searcher.embedImage(dummyBitmap), topK = 5)
         assertTrue(imageEmbedderInvoked)
         assertEquals(1, results.size)
         assertEquals("img_match", results[0].chunkId)
@@ -618,18 +619,18 @@ class SearcherTest {
     }
 
     @Test(expected = IllegalStateException::class)
-    fun searchImageThrowsWhenEmbedImageQueryNotConfigured() {
+    fun embedImageThrowsWhenEmbedImageQueryNotConfigured() {
         val fakeStore = FakeVectorStore()
         val embeddingStore = EmbeddingStore(fakeStore)
 
-        val searcher = Searcher(embeddingStore) { floatArrayOf(1f, 0f) }
+        val searcher = Searcher(embeddingStore, embedQuery = { floatArrayOf(1f, 0f) })
 
         val unsafeField = sun.misc.Unsafe::class.java.getDeclaredField("theUnsafe")
         unsafeField.isAccessible = true
         val unsafe = unsafeField.get(null) as sun.misc.Unsafe
         val dummyBitmap = unsafe.allocateInstance(android.graphics.Bitmap::class.java) as android.graphics.Bitmap
 
-        searcher.searchImage(dummyBitmap)
+        searcher.embedImage(dummyBitmap)
     }
 
     @Test
@@ -663,7 +664,7 @@ class SearcherTest {
         }
 
         val embeddingStore = EmbeddingStore(duplicateStore)
-        val searcher = Searcher(embeddingStore) { floatArrayOf(1f, 0f) }
+        val searcher = Searcher(embeddingStore, embedQuery = { floatArrayOf(1f, 0f) })
 
         val rec1 = RetrievalRecord(
             "chunk_dup_1",
