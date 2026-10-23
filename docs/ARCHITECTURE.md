@@ -40,7 +40,7 @@ The text query uses the same model, so a text query can match an image, an audio
 
 ## 3. Model Delivery & Chipset Support
 
-- **100% Offline & Standalone:** Inference runs purely on-device. LocalFind does **not** depend on Google AI Edge Gallery or any external APK. The universal CPU/GPU runtime ships in the base app; the vendor NPU runtimes and the model are delivered by Google Play for the specific device (see 3.1). The app targets `arm64-v8a` only.
+- **100% Offline & Standalone:** Inference runs purely on-device. LocalFind does **not** depend on Google AI Edge Gallery or any external APK. The universal CPU/GPU runtime ships in the base app; the vendor NPU runtimes and the model are delivered by Google Play for the specific device (see 3.1). Production bundles target `arm64-v8a` (with `x86_64` supported for local Android Emulator builds).
 - **Universal Base Model:** `embeddinggemma-2-740m.litertlm` (~485 MB) operates universally on any Android device across CPU (XNNPack) and GPU (OpenCL / Vulkan).
 - **Pre-compiled Hardware NPU Models:** Hosted in the official Hugging Face repository [`litert-community/embeddinggemma-2-740m-litert-lm`](https://huggingface.co/litert-community/embeddinggemma-2-740m-litert-lm/tree/main):
   - Qualcomm Snapdragon 8 Gen 3: `embeddinggemma-2-740m_Qualcomm_SM8650.litertlm` (Hexagon HTP v75)

@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Automated Play Feature Delivery & Play AI Pack APK deployment script using bundletool.
 # Simulates Google Play Store install-time dynamic delivery for LiteRT NPU hardware acceleration
-# and automatically downloads and stages the matching on-device LiteRT-LM model.
+# and automatically downloads, stages, and verifies the matching on-device LiteRT-LM model.
 
 set -euo pipefail
 
@@ -18,7 +18,7 @@ print_usage() {
     echo "Options:"
     echo "  -d, --device-id SERIAL   Target ADB device serial"
     echo "  -r, --release           Build and install release bundle"
-    echo "  -s, --skip-build        Skip Gradle build step"
+    echo "  -s, --skip-build        Skip Gradle build step (unless cached AAB ABI mismatches)"
     echo "  --skip-model-push       Skip model check/download/push step"
     echo "  -h, --help              Show this help message"
 }
@@ -64,15 +64,15 @@ BUNDLETOOL_VERSION="1.18.3"
 BUNDLETOOL_JAR="$TOOLS_DIR/bundletool.jar"
 
 if [[ ! -f "$BUNDLETOOL_JAR" ]]; then
-    echo "[1/7] Downloading bundletool v$BUNDLETOOL_VERSION..."
+    echo "[1/8] Downloading bundletool v$BUNDLETOOL_VERSION..."
     curl -sSL "https://github.com/google/bundletool/releases/download/${BUNDLETOOL_VERSION}/bundletool-all-${BUNDLETOOL_VERSION}.jar" -o "$BUNDLETOOL_JAR"
     echo "      Bundletool downloaded to $BUNDLETOOL_JAR"
 else
-    echo "[1/7] bundletool found at $BUNDLETOOL_JAR"
+    echo "[1/8] bundletool found at $BUNDLETOOL_JAR"
 fi
 
 # 2. Select Device
-echo "[2/7] Detecting ADB devices..."
+echo "[2/8] Detecting ADB devices..."
 DEVICES=($(adb devices | grep -E '\bdevice$' | awk '{print $1}'))
 
 if [[ ${#DEVICES[@]} -eq 0 ]]; then
@@ -100,15 +100,27 @@ if [[ -z "$DEVICE_ID" ]]; then
     fi
 fi
 
-echo "      Target device: $DEVICE_ID"
+DEVICE_ABI=$(adb -s "$DEVICE_ID" shell getprop ro.product.cpu.abi 2>/dev/null | tr -d '\r\n' || true)
+if [[ -z "$DEVICE_ABI" ]]; then
+    DEVICE_ABI="arm64-v8a"
+fi
+
+echo "      Target device: $DEVICE_ID (ABI: $DEVICE_ABI)"
+
+QEMU_PROP=$(adb -s "$DEVICE_ID" shell getprop ro.kernel.qemu 2>/dev/null | tr -d '\r\n' || true)
+HARDWARE=$(adb -s "$DEVICE_ID" shell getprop ro.hardware 2>/dev/null | tr -d '\r\n' || true)
+IS_EMULATOR_TARGET=false
+if [[ "$QEMU_PROP" == "1" || "$HARDWARE" =~ goldfish|ranchu ]]; then
+    IS_EMULATOR_TARGET=true
+    echo "      Emulator target detected: forcing the persisted accelerator preference to CPU."
+fi
 
 # 3. Query Device SoC and match Device Group & LiteRT Model
-echo "[3/7] Querying device SoC for Play Feature Delivery & Model targeting..."
-SOC_MFR=$(adb -s "$DEVICE_ID" shell getprop ro.soc.manufacturer 2>/dev/null | tr -d '\r' || true)
-SOC_MODEL=$(adb -s "$DEVICE_ID" shell getprop ro.soc.model 2>/dev/null | tr -d '\r' || true)
-PLATFORM=$(adb -s "$DEVICE_ID" shell getprop ro.board.platform 2>/dev/null | tr -d '\r' || true)
-BOARD=$(adb -s "$DEVICE_ID" shell getprop ro.product.board 2>/dev/null | tr -d '\r' || true)
-HARDWARE=$(adb -s "$DEVICE_ID" shell getprop ro.hardware 2>/dev/null | tr -d '\r' || true)
+echo "[3/8] Querying device SoC for Play Feature Delivery & Model targeting..."
+SOC_MFR=$(adb -s "$DEVICE_ID" shell getprop ro.soc.manufacturer 2>/dev/null | tr -d '\r\n' || true)
+SOC_MODEL=$(adb -s "$DEVICE_ID" shell getprop ro.soc.model 2>/dev/null | tr -d '\r\n' || true)
+PLATFORM=$(adb -s "$DEVICE_ID" shell getprop ro.board.platform 2>/dev/null | tr -d '\r\n' || true)
+BOARD=$(adb -s "$DEVICE_ID" shell getprop ro.product.board 2>/dev/null | tr -d '\r\n' || true)
 
 if [[ -z "$SOC_MODEL" ]]; then
     SOC_MODEL="$PLATFORM"
@@ -121,35 +133,37 @@ MODEL_NAME="embeddinggemma-2-740m.litertlm" # Universal CPU/GPU fallback for Emu
 
 LOOKUP_KEY=$(echo "$SOC_MFR $SOC_MODEL $PLATFORM $BOARD $HARDWARE" | tr '[:lower:]' '[:upper:]')
 
-if [[ "$LOOKUP_KEY" =~ QUALCOMM|QTI|QCOM ]]; then
-    if [[ "$LOOKUP_KEY" =~ SM8550|KALAMA ]]; then
-        DEVICE_GROUP="Qualcomm_SM8550"
-        MODEL_NAME="embeddinggemma-2-740m_Qualcomm_SM8550.litertlm"
-    elif [[ "$LOOKUP_KEY" =~ SM8650|PINEAPPLE ]]; then
-        DEVICE_GROUP="Qualcomm_SM8650"
-        MODEL_NAME="embeddinggemma-2-740m_Qualcomm_SM8650.litertlm"
-    elif [[ "$LOOKUP_KEY" =~ SM8750|SUN ]]; then
-        DEVICE_GROUP="Qualcomm_SM8750"
-        MODEL_NAME="embeddinggemma-2-740m_Qualcomm_SM8750.litertlm"
-    elif [[ "$LOOKUP_KEY" =~ SM8850 ]]; then
-        DEVICE_GROUP="Qualcomm_SM8850"
-        MODEL_NAME="embeddinggemma-2-740m_Qualcomm_SM8850.litertlm"
-    fi
-elif [[ "$LOOKUP_KEY" =~ MEDIATEK|MT69 ]]; then
-    if [[ "$LOOKUP_KEY" =~ MT6991|6991 ]]; then
-        DEVICE_GROUP="Mediatek_MT6991"
-        MODEL_NAME="embeddinggemma-2-740m_MediaTek_MT6991.litertlm"
-    elif [[ "$LOOKUP_KEY" =~ MT6993|6993 ]]; then
-        DEVICE_GROUP="Mediatek_MT6993"
-        MODEL_NAME="embeddinggemma-2-740m_MediaTek_MT6993.litertlm"
-    fi
-elif [[ "$LOOKUP_KEY" =~ GOOGLE|TENSOR ]]; then
-    if [[ "$LOOKUP_KEY" =~ TENSOR\ G5|LAGUNA|G5 ]]; then
-        DEVICE_GROUP="Google_Tensor_G5"
-        MODEL_NAME="embeddinggemma-2-740m_Google_Tensor_G5.litertlm"
-    elif [[ "$LOOKUP_KEY" =~ TENSOR\ G6|G6 ]]; then
-        DEVICE_GROUP="Google_Tensor_G6"
-        MODEL_NAME="embeddinggemma-2-740m_Google_Tensor_G6.litertlm"
+if [[ "$IS_EMULATOR_TARGET" != true && "$DEVICE_ABI" == "arm64-v8a" ]]; then
+    if [[ "$LOOKUP_KEY" =~ QUALCOMM|QTI|QCOM ]]; then
+        if [[ "$LOOKUP_KEY" =~ SM8550|KALAMA ]]; then
+            DEVICE_GROUP="Qualcomm_SM8550"
+            MODEL_NAME="embeddinggemma-2-740m_Qualcomm_SM8550.litertlm"
+        elif [[ "$LOOKUP_KEY" =~ SM8650|PINEAPPLE ]]; then
+            DEVICE_GROUP="Qualcomm_SM8650"
+            MODEL_NAME="embeddinggemma-2-740m_Qualcomm_SM8650.litertlm"
+        elif [[ "$LOOKUP_KEY" =~ SM8750|SUN ]]; then
+            DEVICE_GROUP="Qualcomm_SM8750"
+            MODEL_NAME="embeddinggemma-2-740m_Qualcomm_SM8750.litertlm"
+        elif [[ "$LOOKUP_KEY" =~ SM8850 ]]; then
+            DEVICE_GROUP="Qualcomm_SM8850"
+            MODEL_NAME="embeddinggemma-2-740m_Qualcomm_SM8850.litertlm"
+        fi
+    elif [[ "$LOOKUP_KEY" =~ MEDIATEK|MT69 ]]; then
+        if [[ "$LOOKUP_KEY" =~ MT6991|6991 ]]; then
+            DEVICE_GROUP="Mediatek_MT6991"
+            MODEL_NAME="embeddinggemma-2-740m_MediaTek_MT6991.litertlm"
+        elif [[ "$LOOKUP_KEY" =~ MT6993|6993 ]]; then
+            DEVICE_GROUP="Mediatek_MT6993"
+            MODEL_NAME="embeddinggemma-2-740m_MediaTek_MT6993.litertlm"
+        fi
+    elif [[ "$LOOKUP_KEY" =~ GOOGLE|TENSOR ]]; then
+        if [[ "$LOOKUP_KEY" =~ TENSOR\ G5|LAGUNA|G5 ]]; then
+            DEVICE_GROUP="Google_Tensor_G5"
+            MODEL_NAME="embeddinggemma-2-740m_Google_Tensor_G5.litertlm"
+        elif [[ "$LOOKUP_KEY" =~ TENSOR\ G6|G6 ]]; then
+            DEVICE_GROUP="Google_Tensor_G6"
+            MODEL_NAME="embeddinggemma-2-740m_Google_Tensor_G6.litertlm"
+        fi
     fi
 fi
 
@@ -157,7 +171,7 @@ if [[ -n "$DEVICE_GROUP" ]]; then
     echo "      Matched Device Group: '$DEVICE_GROUP' (NPU split APKs will be installed)"
     echo "      Target NPU Model:     '$MODEL_NAME'"
 else
-    echo "      No specific NPU Device Group matched (Device will receive base APK with CPU/GPU Smart fallback)"
+    echo "      No specific NPU Device Group matched (Device will receive base APK with CPU/GPU fallback)"
     echo "      Target Base Model:    '$MODEL_NAME'"
 fi
 
@@ -172,11 +186,27 @@ fi
 AAB_PATH="$SCRIPT_DIR/app/build/outputs/bundle/$BUILD_TYPE_LOWER/app-$BUILD_TYPE_LOWER.aab"
 APKS_PATH="$SCRIPT_DIR/app/build/outputs/bundle/$BUILD_TYPE_LOWER/app-$BUILD_TYPE_LOWER.apks"
 
-if [[ "$SKIP_BUILD" != true ]]; then
-    echo "[4/7] Building Android App Bundle (:$BUILD_TYPE)..."
-    ./gradlew ":app:bundle$BUILD_TYPE"
-else
-    echo "[4/7] Skipping build step (reusing existing AAB at $AAB_PATH)..."
+aab_contains_abi() {
+    local bundle_file="$1"
+    local abi="$2"
+    [[ -f "$bundle_file" ]] && jar tf "$bundle_file" | grep -q "^base/lib/${abi}/"
+}
+
+NEEDS_BUILD=true
+if [[ "$SKIP_BUILD" == true ]]; then
+    if [[ ! -f "$AAB_PATH" ]]; then
+        echo "[4/8] Existing AAB not found at $AAB_PATH; building bundle..."
+    elif ! aab_contains_abi "$AAB_PATH" "$DEVICE_ABI"; then
+        echo "[4/8] Existing AAB at $AAB_PATH lacks native libraries for ABI '$DEVICE_ABI'; rebuilding bundle..."
+    else
+        echo "[4/8] Skipping build step (reusing existing '$DEVICE_ABI' AAB at $AAB_PATH)..."
+        NEEDS_BUILD=false
+    fi
+fi
+
+if [[ "$NEEDS_BUILD" == true ]]; then
+    echo "[4/8] Building Android App Bundle (:$BUILD_TYPE, targetAbi=$DEVICE_ABI)..."
+    ./gradlew ":app:bundle$BUILD_TYPE" "-PtargetAbi=$DEVICE_ABI"
 fi
 
 if [[ ! -f "$AAB_PATH" ]]; then
@@ -185,11 +215,11 @@ if [[ ! -f "$AAB_PATH" ]]; then
 fi
 
 # 5. Generate APKs with bundletool
-echo "[5/7] Generating split APKs via bundletool..."
+echo "[5/8] Generating split APKs via bundletool..."
 java -jar "$BUNDLETOOL_JAR" build-apks --bundle="$AAB_PATH" --output="$APKS_PATH" --overwrite
 
 # 6. Install onto device
-echo "[6/7] Installing matching APK splits to device $DEVICE_ID..."
+echo "[6/8] Installing matching APK splits to device $DEVICE_ID..."
 INSTALL_CMD=(java -jar "$BUNDLETOOL_JAR" install-apks --apks="$APKS_PATH" --device-id="$DEVICE_ID" --allow-downgrade)
 if [[ -n "$DEVICE_GROUP" ]]; then
     INSTALL_CMD+=(--device-groups="$DEVICE_GROUP")
@@ -206,7 +236,7 @@ echo "Split APKs successfully installed!"
 
 # 7. Model Staging Check and Push
 if [[ "$SKIP_MODEL_PUSH" != true ]]; then
-    echo "[7/7] Ensuring LiteRT-LM model ($MODEL_NAME) is present on device..."
+    echo "[7/8] Ensuring LiteRT-LM model ($MODEL_NAME) is present on device..."
     DEVICE_CHECK=$(adb -s "$DEVICE_ID" shell "if [ -f /data/local/tmp/$MODEL_NAME ] && [ -s /data/local/tmp/$MODEL_NAME ]; then echo EXISTS; fi" 2>/dev/null | tr -d '\r\n' || true)
     
     if [[ "$DEVICE_CHECK" == "EXISTS" ]]; then
@@ -269,14 +299,82 @@ if [[ "$SKIP_MODEL_PUSH" != true ]]; then
         fi
     fi
 else
-    echo "[7/7] Skipping model staging (--skip-model-push specified)..."
+    echo "[7/8] Skipping model staging (--skip-model-push specified)..."
 fi
 
-# 8. Launch App
-echo "Launching com.localfind..."
-adb -s "$DEVICE_ID" shell am start -n com.localfind/.MainActivity
+# Stop any running instance so startup logs and preferences are cleanly applied
+adb -s "$DEVICE_ID" shell am force-stop com.localfind
+
+if [[ "$IS_EMULATOR_TARGET" == true && "$RELEASE" != true ]]; then
+    PREFS_DIR="shared_prefs"
+    PREFS_PATH="$PREFS_DIR/localfind_settings.xml"
+    PREFS_TEMP="$(mktemp)"
+    trap 'rm -f "$PREFS_TEMP"' EXIT
+    PREFS_EXISTS=$(adb -s "$DEVICE_ID" shell "run-as com.localfind sh -c 'if [ -f $PREFS_PATH ]; then echo YES; fi'" 2>/dev/null | tr -d '\r\n' || true)
+    if [[ "$PREFS_EXISTS" == "YES" ]]; then
+        adb -s "$DEVICE_ID" exec-out run-as com.localfind cat "$PREFS_PATH" > "$PREFS_TEMP" || true
+    fi
+    if [[ ! -s "$PREFS_TEMP" ]] || ! grep -q "<map" "$PREFS_TEMP"; then
+        cat > "$PREFS_TEMP" <<'EOF'
+<?xml version="1.0" encoding="utf-8" standalone="yes" ?>
+<map>
+    <string name="hardware_accelerator">CPU</string>
+</map>
+EOF
+    elif grep -q 'name="hardware_accelerator"' "$PREFS_TEMP"; then
+        sed -i.bak 's|<string name="hardware_accelerator">[^<]*</string>|<string name="hardware_accelerator">CPU</string>|g' "$PREFS_TEMP"
+        rm -f "${PREFS_TEMP}.bak"
+    else
+        sed -i.bak 's|<map/>|<map></map>|g; s|</map>|    <string name="hardware_accelerator">CPU</string>\n</map>|' "$PREFS_TEMP"
+        rm -f "${PREFS_TEMP}.bak"
+    fi
+    adb -s "$DEVICE_ID" push "$PREFS_TEMP" "/data/local/tmp/localfind_settings.xml" >/dev/null
+    adb -s "$DEVICE_ID" shell "run-as com.localfind mkdir -p $PREFS_DIR && run-as com.localfind cp /data/local/tmp/localfind_settings.xml $PREFS_PATH && rm -f /data/local/tmp/localfind_settings.xml"
+fi
+
+# 8. Launch App and Verify Model Load
+echo "[8/8] Launching com.localfind and verifying model is loaded..."
+adb -s "$DEVICE_ID" logcat -c
+adb -s "$DEVICE_ID" shell am start -n com.localfind/.MainActivity >/dev/null
+
+TIMEOUT_SECONDS=45
+ELAPSED=0
+MODEL_LOADED=false
+LOAD_ERROR=""
+
+while [[ $ELAPSED -lt $TIMEOUT_SECONDS ]]; do
+    sleep 1
+    ELAPSED=$((ELAPSED + 1))
+    LOGS=$(adb -s "$DEVICE_ID" logcat -d -s SocDetector:I Embedder:I EngineManager:I AndroidRuntime:E DEBUG:F 2>/dev/null || true)
+
+    if echo "$LOGS" | grep -q "Embedding model successfully loaded\."; then
+        MODEL_LOADED=true
+        echo "$LOGS" | grep -E "SocDetector:|Embedder:|EngineManager:" | while IFS= read -r line; do
+            echo "      $line"
+        done
+        break
+    fi
+
+    if echo "$LOGS" | grep -qE "Failed to initialize Embedder|Embedding model not found|FATAL EXCEPTION|Fatal signal"; then
+        LOAD_ERROR=$(echo "$LOGS" | grep -E "SocDetector:|Embedder:|EngineManager:|FATAL EXCEPTION|Fatal signal" || true)
+        break
+    fi
+done
+
+if [[ "$MODEL_LOADED" != true ]]; then
+    if [[ "$SKIP_MODEL_PUSH" == true ]] && echo "$LOAD_ERROR" | grep -q "Embedding model not found"; then
+        echo "Warning: App launched, but model is not present on device (--skip-model-push was specified)." >&2
+    elif [[ -n "$LOAD_ERROR" ]]; then
+        echo "Error: Model failed to load on $DEVICE_ID:" >&2
+        echo "$LOAD_ERROR" >&2
+        exit 1
+    else
+        echo "Error: Timed out after ${TIMEOUT_SECONDS}s waiting for embedding model to load on $DEVICE_ID." >&2
+        exit 1
+    fi
+fi
 
 echo ""
-echo "Deployment completed successfully!"
-echo "To monitor NPU initialization logs in realtime, run:"
+echo "Deployment and model verification completed successfully!"
+echo "To monitor inference logs in realtime, run:"
 echo "adb -s $DEVICE_ID logcat -c; adb -s $DEVICE_ID logcat -s UniversalEmbedder:D LocalFind:D SocDetector:D"

@@ -3,6 +3,10 @@ plugins {
     alias(libs.plugins.kotlin.compose)
 }
 
+// Optional override from deploy-bundle scripts when targeting an x86_64 emulator.
+val targetAbi = providers.gradleProperty("targetAbi").orNull
+val isBundleBuild = gradle.startParameter.taskNames.any { it.contains("bundle", ignoreCase = true) }
+
 android {
     namespace = "com.localfind"
     compileSdk {
@@ -18,9 +22,17 @@ android {
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
 
-        // NPU hardware acceleration targets 64-bit ARM
+        // NPU hardware acceleration targets 64-bit ARM; x86_64 supports Android Emulator
         ndk {
-            abiFilters.add("arm64-v8a")
+            if (targetAbi != null) {
+                abiFilters.add(targetAbi)
+            } else if (isBundleBuild) {
+                // App Bundle (.aab) requires base and all NPU dynamic-feature modules to share the same ABI set
+                abiFilters.add("arm64-v8a")
+            } else {
+                // Standalone APK builds include both arm64-v8a (physical devices) and x86_64 (emulators)
+                abiFilters += listOf("arm64-v8a", "x86_64")
+            }
         }
     }
 
@@ -53,17 +65,19 @@ android {
     // Google Play AI Pack for SoC-targeted .litertlm delivery (fast-follow)
     assetPacks.add(":ai_pack:embedding_model")
 
-    // Play Feature Delivery modules for SoC-targeted NPU native runtime libraries
-    dynamicFeatures.add(":litert_npu_runtime_libraries:mediatek_runtime_common")
-    dynamicFeatures.add(":litert_npu_runtime_libraries:mediatek_runtime_v8")
-    dynamicFeatures.add(":litert_npu_runtime_libraries:mediatek_runtime_v9")
-    dynamicFeatures.add(":litert_npu_runtime_libraries:google_tensor_runtime")
-    dynamicFeatures.add(":litert_npu_runtime_libraries:qualcomm_runtime_common")
-    dynamicFeatures.add(":litert_npu_runtime_libraries:qualcomm_runtime_htp")
-    dynamicFeatures.add(":litert_npu_runtime_libraries:qualcomm_runtime_v73")
-    dynamicFeatures.add(":litert_npu_runtime_libraries:qualcomm_runtime_v75")
-    dynamicFeatures.add(":litert_npu_runtime_libraries:qualcomm_runtime_v79")
-    dynamicFeatures.add(":litert_npu_runtime_libraries:qualcomm_runtime_v81")
+    // Play Feature Delivery modules for SoC-targeted NPU native runtime libraries (ARM64 only)
+    if (targetAbi == null || targetAbi == "arm64-v8a") {
+        dynamicFeatures.add(":litert_npu_runtime_libraries:mediatek_runtime_common")
+        dynamicFeatures.add(":litert_npu_runtime_libraries:mediatek_runtime_v8")
+        dynamicFeatures.add(":litert_npu_runtime_libraries:mediatek_runtime_v9")
+        dynamicFeatures.add(":litert_npu_runtime_libraries:google_tensor_runtime")
+        dynamicFeatures.add(":litert_npu_runtime_libraries:qualcomm_runtime_common")
+        dynamicFeatures.add(":litert_npu_runtime_libraries:qualcomm_runtime_htp")
+        dynamicFeatures.add(":litert_npu_runtime_libraries:qualcomm_runtime_v73")
+        dynamicFeatures.add(":litert_npu_runtime_libraries:qualcomm_runtime_v75")
+        dynamicFeatures.add(":litert_npu_runtime_libraries:qualcomm_runtime_v79")
+        dynamicFeatures.add(":litert_npu_runtime_libraries:qualcomm_runtime_v81")
+    }
 
     bundle {
         deviceTargetingConfig = file("device_targeting_configuration.xml")

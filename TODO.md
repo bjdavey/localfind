@@ -81,7 +81,7 @@
 
 ## Bugs / Issues
 - [ ] UI Fix: advanced settings item subtitle overflow
-- [ ] Fix bundle script for emulator and make sure model is loaded
+- [x] Fix bundle script for emulator and make sure model is loaded
 - [ ] Privacy: `allowBackup="true"` with empty `data_extraction_rules.xml` lets cloud backup / device transfer include the vector DB (text snippets), shared copies and the file list; share import accepts `file://` URIs (can copy LocalFind's own private files)
 - [ ] Mixed embedding spaces: the index does not record which model file / accelerator produced a vector (NPU vs GPU/CPU), so changing it can degrade matching; consider storing an embedding-space id and re-indexing on change
 - [ ] Search waits for the in-flight indexing chunk because inference is synchronized (slow queries while indexing)
