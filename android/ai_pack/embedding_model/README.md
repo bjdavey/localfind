@@ -1,6 +1,6 @@
 # Google Play AI Pack (`:ai_pack:embedding_model`)
 
-This module packages the on-device **EmbeddingGemma 2 (740M)** `.litertlm` multimodal models using Google Play AI Pack (`com.android.ai-pack`) with `fast-follow` delivery and SoC device-group targeting (`android/app/device_targeting_configuration.xml`).
+This module packages the on-device **EmbeddingGemma 2 (740M)** `.litertlm` multimodal models using Google Play AI Pack (`com.android.ai-pack`) with `install-time` delivery (the model is present at first launch; the app copies it once into `filesDir` because Play only exposes install-time files through `AssetManager`) and SoC device-group targeting (`android/app/device_targeting_configuration.xml`).
 
 ## Asset Directory Layout
 

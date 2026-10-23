@@ -62,7 +62,7 @@ android {
         noCompress += "litertlm"
     }
 
-    // Google Play AI Pack for SoC-targeted .litertlm delivery (fast-follow)
+    // Google Play AI Pack for SoC-targeted .litertlm delivery (install-time)
     assetPacks.add(":ai_pack:embedding_model")
 
     // Play Feature Delivery modules for SoC-targeted NPU native runtime libraries (ARM64 only)
@@ -97,9 +97,6 @@ kotlin {
 dependencies {
     // Strings for NPU Play Feature Delivery runtime modules
     implementation(project(":litert_npu_runtime_libraries:runtime_strings"))
-    // Google Play AI Pack delivery API for locating fast-follow extracted model packs
-    implementation(libs.android.play.ai.delivery)
-
     implementation(platform(libs.androidx.compose.bom))
     implementation(libs.androidx.activity.compose)
     implementation(libs.androidx.compose.material3)

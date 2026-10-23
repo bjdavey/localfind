@@ -7,7 +7,7 @@ package com.localfind.core.model
  * - EmbeddingGemma 2 740M multimodal (text, image, audio)
  * - Output dimensionality: 768 float values per embedding
  * - Runtime delivery:
- *     - Production: Google Play AI Pack (fast-follow, device-targeted)
+ *     - Production: Google Play AI Pack (install-time, device-targeted)
  *     - Development: Pushed via ADB to context.filesDir (`adb push ...`)
  * - 100% offline: Inference runs entirely on-device via LiteRT / MediaPipe Tasks.
  */
