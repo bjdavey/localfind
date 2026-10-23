@@ -89,7 +89,7 @@
 - [x] Use the NPU model file for GPU/CPU fallback on NPU devices (remove the separate fallback-model branch)
 - [x] Embedding-space id stored per file; banner offers re-analysis when it differs from the current one (GPU vs CPU vectors assumed to agree; unmeasured)
 - [x] Foreground service timeout (Android 15+): checkpoint + retry already existed on stop; now the user is told why indexing paused (`STOP_REASON_FOREGROUND_SERVICE_TIMEOUT`)
-- [ ] Use `NpuCompatibilityChecker` for the NPU availability check (ask before adding a dependency)
+- [x] ~~Use `NpuCompatibilityChecker`~~ skipped (needs the `litert` dependency and is documented for `CompiledModel`, not the MediaPipe path); fixed the `SocDetector` bugs directly: `"unknown"` handling and `sun` vs `sunfish` board match
 - [ ] Load only the needed encoders (audio on demand), if `UniversalEmbedder` supports it
 - [ ] Decide: LiteRT 2.3.0 Maven NPU packages vs current Feature Delivery modules + fetch scripts
 
@@ -101,7 +101,7 @@
 - [ ] File identity is the URI: the same file imported via share and via picker becomes two entries; re-importing resets status / folder; same-named folders are merged
 - [ ] Model delivery: `/sdcard` model staging should be debug-only
 - [ ] `largeHeap` hides Java-heap pressure from whole-file `readText`
-- [ ] SocDetector: `Build.UNKNOWN` ("unknown") is not treated as empty, `rawBoard.contains("sun")` also matches e.g. "sunfish"; resume checkpoint ignores chunk-size setting changes
+- [ ] Resume checkpoint ignores chunk-size setting changes
 - [ ] "Paused: Model not loaded" message is wiped by the worker's `finally` right after it is set
 - [ ] FileProvider `files-path "."` exposes all of `filesDir` (including DB and model); `data_extraction_rules.xml` is still an empty template (decide what to back up)
 - [x] App-wide crash resilience: defensive gallery grid keys, viewer fallbacks, and global crash guard

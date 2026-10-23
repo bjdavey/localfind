@@ -57,13 +57,12 @@ object SocDetector {
      * Inspects system build properties to detect the device's SoC manufacturer, model, and marketing name.
      */
     fun detectSoc(): SocInfo {
-        val rawManufacturer = getSystemProperty("ro.soc.manufacturer")
-            .ifEmpty { Build.SOC_MANUFACTURER }
-            .ifEmpty { Build.MANUFACTURER }
-        val rawModel = getSystemProperty("ro.soc.model")
-            .ifEmpty { Build.SOC_MODEL }
-            .ifEmpty { getSystemProperty("ro.board.platform") }
-            .ifEmpty { Build.HARDWARE }
+        val rawManufacturer = firstKnown(
+            getSystemProperty("ro.soc.manufacturer"), Build.SOC_MANUFACTURER, Build.MANUFACTURER
+        )
+        val rawModel = firstKnown(
+            getSystemProperty("ro.soc.model"), Build.SOC_MODEL, getSystemProperty("ro.board.platform"), Build.HARDWARE
+        )
         val rawHardware = Build.HARDWARE.lowercase()
         val rawBoard = Build.BOARD.lowercase()
 
@@ -76,6 +75,14 @@ object SocDetector {
     }
 
     /**
+     * First candidate that carries information. Blank values and `"unknown"` ([Build.UNKNOWN], what the
+     * `Build.SOC_*` fields return when the device does not report them) count as unset, so a missing value
+     * falls through to the next source instead of ending up as the SoC "name".
+     */
+    fun firstKnown(vararg candidates: String): String =
+        candidates.firstOrNull { it.isNotBlank() && !it.equals(Build.UNKNOWN, ignoreCase = true) }.orEmpty()
+
+    /**
      * Pure parsing logic separated for unit testing without Android runtime dependencies.
      */
     fun parseSocInfo(
@@ -86,11 +93,13 @@ object SocDetector {
     ): SocInfo {
         val mfgLower = rawManufacturer.lowercase()
         val modelUpper = rawModel.uppercase().replace(" ", "_")
+        // The Snapdragon 8 Elite board is exactly "sun"; a substring match would also hit e.g. "sunfish" (Pixel 4a)
+        val isSunBoard = rawBoard == "sun"
 
         // 1. Qualcomm Snapdragon
         if (mfgLower.contains("qti") || mfgLower.contains("qualcomm") ||
             rawHardware.contains("qcom") || modelUpper.contains("SM") ||
-            rawBoard.contains("pineapple") || rawBoard.contains("kalama") || rawBoard.contains("sun")
+            rawBoard.contains("pineapple") || rawBoard.contains("kalama") || isSunBoard
         ) {
             val vendor = "Qualcomm"
             val (chipModel, marketing, htpArch) = when {
@@ -98,7 +107,7 @@ object SocDetector {
                     Triple("SM8650", "Snapdragon 8 Gen 3", "V75")
                 modelUpper.contains("SM8550") || rawBoard.contains("kalama") ->
                     Triple("SM8550", "Snapdragon 8 Gen 2", "V73")
-                modelUpper.contains("SM8750") || rawBoard.contains("sun") ->
+                modelUpper.contains("SM8750") || isSunBoard ->
                     Triple("SM8750", "Snapdragon 8 Elite", "V79")
                 modelUpper.contains("SM8850") ->
                     Triple("SM8850", "Snapdragon 8 Elite Gen 5", "V81")

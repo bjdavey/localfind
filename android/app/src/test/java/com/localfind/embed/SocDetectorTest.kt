@@ -111,6 +111,26 @@ class SocDetectorTest {
     }
 
     @Test
+    fun testSunfishBoard_isNotSnapdragon8Elite() {
+        // Pixel 4a: board "sunfish" must not match the Snapdragon 8 Elite board "sun"
+        val soc = SocDetector.parseSocInfo(
+            rawManufacturer = "Google",
+            rawModel = "",
+            rawHardware = "sunfish",
+            rawBoard = "sunfish"
+        )
+        assertEquals("Google", soc.vendor)
+        assertNull(soc.expectedNpuModelName)
+        assertNull(soc.htpArchitecture)
+    }
+
+    @Test
+    fun testFirstKnown_skipsBlankAndUnknownValues() {
+        assertEquals("SM8650", SocDetector.firstKnown("", "unknown", "UNKNOWN", "SM8650", "qcom"))
+        assertEquals("", SocDetector.firstKnown("", "unknown"))
+    }
+
+    @Test
     fun testGenericFallback() {
         val soc = SocDetector.parseSocInfo(
             rawManufacturer = "UnknownVendor",
