@@ -86,7 +86,7 @@
 - [x] SAF persisted-URI limit: no per-file grant inside an imported folder (the tree grant covers it), warn near the limit
 - [x] Storage checks: free-space check before model staging and indexing; pause with "Storage full" on `SQLiteFullException` / I/O errors
 - [x] AI pack: switch `fast-follow` to `install-time` so the model is present at first launch (copied once into `filesDir`; check Play's size limits for the larger NPU files before release)
-- [ ] Use the NPU model file for GPU/CPU fallback on NPU devices (remove the separate fallback-model branch)
+- [x] Use the NPU model file for GPU/CPU fallback on NPU devices (remove the separate fallback-model branch)
 - [ ] Embedding-space id stored per file; mark files "needs re-index" when it differs from the current one
 - [ ] Foreground service timeout (Android 15+): save the checkpoint and re-enqueue the indexing worker
 - [ ] Use `NpuCompatibilityChecker` for the NPU availability check (ask before adding a dependency)
@@ -100,7 +100,7 @@
 - [ ] Mixed embedding spaces: the index does not record which model file / accelerator produced a vector (NPU vs GPU/CPU), so changing it can degrade matching; consider storing an embedding-space id and re-indexing on change
 - [ ] Search waits for the in-flight indexing chunk because inference is synchronized (slow queries while indexing)
 - [ ] File identity is the URI: the same file imported via share and via picker becomes two entries; re-importing resets status / folder; same-named folders are merged
-- [ ] Model delivery: no AI-pack download progress/status in the UI (users see adb instructions until Play finishes); on NPU devices the GPU/CPU fallback may load the NPU-compiled model; `/sdcard` model staging should be debug-only
+- [ ] Model delivery: `/sdcard` model staging should be debug-only
 - [ ] Foreground service type `dataSync` is capped at 6 h per 24 h on Android 15+ (consider `mediaProcessing`); `largeHeap` hides Java-heap pressure from whole-file `readText`
 - [ ] SocDetector: `Build.UNKNOWN` ("unknown") is not treated as empty, `rawBoard.contains("sun")` also matches e.g. "sunfish"; resume checkpoint ignores chunk-size setting changes
 - [ ] "Paused: Model not loaded" message is wiped by the worker's `finally` right after it is set

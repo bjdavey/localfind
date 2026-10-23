@@ -121,19 +121,16 @@ class Embedder(
             }
         }
 
-        // Resolve fallback model (standard CPU/GPU model if NPU init failed) and Smart Mode target
+        // Resolve the Smart Mode target used when NPU init failed. The fallback loads the SAME model file as the
+        // NPU path: the device's NPU-compiled .litertlm also runs on the GPU / CPU delegates, so NPU phones do
+        // not need (or download) a second, generic model.
         val fallbackEffective = if (effectiveAccelerator == HardwareAccelerator.NPU) {
             HardwareAccelerator.SMART.resolveEffective(context)
         } else {
             effectiveAccelerator
         }
-        val fallbackModel = if (effectiveAccelerator == HardwareAccelerator.NPU && createdEmbedder == null) {
-            SocDetector.ensureModelFile(context, fallbackEffective, preferredModelName).takeIf { it.exists() && it.length() > 0L } ?: model
-        } else {
-            model
-        }
         val fallbackBaseOptions = BaseOptions.builder()
-            .setModelAssetPath(fallbackModel.absolutePath)
+            .setModelAssetPath(model.absolutePath)
             .setDelegate(com.google.mediapipe.tasks.core.Delegate.CPU)
             .build()
 
