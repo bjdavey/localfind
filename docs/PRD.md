@@ -27,7 +27,7 @@ Everything runs **100% offline on the device**.
 5. **Results** - Each result shows the file name, type, and location (time or page).
 6. **Open** - Tapping a result opens the file in the built-in viewer at the matching location (landscape supported). Any file can also be opened in the phone gallery or its own app.
 7. **Library** - See indexed files in a grid with per-file progress, organise them in folders, select several at once, view file details (including the original path), retry failed files and remove files.
-8. **Background indexing** - Indexing continues when the app is closed, can be paused, resumed and cancelled (also from the notification), and resumes after the app is killed.
+8. **Background indexing** - Indexing continues when the app is closed, can be paused, resumed and cancelled, and resumes after the app is killed. The app does not request the notification permission, so on Android 13+ the indexing notification (and its Pause / Resume / Cancel buttons) is hidden; use the in-app banner.
 9. **Settings** - Light/dark theme, similarity threshold and other tuning values, and advanced options such as the hardware accelerator (NPU, GPU, CPU or Smart).
 
 ### Out of scope (MVP)

@@ -79,6 +79,20 @@
 - Final E2E test with edge cases
 - Publish
 
+## Milestone 7: Pre-publish hardening
+- [x] Remove `POST_NOTIFICATIONS` permission (notification controls are then unavailable on Android 13+; update PRD / ARCHITECTURE)
+- [ ] SocDetector: recreate dispatch-library symlinks when the target path changed (compare `Os.readlink`), not only when dangling
+- [ ] Set the compile cache dir on the GPU/CPU embedder paths and pin `activationDataType` explicitly
+- [ ] SAF persisted-URI limit: skip the grant for files under a granted tree, warn near the limit, catch grant failures
+- [ ] Storage checks: free-space check before model staging and indexing; pause with "Storage full" on `SQLiteFullException` / I/O errors
+- [ ] AI pack: switch `fast-follow` to `install-time` so the model is present at first launch (check file-path access and Play size limits first)
+- [ ] Use the NPU model file for GPU/CPU fallback on NPU devices (remove the separate fallback-model branch)
+- [ ] Embedding-space id stored per file; mark files "needs re-index" when it differs from the current one
+- [ ] Foreground service timeout (Android 15+): save the checkpoint and re-enqueue the indexing worker
+- [ ] Use `NpuCompatibilityChecker` for the NPU availability check (ask before adding a dependency)
+- [ ] Load only the needed encoders (audio on demand), if `UniversalEmbedder` supports it
+- [ ] Decide: LiteRT 2.3.0 Maven NPU packages vs current Feature Delivery modules + fetch scripts
+
 ## Bugs / Issues
 - [ ] UI Fix: advanced settings item subtitle overflow
 - [x] Fix bundle script for emulator and make sure model is loaded
@@ -90,7 +104,6 @@
 - [ ] Foreground service type `dataSync` is capped at 6 h per 24 h on Android 15+ (consider `mediaProcessing`); `largeHeap` hides Java-heap pressure from whole-file `readText`
 - [ ] SocDetector: `Build.UNKNOWN` ("unknown") is not treated as empty, `rawBoard.contains("sun")` also matches e.g. "sunfish"; resume checkpoint ignores chunk-size setting changes
 - [ ] "Paused: Model not loaded" message is wiped by the worker's `finally` right after it is set
-- [ ] `POST_NOTIFICATIONS` is declared but never requested at runtime, so the indexing notification is hidden on Android 13+
 - [ ] FileProvider `files-path "."` exposes all of `filesDir` (including DB and model); `data_extraction_rules.xml` is still an empty template (decide what to back up)
 - [x] App-wide crash resilience: defensive gallery grid keys, viewer fallbacks, and global crash guard
 - [x] Anything under search view is still clickable
@@ -116,13 +129,26 @@
 - Code Refactor: Performance (measure first), Security & config (see Bugs / Issues)
 - Import from URL without saving the file (streaming keyframe indexing)
 - Export / Backup index and "Clear Database" reset
-- Allow other media files format
+- Allow other media files format: `.webp`, `.heic`, `.opus`/`.ogg`, `.aac`/`.flac`, `.mov`/`.webm`/`.mkv`
 - Support code files import
 - Top bar should hide on scrolling
 
+- Stable file id + fingerprint (dedupe, detect changed files); startup cleanup between `FileStore` and the vector store
+- Move `uri` / `name` out of every chunk into `FileStore` (`fileId` and `type` must stay for pre-filtering)
+- Prompt a re-index when indexing settings change
+- Rescan imported folders for new files
+- Storage screen (index and model size) with "Clear index"
+- Onboarding (privacy, notifications, battery) and accessibility (TalkBack, font scaling)
+- State on rotation at target SDK 37 (`remember` vs `rememberSaveable` / ViewModel)
+- Check whether video-frame JPEG encoding is needed, and whether a single-thread embedder dispatcher is required (measure first)
+- Release: Play Console process (closed test, Data safety, privacy policy URL, licenses screen); doc fixes (NPU filename and group-name mismatches, MT6993 name, SMART rule repeated, README build section, LICENSE)
+
 ### Search Experience
-- Hybrid search (Vector + SQLite FTS5 keyword search)
+- Hybrid search (Vector + SQLite FTS5 keyword search), including filename matching
 - Recent searches history
+- Show the matched passage as a snippet on text results
+- Check that audio embeddings capture speech ("discussion about rent") before advertising it
+- Search priority over indexing
 
 ### Indexing & Performance
 - Battery / thermal-friendly indexing (pause on low battery / charging-only option)
