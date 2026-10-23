@@ -66,12 +66,12 @@
 ## Milestone 6: First publish
 - [x] Hardware NPU acceleration support
 - [x] Dynamic SoC-specific NPU runtime & model delivery: Play AI Pack, Play Feature Delivery & NPU default
-- [x] Refacto: 
+- [x] Refactor: 
     1. Remove dead code, 
     2. Merge duplicated logic 
     3. Split files over ~500 LOC (GalleryScreen, MainActivity, GalleryDialogs, SettingsScreen, GalleryTiles, IndexingWorker)
     4. Simplify / tech debt (always-non-null nullable callbacks, IndexingWorker pause logic, MainActivity state; ask before adding a ViewModel)
-    5. Folder/package structure
+    5. Folder/package structure: try to isolate services in core folder that can be easily ported into different platforms later
     6. Review design decisions & update docs
 - What else?
 - Final E2E test with edge cases
@@ -88,7 +88,7 @@
 - [x] Fix resume indexing after app closed, and keep indexing working in background while showing notification to prevent the app from being stopped when closed
 - [x] Allow import new file or search while indexing
 - [x] Fix stuck indexing after canceled
-- [x] Opening image/video should be smoth transition like a gallery app, perhaps just popup without opening it in a new view?
+- [x] Opening image/video should be smooth transition like a gallery app, perhaps just popup without opening it in a new view?
 - [x] Fix flicker when opening a file or a search result and not to scroll back to start when closing it
 - [x] Stuck after PDF indexing 
 - [x] Check if original file is deleted when opening
@@ -96,12 +96,13 @@
 - [x] Fix PDF indexing progress bar repeating after 15%
 - [x] Fix: PDF search result doesn't open at that page
 - [x] GPU vs. CPU switch in Advanced Settings and micro-pacing frame yielding to prevent UI lag
+- [ ] fix bundle script for emulator and make sure model is loaded
 
 
 ## Backlog
 
 ### Core
-- Refactor: Performance (measure first), Security & config (see the two bugs below)
+- Code Refactor: Performance (measure first), Security & config
 - Import from URL without saving the file (streaming keyframe indexing)
 - Export / Backup index and "Clear Database" reset
 - Allow other media files format
