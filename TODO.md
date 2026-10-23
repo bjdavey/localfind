@@ -73,6 +73,7 @@
     4. Simplify / tech debt (always-non-null nullable callbacks, IndexingWorker pause logic, MainActivity state; ask before adding a ViewModel)
     5. Folder/package structure: try to isolate services in core folder that can be easily ported into different platforms later
     6. Review design decisions & update docs
+    7. Design fixes from the review: shared embedder handle with read/write lock (no use of a closed model), global crash guard replaced by a per-file retry limit, data-transport backend discovery removed from the manifest, file-availability checks moved off the main thread. (`Searcher` keeps its multi-type filter branch: it has a unit test and a category could span several types.)
 - Grouping matches by file
 - What else?
 - Final E2E test with edge cases
@@ -81,6 +82,14 @@
 ## Bugs / Issues
 - [ ] UI Fix: advanced settings item subtitle overflow
 - [ ] Fix bundle script for emulator and make sure model is loaded
+- [ ] Privacy: `allowBackup="true"` with empty `data_extraction_rules.xml` lets cloud backup / device transfer include the vector DB (text snippets), shared copies and the file list; share import accepts `file://` URIs (can copy LocalFind's own private files)
+- [ ] Mixed embedding spaces: the index does not record which model file / accelerator produced a vector (NPU vs GPU/CPU), so changing it can degrade matching; consider storing an embedding-space id and re-indexing on change
+- [ ] Search waits for the in-flight indexing chunk because inference is synchronized (slow queries while indexing)
+- [ ] File identity is the URI: the same file imported via share and via picker becomes two entries; re-importing resets status / folder; same-named folders are merged
+- [ ] Model delivery: no AI-pack download progress/status in the UI (users see adb instructions until Play finishes); on NPU devices the GPU/CPU fallback may load the NPU-compiled model; `/sdcard` model staging should be debug-only
+- [ ] Foreground service type `dataSync` is capped at 6 h per 24 h on Android 15+ (consider `mediaProcessing`); `largeHeap` hides Java-heap pressure from whole-file `readText`
+- [ ] SocDetector: `Build.UNKNOWN` ("unknown") is not treated as empty, `rawBoard.contains("sun")` also matches e.g. "sunfish"; resume checkpoint ignores chunk-size setting changes
+- [ ] "Paused: Model not loaded" message is wiped by the worker's `finally` right after it is set
 - [ ] `POST_NOTIFICATIONS` is declared but never requested at runtime, so the indexing notification is hidden on Android 13+
 - [ ] FileProvider `files-path "."` exposes all of `filesDir` (including DB and model); `data_extraction_rules.xml` is still an empty template (decide what to back up)
 - [x] App-wide crash resilience: defensive gallery grid keys, viewer fallbacks, and global crash guard
@@ -104,7 +113,7 @@
 ## Backlog
 
 ### Core
-- Code Refactor: Performance (measure first), Security & config
+- Code Refactor: Performance (measure first), Security & config (see Bugs / Issues)
 - Import from URL without saving the file (streaming keyframe indexing)
 - Export / Backup index and "Clear Database" reset
 - Allow other media files format
@@ -123,6 +132,5 @@
 - fMP4 remuxing for seekable video (see ARCHITECTURE.md, Indexing)
 
 ### Platforms
-- Move core and logic into separate folder/classes for easy porting into other platforms
 - iOS app
 - Desktop app

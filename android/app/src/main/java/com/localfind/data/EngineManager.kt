@@ -1,5 +1,11 @@
 package com.localfind.data
 
+import com.google.mediapipe.tasks.core.Part
+import android.graphics.Bitmap
+import kotlin.concurrent.write
+import kotlin.concurrent.read
+import java.util.concurrent.locks.ReentrantReadWriteLock
+import com.localfind.embed.EmbeddingModel
 import com.localfind.core.settings.AppSettings
 import com.localfind.core.settings.HardwareAccelerator
 import com.localfind.core.model.ModelStatus
@@ -34,8 +40,36 @@ import kotlinx.coroutines.withContext
 object EngineManager {
     private const val TAG = "EngineManager"
     private val engineMutex = Mutex()
+
+    /**
+     * Guards the single [Embedder] instance. Inference holds the read lock; replacing or closing the
+     * instance (accelerator change) takes the write lock, so it waits for in-flight inference and no
+     * caller ever runs on a closed native model.
+     */
+    private val embedderLock = ReentrantReadWriteLock()
     @Volatile
     private var embedder: Embedder? = null
+
+    /** Runs [block] on the current [Embedder] under the read lock. */
+    private fun <T> withEmbedder(block: (Embedder) -> T): T = embedderLock.read {
+        val current = embedder ?: throw IllegalStateException("Embedder not initialized")
+        block(current)
+    }
+
+    /**
+     * Stable handle that indexers and the searcher keep for as long as they like: every call is routed
+     * to the current [Embedder], which may be replaced between calls.
+     */
+    private val sharedEmbedder = object : EmbeddingModel {
+        override val effectiveAccelerator: HardwareAccelerator
+            get() = embedder?.effectiveAccelerator ?: HardwareAccelerator.CPU
+
+        override fun embedText(text: String) = withEmbedder { it.embedText(text) }
+        override fun embedImage(bitmap: Bitmap) = withEmbedder { it.embedImage(bitmap) }
+        override fun embedAudio(samples: ShortArray) = withEmbedder { it.embedAudio(samples) }
+        override fun audioPart(samples: ShortArray) = withEmbedder { it.audioPart(samples) }
+        override fun embedVideoWindow(parts: List<Part>) = withEmbedder { it.embedVideoWindow(parts) }
+    }
     @Volatile
     private var store: EmbeddingStore? = null
 
@@ -100,60 +134,56 @@ object EngineManager {
     }
 
     /**
-     * Obtains or creates the singleton [Embedder] instance.
-     * Uses [accelerator] (or persisted setting if null) for vision inference,
-     * resolving dynamic policies like [HardwareAccelerator.SMART] against device state.
+     * Returns the shared [EmbeddingModel], loading it first if needed.
+     *
+     * With an explicit [accelerator] (the user's setting) the underlying [Embedder] is replaced when it
+     * was built for a different accelerator or a different resolved target, e.g. Smart mode switching
+     * between GPU and CPU. Without one, whatever is already loaded is reused, so searches never trigger
+     * a reload; only if nothing is loaded yet is the persisted setting used.
      * Note: Initializing loads the ~485MB model file from filesDir.
      */
     fun getEmbedder(
         context: Context,
         accelerator: HardwareAccelerator? = null
-    ): Embedder {
+    ): EmbeddingModel {
+        if (accelerator == null && embedder != null) return sharedEmbedder
         val configured = accelerator ?: SettingsStore(context).load().accelerator
         val targetEffective = configured.resolveEffective(context)
-        val current = embedder
-        if (current != null && current.effectiveAccelerator == targetEffective && current.configuredAccelerator == configured) {
-            return current
+        if (isLoaded(configured, targetEffective)) return sharedEmbedder
+        embedderLock.write {
+            if (!isLoaded(configured, targetEffective)) {
+                replaceEmbedder(context, configured, targetEffective)
+            }
         }
-        return synchronized(this) {
-            val existing = embedder
-            if (existing != null && existing.effectiveAccelerator == targetEffective && existing.configuredAccelerator == configured) {
-                existing
-            } else {
-                try {
-                    existing?.close()
-                } catch (e: Exception) {
-                    Log.w(TAG, "Error closing previous embedder: ${e.message}")
-                }
-                Embedder(context.applicationContext, configured).also {
-                    Log.i(TAG, "Initialized singleton Embedder instance with configured=$configured (effective=$targetEffective).")
-                    embedder = it
-                    val activeFile = SocDetector.getActiveModelFile(context, targetEffective)
-                    if (activeFile.exists()) {
-                        _modelStatus.value = ModelStatus.Loaded(activeFile.length())
-                    }
-                }
+        return sharedEmbedder
+    }
+
+    private fun isLoaded(configured: HardwareAccelerator, effective: HardwareAccelerator): Boolean =
+        embedder?.let { it.effectiveAccelerator == effective && it.configuredAccelerator == configured } == true
+
+    /** Closes the current [Embedder] and builds a new one. Must be called with the write lock held. */
+    private fun replaceEmbedder(context: Context, configured: HardwareAccelerator, effective: HardwareAccelerator) {
+        try {
+            embedder?.close()
+        } catch (e: Exception) {
+            Log.w(TAG, "Error closing previous embedder: ${e.message}")
+        }
+        embedder = null
+        embedder = Embedder(context.applicationContext, configured).also {
+            Log.i(TAG, "Initialized singleton Embedder instance with configured=$configured (effective=$effective).")
+            val activeFile = SocDetector.getActiveModelFile(context, effective)
+            if (activeFile.exists()) {
+                _modelStatus.value = ModelStatus.Loaded(activeFile.length())
             }
         }
     }
 
     /**
-     * Updates the active hardware accelerator for the singleton [Embedder], recreating the
-     * embedder instance if the accelerator setting or effective runtime target has changed.
+     * Applies the hardware accelerator chosen in Settings, replacing the [Embedder] if the accelerator
+     * setting or its effective runtime target has changed. Waits for in-flight inference to finish.
      */
     fun updateAccelerator(context: Context, accelerator: HardwareAccelerator) {
-        synchronized(this) {
-            val targetEffective = accelerator.resolveEffective(context)
-            if (embedder?.effectiveAccelerator != targetEffective || embedder?.configuredAccelerator != accelerator) {
-                try {
-                    embedder?.close()
-                } catch (e: Exception) {
-                    Log.w(TAG, "Error closing previous embedder during accelerator switch: ${e.message}")
-                }
-                embedder = null
-                getEmbedder(context, accelerator)
-            }
-        }
+        getEmbedder(context, accelerator)
     }
 
     /**
@@ -170,9 +200,9 @@ object EngineManager {
     /**
      * Executes an indexing operation with a freshly configured [Indexer].
      *
-     * Inference calls in [Embedder] and database transactions in [EmbeddingStore] are individually
-     * synchronized, allowing concurrent search queries and UI stats updates to execute cooperatively
-     * without blocking on long multi-chunk file indexing operations.
+     * Inference calls on the shared embedder and database transactions in [EmbeddingStore] are
+     * individually synchronized, allowing concurrent search queries and UI stats updates to execute
+     * cooperatively between the chunks of a long file indexing operation.
      */
     suspend fun <T> withIndexer(
         context: Context,
@@ -187,8 +217,8 @@ object EngineManager {
 
     /**
      * Executes a semantic search query with [Searcher].
-     * Shares the single [Embedder] with background indexing; inference calls are synchronized per
-     * embedder, so a query may wait for an in-flight indexing chunk to finish.
+     * Shares the single embedder with background indexing without ever replacing it; inference calls
+     * are synchronized, so a query may wait for an in-flight indexing chunk to finish.
      */
     suspend fun <T> withSearcher(
         context: Context,

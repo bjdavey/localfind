@@ -15,7 +15,7 @@ import com.localfind.data.EmbeddingStore
 import com.localfind.data.EngineManager
 import com.localfind.core.settings.HardwareAccelerator
 import com.localfind.core.model.ImportedFile
-import com.localfind.embed.Embedder
+import com.localfind.embed.EmbeddingModel
 import com.localfind.index.audio.indexAudioFile
 import com.localfind.index.document.indexPdfFile
 import com.localfind.index.document.indexTextFile
@@ -56,7 +56,7 @@ internal class ChunkEmbeddingData(
  */
 class Indexer(
     internal val context: Context,
-    internal val embedder: Embedder,
+    internal val embedder: EmbeddingModel,
     internal val embeddingStore: EmbeddingStore,
     internal val settings: AppSettings = AppSettings()
 ) {
@@ -65,11 +65,11 @@ class Indexer(
     }
 
     /**
-     * Resolves the active [Embedder] instance. In [HardwareAccelerator.SMART] mode, queries
+     * Resolves the active [EmbeddingModel]. In [HardwareAccelerator.SMART] mode, queries
      * [EngineManager] so changes in device interactivity (screen on/off) or battery saver
      * dynamically adapt the active hardware delegate during long multi-chunk operations.
      */
-    fun getActiveEmbedder(): Embedder {
+    fun getActiveEmbedder(): EmbeddingModel {
         if (settings.accelerator == HardwareAccelerator.SMART) {
             return EngineManager.getEmbedder(context, settings.accelerator)
         }

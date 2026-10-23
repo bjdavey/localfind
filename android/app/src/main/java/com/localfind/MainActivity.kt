@@ -5,7 +5,6 @@ import com.localfind.core.library.LibraryFilters
 import com.localfind.core.model.FileTypes
 import android.content.Intent
 import android.os.Bundle
-import android.widget.Toast
 import androidx.activity.compose.BackHandler
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.compose.setContent
@@ -68,6 +67,7 @@ import com.localfind.ui.viewer.ViewerOverlayHost
 import com.localfind.ui.viewer.rememberViewerState
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 
 /**
  * Main application activity for LocalFind.
@@ -81,34 +81,6 @@ class MainActivity : FragmentActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-
-        // Global Crash Guard: Intercepts unhandled runtime exceptions on any thread to prevent
-        // sudden OS force-closes, logging the failure and gracefully recovering the user back to the library.
-        val isRecoveredLaunch = intent.getBooleanExtra("crash_recovered", false)
-        if (isRecoveredLaunch) {
-            Toast.makeText(this, "Recovered from an unexpected error", Toast.LENGTH_SHORT).show()
-        }
-
-        val defaultHandler = Thread.getDefaultUncaughtExceptionHandler()
-        Thread.setDefaultUncaughtExceptionHandler { thread, throwable ->
-            android.util.Log.e("CrashGuard", "Intercepted uncaught exception on thread ${thread.name}", throwable)
-            // If already launched from a recovery, fall back to default handler to prevent infinite restart loops
-            if (isRecoveredLaunch) {
-                defaultHandler?.uncaughtException(thread, throwable)
-                return@setDefaultUncaughtExceptionHandler
-            }
-            try {
-                val restartIntent = Intent(applicationContext, MainActivity::class.java).apply {
-                    addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TASK)
-                    putExtra("crash_recovered", true)
-                }
-                startActivity(restartIntent)
-            } catch (_: Exception) {
-                defaultHandler?.uncaughtException(thread, throwable)
-                return@setDefaultUncaughtExceptionHandler
-            }
-            Runtime.getRuntime().exit(0)
-        }
 
         // If launched via ACTION_SEND or ACTION_SEND_MULTIPLE, stage intent for processing
         if (ShareImporter.isShareIntent(intent)) {
@@ -382,7 +354,7 @@ fun MainScreen(
             },
             onFileClick = { file ->
                 if (!isSearchOpen && !isSettingsOpen && !viewerState.isAnyViewerOpen) {
-                    viewerState.openLibraryFile(context, file) { missingFileToDelete = it }
+                    scope.launch { viewerState.openLibraryFile(context, file) { missingFileToDelete = it } }
                 }
             },
             onRequestDeleteFile = { file ->
@@ -425,8 +397,8 @@ fun MainScreen(
                 listState = searchListState,
                 backHandlerEnabled = isSearchOpen && !viewerState.isAnyViewerOpen,
                 onResultClick = { result ->
-                    viewerState.openSearchResult(context, result, importedFiles) {
-                        missingFileToDelete = it
+                    scope.launch {
+                        viewerState.openSearchResult(context, result, importedFiles) { missingFileToDelete = it }
                     }
                 },
                 targetFile = search.activeSearchFile,
@@ -482,19 +454,23 @@ fun MainScreen(
             importedFiles = importedFiles,
             onSearchInFile = { file -> search.startSearchInFile(file) },
             onSearchSimilarImage = { uriStr, name ->
-                if (!FileAvailability.isFileAvailable(context, uriStr)) {
-                    val matchedFile = importedFiles.firstOrNull { it.uri == uriStr }
-                    if (matchedFile != null) missingFileToDelete = matchedFile
-                } else {
-                    activeSearchFile = null
-                    searchCategory = GalleryCategory.PHOTOS
-                    isSearchOpen = true
-                    search.performImageSearch(
-                        imageUri = uriStr.toUri(),
-                        imageName = name,
-                        category = GalleryCategory.PHOTOS,
-                        excludeUri = uriStr
-                    )
+                scope.launch {
+                    // Content provider access is IPC, so check the original off the main thread
+                    val available = withContext(Dispatchers.IO) { FileAvailability.isFileAvailable(context, uriStr) }
+                    if (!available) {
+                        val matchedFile = importedFiles.firstOrNull { it.uri == uriStr }
+                        if (matchedFile != null) missingFileToDelete = matchedFile
+                    } else {
+                        activeSearchFile = null
+                        searchCategory = GalleryCategory.PHOTOS
+                        isSearchOpen = true
+                        search.performImageSearch(
+                            imageUri = uriStr.toUri(),
+                            imageName = name,
+                            category = GalleryCategory.PHOTOS,
+                            excludeUri = uriStr
+                        )
+                    }
                 }
             }
         )

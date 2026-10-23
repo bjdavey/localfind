@@ -1,5 +1,7 @@
 package com.localfind.ui.viewer
 
+import kotlinx.coroutines.withContext
+import kotlinx.coroutines.Dispatchers
 import com.localfind.core.model.FileTypes
 import android.content.Context
 import android.widget.Toast
@@ -23,7 +25,6 @@ import androidx.compose.ui.platform.LocalContext
 import com.localfind.data.FileAvailability
 import com.localfind.data.FileOpener
 import com.localfind.core.model.ImportedFile
-import com.localfind.index.Indexer
 import com.localfind.core.model.SearchResult
 
 /**
@@ -60,10 +61,14 @@ class ViewerState {
         activeTextViewer = null
     }
 
+    /** Checks that the original file still exists. Content provider access is IPC, so it runs on the IO dispatcher. */
+    private suspend fun isAvailable(context: Context, uri: String): Boolean =
+        withContext(Dispatchers.IO) { FileAvailability.isFileAvailable(context, uri) }
+
     /**
      * Opens a matched [SearchResult] at its exact offset/page/timestamp in the corresponding builtin viewer.
      */
-    fun openSearchResult(
+    suspend fun openSearchResult(
         context: Context,
         result: SearchResult,
         importedFiles: List<ImportedFile>,
@@ -74,7 +79,7 @@ class ViewerState {
             return
         }
 
-        if (!FileAvailability.isFileAvailable(context, result.fileUri)) {
+        if (!isAvailable(context, result.fileUri)) {
             val matchedFile = importedFiles.firstOrNull { it.uri == result.fileUri }
                 ?: ImportedFile(
                     uri = result.fileUri,
@@ -152,7 +157,7 @@ class ViewerState {
     /**
      * Opens an imported file from the Gallery grid in its corresponding builtin viewer.
      */
-    fun openLibraryFile(
+    suspend fun openLibraryFile(
         context: Context,
         file: ImportedFile,
         onMissingFile: (ImportedFile) -> Unit
@@ -162,7 +167,7 @@ class ViewerState {
             return
         }
 
-        if (!FileAvailability.isFileAvailable(context, file.uri)) {
+        if (!isAvailable(context, file.uri)) {
             onMissingFile(file)
             return
         }

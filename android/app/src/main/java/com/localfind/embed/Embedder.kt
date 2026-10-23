@@ -32,11 +32,11 @@ class Embedder(
     context: Context,
     val configuredAccelerator: HardwareAccelerator = HardwareAccelerator.NPU,
     preferredModelName: String? = null
-) : AutoCloseable {
+) : EmbeddingModel, AutoCloseable {
     private val embedder: UniversalEmbedder
 
     /** Concrete accelerator in use after resolving any dynamic policy (e.g. [HardwareAccelerator.SMART]). */
-    val effectiveAccelerator: HardwareAccelerator = configuredAccelerator.resolveEffective(context)
+    override val effectiveAccelerator: HardwareAccelerator = configuredAccelerator.resolveEffective(context)
 
     /**
      * Whether NPU acceleration is actively enabled for the vision encoder.
@@ -218,7 +218,7 @@ class Embedder(
      * @param text The input passage or search query string to embed.
      * @return FloatArray of 768 elements representing the semantic vector.
      */
-    fun embedText(text: String): FloatArray = synchronized(this) {
+    override fun embedText(text: String): FloatArray = synchronized(this) {
         embedder.embedText(text).embeddings()[0].floatEmbedding()
     }
 
@@ -235,7 +235,7 @@ class Embedder(
      * @param bitmap The decoded, upright ARGB_8888 image bitmap to embed.
      * @return FloatArray of 768 elements representing the semantic vector.
      */
-    fun embedImage(bitmap: Bitmap): FloatArray = synchronized(this) {
+    override fun embedImage(bitmap: Bitmap): FloatArray = synchronized(this) {
         BitmapImageBuilder(bitmap).build().use { mpImage ->
             embedder.embedImage(mpImage).embeddings()[0].floatEmbedding()
         }
@@ -251,14 +251,14 @@ class Embedder(
      *   mel-spectrogram frontend expects).
      * @return FloatArray of 768 elements representing the semantic vector.
      */
-    fun embedAudio(samples: ShortArray): FloatArray = synchronized(this) {
+    override fun embedAudio(samples: ShortArray): FloatArray = synchronized(this) {
         embedder.embedAudio(toAudioData(samples)).embeddings()[0].floatEmbedding()
     }
 
     /**
      * Wraps 16 kHz mono PCM samples as a content part for [embedVideoWindow].
      */
-    fun audioPart(samples: ShortArray): AudioPart = AudioPart(toAudioData(samples))
+    override fun audioPart(samples: ShortArray): AudioPart = AudioPart(toAudioData(samples))
 
     /**
      * Embeds one video window as a single vector from interleaved parts, e.g.
@@ -271,7 +271,7 @@ class Embedder(
      * @param parts `TextPart` time markers, [AudioPart] slices and `ImagePart` JPEG frames.
      * @return FloatArray of 768 elements representing the semantic vector.
      */
-    fun embedVideoWindow(parts: List<Part>): FloatArray = synchronized(this) {
+    override fun embedVideoWindow(parts: List<Part>): FloatArray = synchronized(this) {
         embedder.embedContent(parts).embeddings()[0].floatEmbedding()
     }
 

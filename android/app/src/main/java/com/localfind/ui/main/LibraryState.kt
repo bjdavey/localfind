@@ -26,7 +26,6 @@ import com.localfind.data.FileStore
 import com.localfind.data.ShareImporter
 import com.localfind.index.IndexingProgressState
 import com.localfind.index.IndexingQueue
-import com.localfind.index.IndexingResumeManager
 import com.localfind.ui.gallery.ThumbnailHelper
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -123,134 +122,130 @@ class LibraryState(
 
     /** Loads the model and persisted library on startup, resuming interrupted indexing unless paused. */
     suspend fun loadInitial() {
-    withContext(Dispatchers.IO) {
-        EngineManager.ensureModelLoaded(context)
-        val store = FileStore.getInstance(context)
-        // Revert any files left in INDEXING status from an interrupted session back to PENDING
-        val pending = store.getPendingFiles()
-        for (f in pending) {
-            if (f.indexingStatus == IndexingStatus.INDEXING) {
-                val resumeChunk = IndexingResumeManager.getResumeChunk(context, f.uri, f.size)
-                store.updateStatus(f.uri, IndexingStatus.PENDING, resumeChunk)
+        withContext(Dispatchers.IO) {
+            EngineManager.ensureModelLoaded(context)
+            val store = FileStore.getInstance(context)
+            // Re-queue files left in INDEXING status by an interrupted session (or fail them if they keep crashing)
+            val pending = store.getPendingFiles()
+            for (f in pending) {
+                if (f.indexingStatus == IndexingStatus.INDEXING) {
+                    IndexingQueue.recoverInterruptedFile(context, store, f)
+                }
+            }
+            importedFiles = store.getAll()
+            folders = store.getAllFolders()
+            // If the app was closed/killed while indexing was in-flight, resume immediately via WorkManager unless paused
+            if (store.getPendingFiles().isNotEmpty()) {
+                enqueueOrMarkPaused(replace = true)
             }
         }
-        importedFiles = store.getAll()
-        folders = store.getAllFolders()
-        // If the app was closed/killed while indexing was in-flight, resume immediately via WorkManager unless paused
-        if (store.getPendingFiles().isNotEmpty()) {
-            enqueueOrMarkPaused(replace = true)
-        }
-    }
-    refreshIndexCount()
-
+        refreshIndexCount()
     }
 
     /** Imports files or a note shared from another app (ACTION_SEND / ACTION_SEND_MULTIPLE). */
     suspend fun importShared(shareIntent: Intent) {
-    status = "Importing shared content..."
-    val result = withContext(Dispatchers.IO) {
-        val res = ShareImporter.processShareIntent(context, shareIntent, folderId = currentFolderId)
-        if (res.importedFiles.isNotEmpty()) {
-            val store = FileStore.getInstance(context)
-            store.insertAll(res.importedFiles)
+        status = "Importing shared content..."
+        val result = withContext(Dispatchers.IO) {
+            val res = ShareImporter.processShareIntent(context, shareIntent, folderId = currentFolderId)
+            if (res.importedFiles.isNotEmpty()) {
+                val store = FileStore.getInstance(context)
+                store.insertAll(res.importedFiles)
+            }
+            res
         }
-        res
-    }
-    reloadFiles()
+        reloadFiles()
 
-    if (result.importedFiles.isNotEmpty()) {
-        withContext(Dispatchers.IO) { enqueueOrMarkPaused() }
+        if (result.importedFiles.isNotEmpty()) {
+            withContext(Dispatchers.IO) { enqueueOrMarkPaused() }
 
-        val msg = if (result.isTextNote) {
-            "Imported shared note"
+            val msg = if (result.isTextNote) {
+                "Imported shared note"
+            } else if (result.unsupportedCount > 0) {
+                "Imported ${result.importedFiles.size} file(s) from share. Skipped ${result.unsupportedCount} unsupported file(s)."
+            } else {
+                "Imported ${result.importedFiles.size} file(s) from share"
+            }
+            status = msg
+            Toast.makeText(context, msg, Toast.LENGTH_SHORT).show()
         } else if (result.unsupportedCount > 0) {
-            "Imported ${result.importedFiles.size} file(s) from share. Skipped ${result.unsupportedCount} unsupported file(s)."
-        } else {
-            "Imported ${result.importedFiles.size} file(s) from share"
+            val msg = "Cannot import unsupported file(s). Only files with builtin viewers (text, PDF, image, audio, video) are supported."
+            status = msg
+            Toast.makeText(context, msg, Toast.LENGTH_LONG).show()
         }
-        status = msg
-        Toast.makeText(context, msg, Toast.LENGTH_SHORT).show()
-    } else if (result.unsupportedCount > 0) {
-        val msg = "Cannot import unsupported file(s). Only files with builtin viewers (text, PDF, image, audio, video) are supported."
-        status = msg
-        Toast.makeText(context, msg, Toast.LENGTH_LONG).show()
-    }
     }
 
     /** Imports the files chosen in the system document picker into the current folder. */
     fun importPicked(uris: List<Uri>) {
-    if (uris.isNotEmpty()) {
-        scope.launch {
-            val (supportedFiles, unsupportedCount) = withContext(Dispatchers.IO) {
-                val store = FileStore.getInstance(context)
-                val supported = mutableListOf<ImportedFile>()
-                var unsupported = 0
+        if (uris.isNotEmpty()) {
+            scope.launch {
+                val (supportedFiles, unsupportedCount) = withContext(Dispatchers.IO) {
+                    val store = FileStore.getInstance(context)
+                    val supported = mutableListOf<ImportedFile>()
+                    var unsupported = 0
 
-                for (uri in uris) {
-                    val imported = FileImporter.importUri(context.contentResolver, uri, folderId = currentFolderId)
-                    if (imported != null) {
-                        supported.add(imported.copy(indexingStatus = IndexingStatus.PENDING))
-                    } else {
-                        unsupported++
+                    for (uri in uris) {
+                        val imported = FileImporter.importUri(context.contentResolver, uri, folderId = currentFolderId)
+                        if (imported != null) {
+                            supported.add(imported.copy(indexingStatus = IndexingStatus.PENDING))
+                        } else {
+                            unsupported++
+                        }
                     }
+
+                    if (supported.isNotEmpty()) {
+                        store.insertAll(supported)
+                        importedFiles = store.getAll()
+                    }
+
+                    Pair(supported, unsupported)
                 }
 
-                if (supported.isNotEmpty()) {
-                    store.insertAll(supported)
-                    importedFiles = store.getAll()
-                }
-
-                Pair(supported, unsupported)
-            }
-
-            if (supportedFiles.isNotEmpty()) {
-                withContext(Dispatchers.IO) { enqueueOrMarkPaused() }
-                if (unsupportedCount > 0) {
-                    val msg = "Imported ${supportedFiles.size} file(s). Skipped $unsupportedCount unsupported file(s)."
+                if (supportedFiles.isNotEmpty()) {
+                    withContext(Dispatchers.IO) { enqueueOrMarkPaused() }
+                    if (unsupportedCount > 0) {
+                        val msg = "Imported ${supportedFiles.size} file(s). Skipped $unsupportedCount unsupported file(s)."
+                        status = msg
+                        Toast.makeText(context, msg, Toast.LENGTH_LONG).show()
+                    } else {
+                        val msg = "Imported ${supportedFiles.size} file(s)"
+                        status = msg
+                        Toast.makeText(context, msg, Toast.LENGTH_SHORT).show()
+                    }
+                } else if (unsupportedCount > 0) {
+                    val msg = "Cannot import unsupported file(s). Only files with builtin viewers (text, PDF, image, audio, video) are supported."
                     status = msg
                     Toast.makeText(context, msg, Toast.LENGTH_LONG).show()
-                } else {
-                    val msg = "Imported ${supportedFiles.size} file(s)"
-                    status = msg
-                    Toast.makeText(context, msg, Toast.LENGTH_SHORT).show()
                 }
-            } else if (unsupportedCount > 0) {
-                val msg = "Cannot import unsupported file(s). Only files with builtin viewers (text, PDF, image, audio, video) are supported."
-                status = msg
-                Toast.makeText(context, msg, Toast.LENGTH_LONG).show()
             }
         }
-    }
-
     }
 
     /** Imports the folder tree chosen in the system folder picker as a nested library folder. */
     fun importTree(treeUri: Uri?) {
-    if (treeUri != null) {
-        scope.launch {
-            status = "Importing folder..."
-            val result = withContext(Dispatchers.IO) {
-                FileImporter.importTreeUri(context, treeUri, parentFolderId = currentFolderId)
-            }
-            reloadFiles()
-            if (result.importedFiles.isNotEmpty()) {
-                withContext(Dispatchers.IO) { enqueueOrMarkPaused() }
-                val folderName = result.createdFolders.firstOrNull()?.name ?: "folder"
-                val msg = "Imported ${result.importedFiles.size} file(s) into \"$folderName\"" +
-                        if (result.skippedUnsupportedCount > 0) " (${result.skippedUnsupportedCount} unsupported skipped)" else ""
-                status = msg
-                Toast.makeText(context, msg, Toast.LENGTH_LONG).show()
-            } else if (result.createdFolders.isNotEmpty()) {
-                val folderName = result.createdFolders.first().name
-                val msg = if (result.skippedUnsupportedCount > 0)
-                    "Created folder \"$folderName\" (${result.skippedUnsupportedCount} unsupported file(s) skipped)"
-                else "Created empty folder \"$folderName\""
-                status = msg
-                Toast.makeText(context, msg, Toast.LENGTH_LONG).show()
+        if (treeUri != null) {
+            scope.launch {
+                status = "Importing folder..."
+                val result = withContext(Dispatchers.IO) {
+                    FileImporter.importTreeUri(context, treeUri, parentFolderId = currentFolderId)
+                }
+                reloadFiles()
+                if (result.importedFiles.isNotEmpty()) {
+                    withContext(Dispatchers.IO) { enqueueOrMarkPaused() }
+                    val folderName = result.createdFolders.firstOrNull()?.name ?: "folder"
+                    val msg = "Imported ${result.importedFiles.size} file(s) into \"$folderName\"" +
+                            if (result.skippedUnsupportedCount > 0) " (${result.skippedUnsupportedCount} unsupported skipped)" else ""
+                    status = msg
+                    Toast.makeText(context, msg, Toast.LENGTH_LONG).show()
+                } else if (result.createdFolders.isNotEmpty()) {
+                    val folderName = result.createdFolders.first().name
+                    val msg = if (result.skippedUnsupportedCount > 0)
+                        "Created folder \"$folderName\" (${result.skippedUnsupportedCount} unsupported file(s) skipped)"
+                    else "Created empty folder \"$folderName\""
+                    status = msg
+                    Toast.makeText(context, msg, Toast.LENGTH_LONG).show()
+                }
             }
         }
-    }
-
     }
 
     /**
@@ -413,10 +408,10 @@ class LibraryState(
 
     /** Re-queues a failed file for indexing, unless its original file is gone. */
     fun retryFile(file: ImportedFile) {
-        if (!FileAvailability.isFileAvailable(context, file.uri)) {
-            onMissingFile(file)
-        } else {
-            scope.launch(Dispatchers.IO) {
+        scope.launch(Dispatchers.IO) {
+            if (!FileAvailability.isFileAvailable(context, file.uri)) {
+                withContext(Dispatchers.Main) { onMissingFile(file) }
+            } else {
                 val store = FileStore.getInstance(context)
                 store.updateStatus(file.uri, IndexingStatus.PENDING)
                 importedFiles = store.getAll()

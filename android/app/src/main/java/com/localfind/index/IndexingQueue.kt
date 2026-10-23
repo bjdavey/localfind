@@ -1,5 +1,7 @@
 package com.localfind.index
 
+import com.localfind.core.model.ImportedFile
+import com.localfind.core.indexing.IndexingAttempts
 import android.content.Context
 import android.util.Log
 import androidx.core.content.edit
@@ -68,6 +70,33 @@ object IndexingQueue {
             if (replace) ExistingWorkPolicy.REPLACE else ExistingWorkPolicy.APPEND_OR_REPLACE,
             request
         )
+    }
+
+    /**
+     * Handles a file found in INDEXING status although no indexing is running: the previous run died
+     * while indexing it (crash or process kill). The file is put back in the queue at its saved
+     * checkpoint, unless it has been interrupted too often ([IndexingAttempts]), in which case it is
+     * marked as failed so it cannot crash the app on every start.
+     *
+     * @return true if the file was re-queued, false if it was given up on.
+     */
+    fun recoverInterruptedFile(context: Context, fileStore: FileStore, file: ImportedFile): Boolean {
+        val attempts = IndexingResumeManager.recordInterruptedAttempt(context, file.uri)
+        if (IndexingAttempts.shouldGiveUp(attempts)) {
+            Log.w(TAG, "Giving up on ${file.displayName} after $attempts interrupted attempts")
+            IndexingResumeManager.clearResumeChunk(context, file.uri)
+            IndexingResumeManager.clearAttempts(context, file.uri)
+            fileStore.updateStatus(file.uri, IndexingStatus.FAILED, 0)
+            try {
+                EngineManager.getStore(context).deleteByFileUri(file.uri)
+            } catch (e: Exception) {
+                Log.w(TAG, "Failed to delete chunks of ${file.displayName}: ${e.message}")
+            }
+            return false
+        }
+        val resumeChunk = IndexingResumeManager.getResumeChunk(context, file.uri, file.size)
+        fileStore.updateStatus(file.uri, IndexingStatus.PENDING, resumeChunk)
+        return true
     }
 
     /**
@@ -165,6 +194,7 @@ object IndexingQueue {
     fun cancelFile(context: Context, uri: String) {
         IndexingCancellationState.cancelFile(uri)
         IndexingResumeManager.clearResumeChunk(context, uri)
+        IndexingResumeManager.clearAttempts(context, uri)
         val fileStore = FileStore.getInstance(context)
         fileStore.updateStatus(uri, IndexingStatus.FAILED, 0)
         try {

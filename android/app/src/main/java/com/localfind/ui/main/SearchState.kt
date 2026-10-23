@@ -211,10 +211,17 @@ class SearchState(
      * If the target is an image, initiates visual similarity search to find similar photos.
      */
     fun startSearchInFile(target: ImportedFile) {
-        if (!FileAvailability.isFileAvailable(context, target.uri)) {
-            onMissingFile(target)
-            return
+        scope.launch {
+            // Content provider access is IPC, so the availability check must not run on the main thread
+            if (!withContext(Dispatchers.IO) { FileAvailability.isFileAvailable(context, target.uri) }) {
+                onMissingFile(target)
+                return@launch
+            }
+            openSearchInFile(target)
         }
+    }
+
+    private fun openSearchInFile(target: ImportedFile) {
         val isPhoto = LibraryFilters.categorizeFile(target.displayName, target.mimeType) == GalleryCategory.PHOTOS
         if (isPhoto) {
             activeSearchFile = null

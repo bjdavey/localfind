@@ -117,6 +117,7 @@ class IndexingWorker(
     /** Gives up on [uri]: forgets its resume checkpoint, marks it FAILED and drops its partial vectors. */
     private suspend fun markFailedAndPurge(fileStore: FileStore, uri: String) {
         IndexingResumeManager.clearResumeChunk(context, uri)
+        IndexingResumeManager.clearAttempts(context, uri)
         fileStore.updateStatus(uri, IndexingStatus.FAILED, 0)
         try {
             EngineManager.withStore(context) { it.deleteByFileUri(uri) }
@@ -208,6 +209,13 @@ class IndexingWorker(
                         continue
                     }
 
+                    // Still INDEXING at the start of a run means an earlier run died while indexing this file
+                    if (file.indexingStatus == IndexingStatus.INDEXING &&
+                        !IndexingQueue.recoverInterruptedFile(context, fileStore, file)
+                    ) {
+                        continue
+                    }
+
                     val fileIndex = idx + 1
                     fileStore.updateStatus(file.uri, IndexingStatus.INDEXING)
 
@@ -237,7 +245,7 @@ class IndexingWorker(
                                     if (IndexingQueue.isPaused(context)) return@indexFile
                                     val fraction = if (tot > 0) cur.toFloat() / tot.toFloat() else 0f
                                     val percent = (fraction * 100).toInt()
-                                    val activeDelegate = indexer.getActiveEmbedder().effectiveAccelerator.name
+                                    val activeDelegate = indexer.embedder.effectiveAccelerator.name
                                     val msg = "Analyzing $fileIndex/$totalInBatch: ${file.displayName} ($percent%) • $activeDelegate"
                                     IndexingProgressState.update(
                                         isIndexing = true,
@@ -286,6 +294,7 @@ class IndexingWorker(
                         if (result.isSuccess) {
                             Log.i(TAG_INDEXING, "Indexed ${file.displayName}: ${result.chunksCount} chunks")
                             fileStore.updateStatus(file.uri, IndexingStatus.INDEXED, result.chunksCount)
+                            IndexingResumeManager.clearAttempts(context, file.uri)
                             val doneMsg = "Analyzed $fileIndex/$totalInBatch: ${file.displayName}"
                             IndexingProgressState.update(
                                 isIndexing = true,

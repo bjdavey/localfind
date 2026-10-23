@@ -1,5 +1,6 @@
 package com.localfind.index
 
+import com.localfind.core.indexing.IndexingAttempts
 import com.localfind.core.indexing.IndexingResumeLogic
 import android.content.Context
 import androidx.core.content.edit
@@ -24,6 +25,7 @@ object IndexingResumeManager {
     const val PREFS_NAME = "localfind_indexing_prefs"
     const val KEY_RESUME_CHUNK_PREFIX = "resume_chunk_"
     const val KEY_RESUME_SIZE_PREFIX = "resume_size_"
+    const val KEY_INTERRUPTED_PREFIX = "interrupted_attempts_"
 
     /**
      * Retrieves the validated chunk index from which indexing should resume for [uri].
@@ -77,6 +79,23 @@ object IndexingResumeManager {
     }
 
     /**
+     * Records that indexing of [uri] was interrupted abnormally (the process died while it was running)
+     * and returns the number of such interruptions so far. See [IndexingAttempts].
+     */
+    fun recordInterruptedAttempt(context: Context, uri: String): Int {
+        val prefs = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+        val attempts = prefs.getInt(KEY_INTERRUPTED_PREFIX + uri, 0) + 1
+        prefs.edit { putInt(KEY_INTERRUPTED_PREFIX + uri, attempts) }
+        return attempts
+    }
+
+    /** Forgets the interruption count of [uri] after it indexed successfully, failed or was cancelled. */
+    fun clearAttempts(context: Context, uri: String) {
+        val prefs = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+        prefs.edit { remove(KEY_INTERRUPTED_PREFIX + uri) }
+    }
+
+    /**
      * Clears all saved resume checkpoints across all files.
      * Called when the user initiates "Re-index all" or cancels the entire indexing queue.
      */
@@ -84,7 +103,9 @@ object IndexingResumeManager {
         val prefs = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
         prefs.edit {
             for (key in prefs.all.keys) {
-                if (key.startsWith(KEY_RESUME_CHUNK_PREFIX) || key.startsWith(KEY_RESUME_SIZE_PREFIX)) {
+                if (key.startsWith(KEY_RESUME_CHUNK_PREFIX) || key.startsWith(KEY_RESUME_SIZE_PREFIX) ||
+                    key.startsWith(KEY_INTERRUPTED_PREFIX)
+                ) {
                     remove(key)
                 }
             }

@@ -20,6 +20,12 @@
         android:roundIcon="@mipmap/ic_launcher_round"
         android:supportsRtl="true"
         android:theme="@style/Theme.LocalFind">
+        <!-- Offline Guarantee: MediaPipe pulls in Google's data-transport (usage logging) library. Removing its
+             backend discovery leaves it without a backend, so logged events are dropped locally and never queued for upload. -->
+        <service
+            android:name="com.google.android.datatransport.runtime.backends.TransportBackendDiscovery"
+            tools:node="remove" />
+
         <!-- Hardware Acceleration: Allow loading Qualcomm Hexagon FastRPC and OpenCL vendor libraries -->
         <uses-native-library android:name="libcdsprpc.so" android:required="false" />
         <uses-native-library android:name="libOpenCL.so" android:required="false" />

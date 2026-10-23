@@ -104,6 +104,7 @@ Each file is split into **chunks**. Each chunk has one embedding and one **locat
 - Video indexing uses sliding time windows with hardware-downsampled sync keyframes (`256 px`), luminance-based visual redundancy skipping (`85%` similarity threshold), adaptive thermal pacing (`PowerManager`), and optional concurrent 16 kHz audio decoding.
 - Indexing runs in a background WorkManager worker (`IndexingWorker`, foreground notification via `IndexingNotifications`), surviving app process death and automatically resuming unindexed files from the last completed chunk (`IndexingResumeManager`). The queue is controlled through `IndexingQueue` (enqueue, pause, resume, cancel, cancel one file); the user can pause, resume and cancel from the app and from the notification.
 - Progress is tracked per file with live percentage and spinner indicators on gallery tiles and in the top indexing banner.
+- A file found still marked INDEXING after a restart means the process died while indexing it. Each such interruption is counted (`IndexingResumeManager`); after 3 (`IndexingAttempts`) the file is marked failed instead of being retried, so a file that crashes the indexer cannot crash the app on every start.
 
 ## 6. Data Model (SqliteVectorStore)
 
@@ -158,7 +159,7 @@ All variables are persisted locally using native Android `SharedPreferences` (`S
 ## 10. Offline Guarantee
 
 - No `INTERNET` permission. Any merged permission from libraries is removed with `tools:node="remove"`.
-- No analytics, crash reporting, or cloud SDKs.
+- No analytics, crash reporting, or cloud SDKs. MediaPipe bundles Google's data-transport (usage logging) library; its backend discovery service is removed in `AndroidManifest.xml`, so logged events are dropped locally and nothing is queued for upload.
 
 ## 11. Project Layout
 
@@ -201,6 +202,7 @@ android/app/src/main/
 ## 12. Technical Invariants
 
 - **Single Model Instance:** Never bypass `EngineManager`. The ~485MB `EmbeddingGemma 2` model must only be loaded once to prevent Out-Of-Memory (OOM) crashes on mobile devices.
+- **Stable Embedder Handle:** `EngineManager.getEmbedder` returns an `EmbeddingModel` handle that always routes to the current `Embedder` under a read/write lock. Replacing the instance (accelerator change, Smart mode switch) takes the write lock and waits for in-flight inference. Hold the `EmbeddingModel`, never a raw `Embedder`, and never close an `Embedder` that `EngineManager` owns.
 - **Background Threading:** Never perform file extraction, PDF parsing, audio decoding, embedding, or database writes on the Android Main (UI) thread; always use dispatcher.
 - **Hardware Acceleration Linking:** Vendor libraries (`libcdsprpc.so` for Qualcomm Hexagon FastRPC and `libOpenCL.so` for GPU) are declared in `AndroidManifest.xml` with `android:required="false"`, ensuring that devices lacking vendor drivers install and run normally.
 - **Dynamic Hardware Fallback:** If dedicated NPU models or delegates are unavailable or fail to initialize, `Embedder` and `HardwareAccelerator.resolveEffective` (`embed/AcceleratorResolver.kt`, wrapping the pure `HardwareAccelerator.resolve` policy) automatically fall back to `SMART` mode (`GPU` when screen is off, `CPU` when screen is on).

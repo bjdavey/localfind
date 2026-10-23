@@ -8,14 +8,14 @@ import android.graphics.Bitmap
 import com.google.mediapipe.tasks.core.TextPart
 import com.localfind.core.settings.DEFAULT_TOP_K
 import com.localfind.data.EmbeddingStore
-import com.localfind.embed.Embedder
+import com.localfind.embed.EmbeddingModel
 
 /**
  * Orchestrates semantic and visual similarity search over indexed file chunks.
  *
  * Architectural Role (ARCHITECTURE.md §7):
  * 1. Accepts natural language text queries or image query bitmaps.
- * 2. Generates a 768-dimensional normalized float embedding vector via [Embedder]
+ * 2. Generates a 768-dimensional normalized float embedding vector via [EmbeddingModel]
  *    (using text embedding or vision embedding in the shared multimodal embedding space).
  * 3. Queries [EmbeddingStore.search] for nearest neighbors via cosine similarity.
  * 4. Extracts snippet text, file URI, display name, chunk type, and location offset from metadata.
@@ -24,7 +24,7 @@ import com.localfind.embed.Embedder
  * Design for testability:
  * Primary constructor accepts `embedQuery: (String) -> FloatArray` and optional `embedImageQuery`,
  * allowing fast JVM unit testing with simulated embeddings without needing LiteRT / native C++ libraries.
- * A secondary constructor accepts [Embedder] for production on-device usage.
+ * A secondary constructor accepts [EmbeddingModel] for production on-device usage.
  */
 class Searcher(
     private val embeddingStore: EmbeddingStore,
@@ -32,12 +32,12 @@ class Searcher(
     private val embedImageQuery: ((Bitmap) -> FloatArray)? = null
 ) {
     /**
-     * Production constructor using [EmbeddingStore] and on-device [Embedder].
+     * Production constructor using [EmbeddingStore] and on-device [EmbeddingModel].
      * Configures multimodal embedding delegates for both text and image queries.
      */
     constructor(
         embeddingStore: EmbeddingStore,
-        embedder: Embedder
+        embedder: EmbeddingModel
     ) : this(
         embeddingStore = embeddingStore,
         embedQuery = { text -> embedder.embedText(text) },
