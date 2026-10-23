@@ -2,7 +2,6 @@ package com.localfind
 
 import com.localfind.index.IndexingQueue
 import com.localfind.core.library.LibraryFilters
-import com.localfind.core.model.ChunkMetadata
 import com.localfind.core.model.FileTypes
 import android.content.Intent
 import android.os.Bundle
@@ -28,15 +27,12 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.lazy.grid.rememberLazyGridState
 import androidx.compose.foundation.lazy.rememberLazyListState
-import androidx.compose.material3.AlertDialog
-import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
-import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.SideEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
@@ -49,33 +45,29 @@ import androidx.work.WorkManager
 import com.localfind.core.settings.AppSettings
 import com.localfind.data.EngineManager
 import com.localfind.data.FileAvailability
-import com.localfind.data.FileImporter
 import com.localfind.data.FileStore
 import com.localfind.core.model.Folder
 import com.localfind.core.model.ImportedFile
-import com.localfind.core.model.IndexingStatus
 import com.localfind.core.model.ModelStatus
 import com.localfind.data.SettingsStore
 import com.localfind.data.ShareImporter
 import com.localfind.core.settings.ThemeMode
 import com.localfind.index.IndexingProgressState
 import com.localfind.index.IndexingResumeManager
-import com.localfind.index.IndexingWorker
-import com.localfind.core.model.SearchResult
 import com.localfind.ui.ModelLoadingOverlay
 import com.localfind.core.library.GalleryCategory
+import com.localfind.ui.main.ConfirmRemoveFileDialog
+import com.localfind.ui.main.MissingFileDialog
+import com.localfind.ui.main.rememberLibraryState
+import com.localfind.ui.main.rememberSearchState
 import com.localfind.ui.gallery.GalleryScreen
-import com.localfind.ui.gallery.ThumbnailHelper
 import com.localfind.ui.search.SearchScreen
 import com.localfind.ui.settings.SettingsScreen
 import com.localfind.ui.theme.LocalFindTheme
 import com.localfind.ui.viewer.ViewerOverlayHost
 import com.localfind.ui.viewer.rememberViewerState
-import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.Job
 import kotlinx.coroutines.launch
-import kotlinx.coroutines.withContext
 
 /**
  * Main application activity for LocalFind.
@@ -214,37 +206,19 @@ fun MainScreen(
     val isIndexing = indexingProgress.isIndexing || isWorkActive
 
     // UI state
-    var status by remember { mutableStateOf("Ready") }
-    var importedFiles by remember { mutableStateOf<List<ImportedFile>>(emptyList()) }
-    var folders by remember { mutableStateOf<List<Folder>>(emptyList()) }
-    var currentFolderId by remember { mutableStateOf<String?>(null) }
-    var indexedChunksCount by remember { mutableIntStateOf(0) }
-
-    // Navigation & Search state
-    var isSearchOpen by remember { mutableStateOf(false) }
-    var searchQuery by remember { mutableStateOf("") }
-    var searchCategory by remember { mutableStateOf(GalleryCategory.ALL) }
-    var activeSearchFile by remember { mutableStateOf<ImportedFile?>(null) }
-    var isSearching by remember { mutableStateOf(false) }
-    var hasSearched by remember { mutableStateOf(false) }
-    var searchResults by remember { mutableStateOf<List<SearchResult>>(emptyList()) }
-    var searchError by remember { mutableStateOf<String?>(null) }
-    var searchImageUri by remember { mutableStateOf<android.net.Uri?>(null) }
-    var searchImageName by remember { mutableStateOf<String?>(null) }
-    val searchImageEmbeddingCache = remember { arrayOfNulls<FloatArray>(1) }
-    var excludeSourceUri by remember { mutableStateOf<String?>(null) }
-    var currentSearchJob by remember { mutableStateOf<Job?>(null) }
+    // Library data and the operations on it live in LibraryState; these aliases keep reads and
+    // writes below going through the same observable state.
+    val library = rememberLibraryState()
+    var status by library::status
+    var importedFiles by library::importedFiles
+    var folders by library::folders
+    var currentFolderId by library::currentFolderId
+    var indexedChunksCount by library::indexedChunksCount
 
     // Modality categories with at least one imported file in the app (plus ALL).
     // Hides filter chips for categories with 0 files in the app.
     val availableCategories = remember(importedFiles) {
         LibraryFilters.getAvailableCategories(importedFiles)
-    }
-
-    LaunchedEffect(availableCategories) {
-        if (searchCategory !in availableCategories) {
-            searchCategory = GalleryCategory.ALL
-        }
     }
 
     // Active full-screen builtin viewers managed by ViewerState
@@ -253,6 +227,34 @@ fun MainScreen(
     var filePendingDeletion by remember { mutableStateOf<ImportedFile?>(null) }
     var missingFileToDelete by remember { mutableStateOf<ImportedFile?>(null) }
     var isSettingsOpen by remember { mutableStateOf(false) }
+
+    // Hoisted scroll states to guarantee scroll position is never lost when opening/closing files or search
+    val galleryGridState = rememberLazyGridState()
+    val searchListState = rememberLazyListState()
+
+    // Search state and logic live in SearchState; aliases keep the gating logic below readable.
+    val search = rememberSearchState(
+        listState = searchListState,
+        settings = settings,
+        availableCategories = availableCategories,
+        onMissingFile = { missingFileToDelete = it },
+        closeViewers = { viewerState.closeAll() }
+    )
+    var isSearchOpen by search::isSearchOpen
+    var searchCategory by search::searchCategory
+    var activeSearchFile by search::activeSearchFile
+
+    // Library operations and the library's own indexing/missing-file callbacks into the UI
+    SideEffect {
+        library.onFilesRemoved = search::removeResultsFor
+        library.onMissingFile = { missingFileToDelete = it }
+    }
+
+    LaunchedEffect(availableCategories) {
+        if (searchCategory !in availableCategories) {
+            searchCategory = GalleryCategory.ALL
+        }
+    }
 
     // Folder back navigation support
     val currentFolder = remember(folders, currentFolderId) {
@@ -265,93 +267,8 @@ fun MainScreen(
         currentFolderId = currentFolder?.parentId
     }
 
-    // Hoisted scroll states to guarantee scroll position is never lost when opening/closing files or search
-    val galleryGridState = rememberLazyGridState()
-    val searchListState = rememberLazyListState()
-
-    /**
-     * Retries loading the model and resumes background indexing if files are pending.
-     */
-    fun retryLoadModel() {
-        scope.launch(Dispatchers.IO) {
-            status = "Loading model..."
-            val result = EngineManager.ensureModelLoaded(context)
-            withContext(Dispatchers.Main) {
-                if (result is ModelStatus.Loaded) {
-                    status = "Model loaded successfully"
-                    Toast.makeText(context, "Model loaded (${result.sizeBytes / 1_048_576} MB)", Toast.LENGTH_SHORT).show()
-                } else if (result is ModelStatus.Error) {
-                    status = "Model load failed"
-                }
-            }
-            if (result is ModelStatus.Loaded) {
-                val store = FileStore.getInstance(context)
-                if (store.getPendingFiles().isNotEmpty()) {
-                    IndexingQueue.enqueue(context, replace = true)
-                }
-            }
-        }
-    }
-
-    /**
-     * Queries [EmbeddingStore] via [EngineManager] to count total chunks in the vector database.
-     */
-    suspend fun refreshIndexCount() {
-        withContext(Dispatchers.IO) {
-            EngineManager.withStore(context) { store ->
-                try {
-                    indexedChunksCount = store.count()
-                } catch (_: Exception) {
-                    // Ignore if database is temporarily busy
-                }
-            }
-        }
-    }
-
-    suspend fun reloadFiles() {
-        withContext(Dispatchers.IO) {
-            val store = FileStore.getInstance(context)
-            importedFiles = store.getAll()
-            folders = store.getAllFolders()
-        }
-        refreshIndexCount()
-    }
-
-    /**
-     * Starts (or appends to) background indexing, unless the user paused the queue,
-     * in which case only the paused banner is refreshed. Blocking: call from a background dispatcher.
-     */
-    fun enqueueOrMarkPaused(replace: Boolean = false) {
-        if (IndexingQueue.isPaused(context)) {
-            val pendingCount = FileStore.getInstance(context).getPendingFiles().size
-            IndexingProgressState.setPaused("Paused ($pendingCount pending)")
-        } else {
-            IndexingQueue.enqueue(context, replace)
-        }
-    }
-
     // Load model and persisted files on startup, automatically resuming background indexing if ready
-    LaunchedEffect(Unit) {
-        withContext(Dispatchers.IO) {
-            EngineManager.ensureModelLoaded(context)
-            val store = FileStore.getInstance(context)
-            // Revert any files left in INDEXING status from an interrupted session back to PENDING
-            val pending = store.getPendingFiles()
-            for (f in pending) {
-                if (f.indexingStatus == IndexingStatus.INDEXING) {
-                    val resumeChunk = IndexingResumeManager.getResumeChunk(context, f.uri, f.size)
-                    store.updateStatus(f.uri, IndexingStatus.PENDING, resumeChunk)
-                }
-            }
-            importedFiles = store.getAll()
-            folders = store.getAllFolders()
-            // If the app was closed/killed while indexing was in-flight, resume immediately via WorkManager unless paused
-            if (store.getPendingFiles().isNotEmpty()) {
-                enqueueOrMarkPaused(replace = true)
-            }
-        }
-        refreshIndexCount()
-    }
+    LaunchedEffect(Unit) { library.loadInitial() }
 
     // Refresh file statuses and index counts as files transition lifecycle states
     LaunchedEffect(
@@ -360,7 +277,7 @@ fun MainScreen(
         indexingProgress.isIndexing,
         indexingProgress.fileIndex
     ) {
-        reloadFiles()
+        library.reloadFiles()
         if (!isIndexing && !indexingProgress.isIndexing && !indexingProgress.isPaused) {
             status = "Ready"
         }
@@ -369,550 +286,40 @@ fun MainScreen(
     // Process incoming shared files or notes from other apps (ACTION_SEND / ACTION_SEND_MULTIPLE)
     LaunchedEffect(pendingShareIntent) {
         val shareIntent = pendingShareIntent ?: return@LaunchedEffect
-        status = "Importing shared content..."
-        val result = withContext(Dispatchers.IO) {
-            val res = ShareImporter.processShareIntent(context, shareIntent, folderId = currentFolderId)
-            if (res.importedFiles.isNotEmpty()) {
-                val store = FileStore.getInstance(context)
-                store.insertAll(res.importedFiles)
-            }
-            res
-        }
-        reloadFiles()
-
-        if (result.importedFiles.isNotEmpty()) {
-            withContext(Dispatchers.IO) { enqueueOrMarkPaused() }
-
-            val msg = if (result.isTextNote) {
-                "Imported shared note"
-            } else if (result.unsupportedCount > 0) {
-                "Imported ${result.importedFiles.size} file(s) from share. Skipped ${result.unsupportedCount} unsupported file(s)."
-            } else {
-                "Imported ${result.importedFiles.size} file(s) from share"
-            }
-            status = msg
-            Toast.makeText(context, msg, Toast.LENGTH_SHORT).show()
-        } else if (result.unsupportedCount > 0) {
-            val msg = "Cannot import unsupported file(s). Only files with builtin viewers (text, PDF, image, audio, video) are supported."
-            status = msg
-            Toast.makeText(context, msg, Toast.LENGTH_LONG).show()
-        }
-
+        library.importShared(shareIntent)
         onShareIntentHandled()
     }
 
-    /**
-     * Releases everything tied to a library file before its record is deleted: aborts any in-flight
-     * indexing, evicts the cached preview, removes the private copy of shared files and drops the
-     * persistable SAF read grant. Blocking: call from a background dispatcher.
-     */
-    fun releaseFileResources(uri: String) {
-        IndexingQueue.cancelFile(context, uri)
-        ThumbnailHelper.evictPreview(uri)
-        ShareImporter.deleteInternalFileIfShared(context, uri)
-        try {
-            context.contentResolver.releasePersistableUriPermission(
-                uri.toUri(),
-                Intent.FLAG_GRANT_READ_URI_PERMISSION
-            )
-        } catch (_: Exception) {
-            // Non-SAF URIs, folder-tree children or revoked grants don't have persistable grants
-        }
-    }
-
-    /** Deletes the embedding vectors of [uris], tolerating a temporarily inaccessible store. */
-    suspend fun deleteEmbeddings(uris: List<String>) {
-        EngineManager.withStore(context) { store ->
-            for (uri in uris) {
-                try {
-                    store.deleteByFileUri(uri)
-                } catch (_: Exception) {}
-            }
-        }
-    }
-
-    /**
-     * Removes an imported file from the local library:
-     * 1. Releases persistable SAF URI read grant (if held) and evicts cached thumbnail preview.
-     * 2. Deletes the file metadata record from [FileStore].
-     * 3. Deletes all associated embedding vectors from [EmbeddingStore].
-     * 4. Updates library UI state and refreshes the total indexed chunks count.
-     */
-    fun removeFile(file: ImportedFile) {
-        scope.launch {
-            status = "Removing ${file.displayName}..."
-            withContext(Dispatchers.IO) {
-                // If file is actively indexing or queued, abort it immediately
-                releaseFileResources(file.uri)
-
-                val fileStore = FileStore.getInstance(context)
-                fileStore.delete(file.uri)
-                val updatedFiles = fileStore.getAll()
-
-                deleteEmbeddings(listOf(file.uri))
-
-                withContext(Dispatchers.Main) {
-                    importedFiles = updatedFiles
-                    searchResults = searchResults.filter { it.fileUri != file.uri }
-                }
-            }
-
-            refreshIndexCount()
-            status = "Removed ${file.displayName}"
-            Toast.makeText(
-                context,
-                "Removed ${file.displayName} from library",
-                Toast.LENGTH_SHORT
-            ).show()
-        }
-    }
-
-    /**
-     * Batch removes multiple imported files from the local library.
-     */
-    fun removeFiles(files: List<ImportedFile>) {
-        if (files.isEmpty()) return
-        scope.launch {
-            val count = files.size
-            status = "Removing $count file(s)..."
-            withContext(Dispatchers.IO) {
-                val uris = files.map { it.uri }
-                uris.forEach { releaseFileResources(it) }
-
-                val fileStore = FileStore.getInstance(context)
-                fileStore.deleteFiles(uris)
-                val updatedFiles = fileStore.getAll()
-
-                deleteEmbeddings(uris)
-
-                withContext(Dispatchers.Main) {
-                    importedFiles = updatedFiles
-                    val uriSet = uris.toSet()
-                    searchResults = searchResults.filter { it.fileUri !in uriSet }
-                }
-            }
-
-            refreshIndexCount()
-            status = "Removed $count file(s)"
-            Toast.makeText(
-                context,
-                "Removed $count file(s) from library",
-                Toast.LENGTH_SHORT
-            ).show()
-        }
-    }
-
-    /** Forgets the active query image (and its cached embedding), leaving text query and results alone. */
-    fun clearImageQuery() {
-        searchImageUri = null
-        searchImageName = null
-        searchImageEmbeddingCache[0] = null
-        excludeSourceUri = null
-    }
-
-    /** Resets the results area to its "nothing searched yet" state. */
-    fun clearResults() {
-        hasSearched = false
-        searchResults = emptyList()
-        searchError = null
-    }
-
-    /** Scrolls the results list back to the first hit after new results arrive. */
-    fun scrollResultsToTop() {
-        scope.launch {
-            try {
-                searchListState.scrollToItem(0)
-            } catch (_: Exception) {}
-        }
-    }
-
-    /**
-     * Executes a visual similarity search given a query image URI.
-     *
-     * Decodes the image bitmap, computes its 768-dimensional normalized embedding via [EngineManager],
-     * caches the embedding for instant filter chip switching, and searches nearest visual neighbors.
-     */
-    fun performImageSearch(
-        imageUri: android.net.Uri,
-        imageName: String? = null,
-        category: GalleryCategory? = null,
-        excludeUri: String? = null,
-        useCachedEmbedding: Boolean = false
-    ) {
-        if (modelStatus is ModelStatus.Error) {
-            searchError = "Search unavailable: Embedding model is not loaded."
-            hasSearched = true
-            return
-        }
-
-        currentSearchJob?.cancel()
-
-        // If searching inside a specific target file (e.g. video or PDF), scope results to that file
-        val fileFilter = activeSearchFile?.let { mapOf("fileId" to it.uri) } ?: emptyMap()
-
-        // When scoped to a file, do not filter by category types so all chunks of that file are matched.
-        // When searching all files, preserve or default to photos.
-        val targetCategory = if (activeSearchFile != null) {
-            searchCategory
-        } else {
-            category ?: when {
-                searchCategory == GalleryCategory.PHOTOS || searchCategory == GalleryCategory.ALL -> searchCategory
-                GalleryCategory.PHOTOS in availableCategories -> GalleryCategory.PHOTOS
-                else -> GalleryCategory.ALL
-            }
-        }
-        searchCategory = targetCategory
-
-        searchImageUri = imageUri
-        searchImageName = imageName ?: FileImporter.resolveDisplayName(context.contentResolver, imageUri)
-        searchQuery = ""
-        excludeSourceUri = excludeUri
-        val categoryTypes = if (activeSearchFile != null) null else targetCategory.types
-
-        currentSearchJob = scope.launch {
-            isSearching = true
-            searchError = null
-            try {
-                val results = withContext(Dispatchers.Default) {
-                    val embedding = if (useCachedEmbedding && searchImageEmbeddingCache[0] != null) {
-                        searchImageEmbeddingCache[0]!!
-                    } else {
-                        val existingEmbedding = withContext(Dispatchers.IO) {
-                            try {
-                                EngineManager.withStore(context) { store ->
-                                    store.get(ChunkMetadata.chunkId(imageUri.toString(), 0))?.embeddings
-                                }
-                            } catch (_: Exception) {
-                                null
-                            }
-                        }
-
-                        if (existingEmbedding != null && existingEmbedding.isNotEmpty()) {
-                            existingEmbedding
-                        } else {
-                            val bitmap = withContext(Dispatchers.IO) {
-                                com.localfind.index.image.ImageIndexer.decodeNormalizedBitmap(
-                                    context,
-                                    imageUri,
-                                    maxDimension = settings.maxImageDimension
-                                )
-                            }
-                            val emb = try {
-                                EngineManager.withSearcher(context) { searcher ->
-                                    searcher.embedImage(bitmap)
-                                }
-                            } finally {
-                                bitmap.recycle()
-                            }
-                            emb
-                        }
-                    }
-
-                    searchImageEmbeddingCache[0] = embedding
-
-                    EngineManager.withSearcher(context) { searcher ->
-                        searcher.searchByEmbedding(
-                            queryEmbedding = embedding,
-                            topK = settings.topK,
-                            threshold = settings.similarityThreshold,
-                            metadataFilter = fileFilter,
-                            fileTypes = categoryTypes,
-                            excludeFileUri = if (activeSearchFile != null) null else excludeUri
-                        )
-                    }
-                }
-                searchResults = results
-                hasSearched = true
-                scrollResultsToTop()
-            } catch (_: CancellationException) {
-                // Cancelled by a newer search request; do not show error
-            } catch (e: Exception) {
-                searchError = e.message ?: "Search by image failed"
-                searchResults = emptyList()
-                hasSearched = true
-            } finally {
-                isSearching = false
-            }
-        }
-    }
-
-    /**
-     * Prepares and navigates to the search view scoped to a specific [target] file.
-     * If the target is an image, initiates visual similarity search to find similar photos.
-     */
-    fun startSearchInFile(target: ImportedFile) {
-        if (!FileAvailability.isFileAvailable(context, target.uri)) {
-            missingFileToDelete = target
-            return
-        }
-        val isPhoto = LibraryFilters.categorizeFile(target.displayName, target.mimeType) == GalleryCategory.PHOTOS
-        if (isPhoto) {
-            activeSearchFile = null
-            searchCategory = GalleryCategory.PHOTOS
-            viewerState.closeAll()
-            isSearchOpen = true
-            performImageSearch(
-                imageUri = target.uri.toUri(),
-                imageName = target.displayName,
-                category = GalleryCategory.PHOTOS,
-                excludeUri = target.uri
-            )
-            return
-        }
-        currentSearchJob?.cancel()
-        activeSearchFile = target
-        searchCategory = GalleryCategory.ALL
-        searchQuery = ""
-        clearImageQuery()
-        clearResults()
-        // Close any active viewers first so the search screen becomes active
-        viewerState.closeAll()
-        isSearchOpen = true
-    }
-
-    /**
-     * Executes a semantic search query against the local vector database.
-     * Searches after filtering by modality [category] or scoped [activeSearchFile]
-     * ("Search after filter, not filter search results"), preventing unrelated modalities
-     * from consuming the top-K budget.
-     */
-    fun performSearch(queryText: String, category: GalleryCategory = searchCategory) {
-        val trimmed = queryText.trim()
-        if (trimmed.isBlank()) return
-        if (modelStatus is ModelStatus.Error) {
-            searchError = "Search unavailable: Embedding model is not loaded."
-            hasSearched = true
-            return
-        }
-        currentSearchJob?.cancel()
-        val fileFilter = activeSearchFile?.let { mapOf("fileId" to it.uri) } ?: emptyMap()
-        val categoryTypes = if (activeSearchFile != null) null else category.types
-        currentSearchJob = scope.launch {
-            isSearching = true
-            searchError = null
-            try {
-                val results = withContext(Dispatchers.Default) {
-                    EngineManager.withSearcher(context) { searcher ->
-                        searcher.search(
-                            query = trimmed,
-                            topK = settings.topK,
-                            threshold = settings.similarityThreshold,
-                            metadataFilter = fileFilter,
-                            fileTypes = categoryTypes
-                        )
-                    }
-                }
-                searchResults = results
-                hasSearched = true
-                scrollResultsToTop()
-            } catch (_: CancellationException) {
-                // Cancelled by a newer search request; do not show error
-            } catch (e: Exception) {
-                searchError = e.message ?: "An error occurred during search"
-                searchResults = emptyList()
-                hasSearched = true
-            } finally {
-                isSearching = false
-            }
-        }
-    }
 
     // System file picker launcher using Storage Access Framework (SAF)
     val pickerLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.OpenMultipleDocuments()
-    ) { uris ->
-        if (uris.isNotEmpty()) {
-            scope.launch {
-                val (supportedFiles, unsupportedCount) = withContext(Dispatchers.IO) {
-                    val store = FileStore.getInstance(context)
-                    val supported = mutableListOf<ImportedFile>()
-                    var unsupported = 0
-
-                    for (uri in uris) {
-                        val imported = FileImporter.importUri(context.contentResolver, uri, folderId = currentFolderId)
-                        if (imported != null) {
-                            supported.add(imported.copy(indexingStatus = IndexingStatus.PENDING))
-                        } else {
-                            unsupported++
-                        }
-                    }
-
-                    if (supported.isNotEmpty()) {
-                        store.insertAll(supported)
-                        importedFiles = store.getAll()
-                    }
-
-                    Pair(supported, unsupported)
-                }
-
-                if (supportedFiles.isNotEmpty()) {
-                    withContext(Dispatchers.IO) { enqueueOrMarkPaused() }
-                    if (unsupportedCount > 0) {
-                        val msg = "Imported ${supportedFiles.size} file(s). Skipped $unsupportedCount unsupported file(s)."
-                        status = msg
-                        Toast.makeText(context, msg, Toast.LENGTH_LONG).show()
-                    } else {
-                        val msg = "Imported ${supportedFiles.size} file(s)"
-                        status = msg
-                        Toast.makeText(context, msg, Toast.LENGTH_SHORT).show()
-                    }
-                } else if (unsupportedCount > 0) {
-                    val msg = "Cannot import unsupported file(s). Only files with builtin viewers (text, PDF, image, audio, video) are supported."
-                    status = msg
-                    Toast.makeText(context, msg, Toast.LENGTH_LONG).show()
-                }
-            }
-        }
-    }
+    ) { uris -> library.importPicked(uris) }
 
     // System folder picker launcher using Storage Access Framework (SAF OpenDocumentTree)
     val folderPickerLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.OpenDocumentTree()
-    ) { treeUri ->
-        if (treeUri != null) {
-            scope.launch {
-                status = "Importing folder..."
-                val result = withContext(Dispatchers.IO) {
-                    FileImporter.importTreeUri(context, treeUri, parentFolderId = currentFolderId)
-                }
-                reloadFiles()
-                if (result.importedFiles.isNotEmpty()) {
-                    withContext(Dispatchers.IO) { enqueueOrMarkPaused() }
-                    val folderName = result.createdFolders.firstOrNull()?.name ?: "folder"
-                    val msg = "Imported ${result.importedFiles.size} file(s) into \"$folderName\"" +
-                            if (result.skippedUnsupportedCount > 0) " (${result.skippedUnsupportedCount} unsupported skipped)" else ""
-                    status = msg
-                    Toast.makeText(context, msg, Toast.LENGTH_LONG).show()
-                } else if (result.createdFolders.isNotEmpty()) {
-                    val folderName = result.createdFolders.first().name
-                    val msg = if (result.skippedUnsupportedCount > 0)
-                        "Created folder \"$folderName\" (${result.skippedUnsupportedCount} unsupported file(s) skipped)"
-                    else "Created empty folder \"$folderName\""
-                    status = msg
-                    Toast.makeText(context, msg, Toast.LENGTH_LONG).show()
-                }
-            }
-        }
-    }
+    ) { treeUri -> library.importTree(treeUri) }
 
-    fun createFolder(name: String) {
-        scope.launch(Dispatchers.IO) {
-            val store = FileStore.getInstance(context)
-            store.createFolder(name, currentFolderId)
-            reloadFiles()
-        }
-    }
-
-    fun renameFolder(folder: Folder, newName: String) {
-        scope.launch(Dispatchers.IO) {
-            val store = FileStore.getInstance(context)
-            store.renameFolder(folder.id, newName)
-            reloadFiles()
-        }
-    }
-
-    fun deleteFolder(folder: Folder) {
-        scope.launch {
-            status = "Deleting folder ${folder.name}..."
-            val deletedUris = withContext(Dispatchers.IO) {
-                val store = FileStore.getInstance(context)
-                val uris = store.deleteFolder(folder.id)
-                if (uris.isNotEmpty()) {
-                    // Cancel any in-flight indexing, clear resume checkpoints and drop vectors
-                    uris.forEach { releaseFileResources(it) }
-                    deleteEmbeddings(uris)
-                }
-                uris
-            }
-            if (deletedUris.isNotEmpty()) {
-                val deletedSet = deletedUris.toSet()
-                searchResults = searchResults.filter { it.fileUri !in deletedSet }
-            }
-            if (currentFolderId == folder.id) {
-                currentFolderId = folder.parentId
-            }
-            reloadFiles()
-            val msg = "Removed folder and ${deletedUris.size} file(s)"
-            status = msg
-            Toast.makeText(context, msg, Toast.LENGTH_SHORT).show()
-        }
-    }
-
-    fun moveFilesToFolder(files: List<ImportedFile>, targetFolderId: String?, showToast: Boolean = true) {
-        if (files.isEmpty()) return
-        scope.launch(Dispatchers.IO) {
-            val store = FileStore.getInstance(context)
-            store.updateFilesFolder(files.map { it.uri }, targetFolderId)
-            reloadFiles()
-            if (showToast) {
-                withContext(Dispatchers.Main) {
-                    val targetName = if (targetFolderId == null) "Library Root" else folders.firstOrNull { it.id == targetFolderId }?.name ?: "folder"
-                    Toast.makeText(context, "Moved ${files.size} file(s) to $targetName", Toast.LENGTH_SHORT).show()
-                }
-            }
-        }
-    }
-
-    fun moveFileToFolder(file: ImportedFile, targetFolderId: String?) =
-        moveFilesToFolder(listOf(file), targetFolderId, showToast = false)
-
-    // Confirmation dialog before removing a file and deleting its embeddings
+    // Confirmation dialogs: removing a file from the library, and a library file whose original is gone
     filePendingDeletion?.let { file ->
-        AlertDialog(
-            onDismissRequest = { filePendingDeletion = null },
-            title = { Text("Remove file?") },
-            text = {
-                Text(
-                    "Remove \"${file.displayName}\" from LocalFind library?\n\n" +
-                            "The original file on your device will NOT be deleted."
-                )
+        ConfirmRemoveFileDialog(
+            file = file,
+            onConfirm = {
+                filePendingDeletion = null
+                library.removeFile(file)
             },
-            confirmButton = {
-                TextButton(
-                    onClick = {
-                        val toDelete = file
-                        filePendingDeletion = null
-                        removeFile(toDelete)
-                    }
-                ) {
-                    Text("Remove", color = MaterialTheme.colorScheme.error)
-                }
-            },
-            dismissButton = {
-                TextButton(onClick = { filePendingDeletion = null }) {
-                    Text("Cancel")
-                }
-            }
+            onDismiss = { filePendingDeletion = null }
         )
     }
-
-    // Prompt when an original file is missing/deleted from storage
     missingFileToDelete?.let { file ->
-        AlertDialog(
-            onDismissRequest = { missingFileToDelete = null },
-            title = { Text("File Not Found") },
-            text = {
-                Text(
-                    "\"${file.displayName}\" could not be found on your device. The original file may have been moved or deleted.\n\n" +
-                            "Would you like to remove it from LocalFind and clean up its search index?"
-                )
+        MissingFileDialog(
+            file = file,
+            onRemove = {
+                missingFileToDelete = null
+                library.removeFile(file)
             },
-            confirmButton = {
-                TextButton(
-                    onClick = {
-                        val toDelete = file
-                        missingFileToDelete = null
-                        removeFile(toDelete)
-                    }
-                ) {
-                    Text("Remove", color = MaterialTheme.colorScheme.error)
-                }
-            },
-            dismissButton = {
-                TextButton(onClick = { missingFileToDelete = null }) {
-                    Text("Keep")
-                }
-            }
+            onKeep = { missingFileToDelete = null }
         )
     }
 
@@ -939,18 +346,18 @@ fun MainScreen(
             onNavigateFolder = {
                 if (!isSearchOpen && !isSettingsOpen && !viewerState.isAnyViewerOpen) currentFolderId = it
             },
-            onCreateFolder = { createFolder(it) },
-            onRenameFolder = { folder, newName -> renameFolder(folder, newName) },
-            onDeleteFolder = { folder -> deleteFolder(folder) },
+            onCreateFolder = { library.createFolder(it) },
+            onRenameFolder = { folder, newName -> library.renameFolder(folder, newName) },
+            onDeleteFolder = { folder -> library.deleteFolder(folder) },
             onImportFolder = {
                 if (!isSearchOpen && !isSettingsOpen && !viewerState.isAnyViewerOpen) folderPickerLauncher.launch(null)
             },
             enableFolderImport = settings.enableFolderImport,
-            onMoveFileToFolder = { file, targetFolderId -> moveFileToFolder(file, targetFolderId) },
-            onMoveMultipleFiles = { files, targetFolderId -> moveFilesToFolder(files, targetFolderId) },
-            onDeleteMultipleFiles = { files -> removeFiles(files) },
+            onMoveFileToFolder = { file, targetFolderId -> library.moveFileToFolder(file, targetFolderId) },
+            onMoveMultipleFiles = { files, targetFolderId -> library.moveFilesToFolder(files, targetFolderId) },
+            onDeleteMultipleFiles = { files -> library.removeFiles(files) },
             gridState = galleryGridState,
-            onRetryLoadModel = { retryLoadModel() },
+            onRetryLoadModel = { library.retryLoadModel() },
             onOpenSearch = {
                 if (!isSearchOpen && !isSettingsOpen && !viewerState.isAnyViewerOpen) {
                     activeSearchFile = null
@@ -960,7 +367,7 @@ fun MainScreen(
             },
             onSearchInFile = { file ->
                 if (!isSearchOpen && !isSettingsOpen && !viewerState.isAnyViewerOpen) {
-                    startSearchInFile(file)
+                    search.startSearchInFile(file)
                 }
             },
             onImportFiles = {
@@ -983,68 +390,12 @@ fun MainScreen(
                     filePendingDeletion = file
                 }
             },
-            onRetryIndexFile = { file ->
-                if (!FileAvailability.isFileAvailable(context, file.uri)) {
-                    missingFileToDelete = file
-                } else {
-                    scope.launch(Dispatchers.IO) {
-                        val store = FileStore.getInstance(context)
-                        store.updateStatus(file.uri, IndexingStatus.PENDING)
-                        importedFiles = store.getAll()
-                        IndexingQueue.enqueue(context, replace = true)
-                    }
-                }
-            },
-            onRetryAllFailed = {
-                scope.launch(Dispatchers.IO) {
-                    val store = FileStore.getInstance(context)
-                    store.markFailedAsPending()
-                    importedFiles = store.getAll()
-                    IndexingQueue.enqueue(context, replace = true)
-                    withContext(Dispatchers.Main) {
-                        Toast.makeText(context, "Retrying failed files...", Toast.LENGTH_SHORT).show()
-                    }
-                }
-            },
-            onPauseIndexing = {
-                scope.launch(Dispatchers.IO) {
-                    IndexingQueue.pause(context)
-                    withContext(Dispatchers.Main) {
-                        Toast.makeText(context, "Paused", Toast.LENGTH_SHORT).show()
-                    }
-                    reloadFiles()
-                }
-            },
-            onResumeIndexing = {
-                scope.launch(Dispatchers.IO) {
-                    status = "Resuming..."
-                    IndexingQueue.resume(context)
-                    withContext(Dispatchers.Main) {
-                        Toast.makeText(context, "Resumed", Toast.LENGTH_SHORT).show()
-                    }
-                    reloadFiles()
-                }
-            },
-            onCancelIndexing = {
-                scope.launch(Dispatchers.IO) {
-                    IndexingQueue.cancel(context)
-                    withContext(Dispatchers.Main) {
-                        status = "Ready"
-                        Toast.makeText(context, "Analysis cancelled", Toast.LENGTH_SHORT).show()
-                    }
-                    reloadFiles()
-                }
-            },
-            onCancelIndexFile = { file ->
-                scope.launch(Dispatchers.IO) {
-                    IndexingQueue.cancelFile(context, file.uri)
-                    withContext(Dispatchers.Main) {
-                        status = "Ready"
-                        Toast.makeText(context, "Cancelled sync for ${file.displayName}", Toast.LENGTH_SHORT).show()
-                    }
-                    reloadFiles()
-                }
-            }
+            onRetryIndexFile = library::retryFile,
+            onRetryAllFailed = library::retryAllFailed,
+            onPauseIndexing = library::pauseIndexing,
+            onResumeIndexing = library::resumeIndexing,
+            onCancelIndexing = library::cancelIndexing,
+            onCancelIndexFile = library::cancelFile
         )
 
         // 2. Dedicated Search Screen (Overlay)
@@ -1061,40 +412,15 @@ fun MainScreen(
         ) {
             SearchScreen(
                 modifier = Modifier.fillMaxSize(),
-                query = searchQuery,
-                onQueryChange = {
-                    searchQuery = it
-                    if (searchImageUri != null) {
-                        clearImageQuery()
-                    }
-                },
-                onSearch = { performSearch(searchQuery, searchCategory) },
-                onClear = {
-                    currentSearchJob?.cancel()
-                    searchQuery = ""
-                    clearImageQuery()
-                    clearResults()
-                    searchCategory = GalleryCategory.ALL
-                    scrollResultsToTop()
-                },
-                isSearching = isSearching,
-                hasSearched = hasSearched,
-                searchResults = searchResults,
-                selectedCategory = searchCategory,
-                onCategoryChange = { newCategory ->
-                    searchCategory = newCategory
-                    if (searchImageUri != null && hasSearched) {
-                        performImageSearch(
-                            imageUri = searchImageUri!!,
-                            imageName = searchImageName,
-                            category = newCategory,
-                            excludeUri = excludeSourceUri,
-                            useCachedEmbedding = true
-                        )
-                    } else if (searchQuery.isNotBlank() && hasSearched) {
-                        performSearch(searchQuery, newCategory)
-                    }
-                },
+                query = search.searchQuery,
+                onQueryChange = search::onQueryChange,
+                onSearch = { search.performSearch(search.searchQuery, search.searchCategory) },
+                onClear = search::clearSearch,
+                isSearching = search.isSearching,
+                hasSearched = search.hasSearched,
+                searchResults = search.searchResults,
+                selectedCategory = search.searchCategory,
+                onCategoryChange = search::changeCategory,
                 availableCategories = availableCategories,
                 listState = searchListState,
                 backHandlerEnabled = isSearchOpen && !viewerState.isAnyViewerOpen,
@@ -1103,45 +429,15 @@ fun MainScreen(
                         missingFileToDelete = it
                     }
                 },
-                targetFile = activeSearchFile,
-                onClearTargetFile = {
-                    activeSearchFile = null
-                    searchCategory = GalleryCategory.ALL
-                    if (searchImageUri != null) {
-                        performImageSearch(
-                            imageUri = searchImageUri!!,
-                            imageName = searchImageName,
-                            category = GalleryCategory.ALL,
-                            excludeUri = excludeSourceUri,
-                            useCachedEmbedding = true
-                        )
-                    } else if (searchQuery.isNotBlank()) {
-                        performSearch(searchQuery, GalleryCategory.ALL)
-                    }
-                },
-                errorMessage = searchError ?: if (modelStatus is ModelStatus.Error) (modelStatus as ModelStatus.Error).message else null,
+                targetFile = search.activeSearchFile,
+                onClearTargetFile = search::clearTargetFile,
+                errorMessage = search.searchError ?: if (modelStatus is ModelStatus.Error) (modelStatus as ModelStatus.Error).message else null,
                 indexedChunksCount = indexedChunksCount,
-                onClose = {
-                    currentSearchJob?.cancel()
-                    isSearchOpen = false
-                    activeSearchFile = null
-                    searchCategory = GalleryCategory.ALL
-                    if (searchImageUri != null) {
-                        hasSearched = false
-                        searchResults = emptyList()
-                    }
-                    clearImageQuery()
-                },
-                queryImageUri = searchImageUri,
-                queryImageName = searchImageName,
-                onSelectQueryImage = { uri ->
-                    performImageSearch(uri)
-                },
-                onClearQueryImage = {
-                    currentSearchJob?.cancel()
-                    clearImageQuery()
-                    clearResults()
-                }
+                onClose = search::close,
+                queryImageUri = search.searchImageUri,
+                queryImageName = search.searchImageName,
+                onSelectQueryImage = { uri -> search.performImageSearch(uri) },
+                onClearQueryImage = search::clearQueryImage
             )
         }
 
@@ -1174,7 +470,7 @@ fun MainScreen(
                 isIndexing = isIndexing,
                 fileCount = importedFiles.size,
                 modelStatus = modelStatus,
-                onRetryLoadModel = { retryLoadModel() },
+                onRetryLoadModel = { library.retryLoadModel() },
                 backHandlerEnabled = isSettingsOpen,
                 onClose = { isSettingsOpen = false }
             )
@@ -1184,7 +480,7 @@ fun MainScreen(
         ViewerOverlayHost(
             viewerState = viewerState,
             importedFiles = importedFiles,
-            onSearchInFile = { file -> startSearchInFile(file) },
+            onSearchInFile = { file -> search.startSearchInFile(file) },
             onSearchSimilarImage = { uriStr, name ->
                 if (!FileAvailability.isFileAvailable(context, uriStr)) {
                     val matchedFile = importedFiles.firstOrNull { it.uri == uriStr }
@@ -1193,7 +489,7 @@ fun MainScreen(
                     activeSearchFile = null
                     searchCategory = GalleryCategory.PHOTOS
                     isSearchOpen = true
-                    performImageSearch(
+                    search.performImageSearch(
                         imageUri = uriStr.toUri(),
                         imageName = name,
                         category = GalleryCategory.PHOTOS,
