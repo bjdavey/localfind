@@ -409,13 +409,13 @@ $LoadError = ""
 while ($Elapsed -lt $TimeoutSeconds) {
     Start-Sleep -Seconds 1
     $Elapsed++
-    $Logs = @(adb -s $DeviceId logcat -d -s SocDetector:I Embedder:I EngineManager:I AndroidRuntime:E DEBUG:F)
+    $Logs = @(adb -s $DeviceId logcat -d -s SocDetector:I ModelFiles:I Embedder:I EngineManager:I AndroidRuntime:E DEBUG:F)
     $LogsText = $Logs -join "`n"
 
     if ($LogsText -match "Embedding model successfully loaded\.") {
         $ModelLoaded = $true
         foreach ($line in $Logs) {
-            if ($line -match "SocDetector:|Embedder:|EngineManager:") {
+            if ($line -match "SocDetector:|ModelFiles:|Embedder:|EngineManager:") {
                 Write-Host "      $($line.Trim())" -ForegroundColor Green
             }
         }
@@ -423,7 +423,7 @@ while ($Elapsed -lt $TimeoutSeconds) {
     }
 
     if ($LogsText -match "Failed to initialize Embedder|Embedding model not found|FATAL EXCEPTION|Fatal signal") {
-        $LoadError = ($Logs | Where-Object { $_ -match "SocDetector:|Embedder:|EngineManager:|FATAL EXCEPTION|Fatal signal" }) -join "`n"
+        $LoadError = ($Logs | Where-Object { $_ -match "SocDetector:|ModelFiles:|Embedder:|EngineManager:|FATAL EXCEPTION|Fatal signal" }) -join "`n"
         break
     }
 }
@@ -440,4 +440,4 @@ if (-not $ModelLoaded) {
 
 Write-Host "`nDeployment and model verification completed successfully!" -ForegroundColor Green
 Write-Host "To monitor inference logs in realtime, run:" -ForegroundColor DarkGray
-Write-Host "adb -s $DeviceId logcat -c; adb -s $DeviceId logcat -s UniversalEmbedder:D LocalFind:D SocDetector:D`n" -ForegroundColor DarkGray
+Write-Host "adb -s $DeviceId logcat -c; adb -s $DeviceId logcat -s UniversalEmbedder:D LocalFind:D SocDetector:D ModelFiles:D`n" -ForegroundColor DarkGray

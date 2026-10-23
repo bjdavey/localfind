@@ -51,7 +51,7 @@ The text query uses the same model, so a text query can match an image, an audio
   - MediaTek Dimensity Next-Gen: `embeddinggemma-2-740m_MediaTek_MT6993.litertlm`
   - Google Tensor G5: `embeddinggemma-2-740m_Google_Tensor_G5.litertlm`
   - Google Tensor G6: `embeddinggemma-2-740m_Google_Tensor_G6.litertlm`
-- **Dynamic SoC Resolution (`SocDetector`):** LocalFind dynamically queries device platform properties (`Build.SOC_MANUFACTURER`, `Build.SOC_MODEL`, `Build.HARDWARE`) at runtime. It automatically selects and stages the exact matching chipset model file without hardcoding phone names or chipsets.
+- **Dynamic SoC Resolution (`SocDetector`):** LocalFind dynamically queries device platform properties (`Build.SOC_MANUFACTURER`, `Build.SOC_MODEL`, `Build.HARDWARE`) at runtime. It derives the exact matching chipset model file name without hardcoding phone names or chipsets; `ModelFiles` then resolves and stages that file.
 
 ### 3.1 Hardware Support Matrix & Execution Status
 
@@ -81,7 +81,7 @@ How the native libraries are packaged: the `libLiteRtDispatch_*.so` dispatch lib
 - **Deployment & Multi-Device Testing Strategy:**
   - **Google Play:** Google Play AI Pack (`:ai_pack:embedding_model`, `install-time` delivery: the model is present at first launch and is copied once from assets into `filesDir`, which costs one extra copy of the model on disk) + Play Feature Delivery (`:litert_npu_runtime_libraries:*`, `install-time` split APKs conditioned on `device_targeting_configuration.xml`).
   - **Local Development & Multi-Device Testing (`deploy-bundle.ps1` / `deploy-bundle.sh`):** Automates Google's official `bundletool` workflow. Detects the connected device SoC via ADB, builds the App Bundle (`:app:bundleDebug`), extracts the matching split APKs for the device's targeting group (Qualcomm SM8550/SM8650/SM8750/SM8850, MediaTek MT6991/MT6993, Google Tensor G5/G6), installs base and NPU splits, and launches the app.
-  - **Fallback Model Staging:** When models are not installed via Play AI Pack, `SocDetector` automatically stages them to `context.filesDir` from `/data/local/tmp/` (also `/sdcard/Download` and `/sdcard` for development).
+  - **Fallback Model Staging:** When models are not installed via Play AI Pack, `ModelFiles` automatically stages them to `context.filesDir` from `/data/local/tmp/` (also `/sdcard/Download` and `/sdcard` for development).
 
 ## 4. File Access: Link, Don't Copy
 
@@ -186,7 +186,7 @@ android/app/src/main/
     │   └── format/      # SearchResultFormatter, formatFileSize, FileNames
     ├── data/            # Android adapters: FileStore (SQLite), SettingsStore (SharedPreferences), FileImporter /
     │                    #   ShareImporter / FileOpener (SAF, intents), EmbeddingStore (SqliteVectorStore), EngineManager
-    ├── embed/           # MediaPipe UniversalEmbedder wrapper (Embedder), SocDetector, AcceleratorResolver
+    ├── embed/           # MediaPipe UniversalEmbedder wrapper (Embedder), SocDetector (chip + NPU runtime), ModelFiles (model file staging), AcceleratorResolver
     ├── index/           # Indexer + per-modality indexers (document/, image/, audio/, video/), IndexingWorker,
     │                    #   IndexingQueue, IndexingNotifications, IndexingState, IndexingResumeManager, IndexingActionReceiver
     ├── search/          # Searcher (EmbeddingStore + Embedder adapter around core/search)

@@ -14,7 +14,7 @@ import com.localfind.core.settings.HardwareAccelerator
 import com.localfind.core.model.ImportedFile
 import com.localfind.embed.Embedder
 import com.localfind.core.model.MODEL_FILE_NAME
-import com.localfind.embed.SocDetector
+import com.localfind.embed.ModelFiles
 import com.localfind.core.model.IndexResult
 import com.localfind.index.Indexer
 import com.localfind.index.IndexingResumeManager
@@ -113,7 +113,7 @@ class GpuVsNpuBenchmarkTest {
         val gpuModel = Embedder.ensureModelFile(context, MODEL_FILE_NAME)
         assumeTrue("GPU model file ($MODEL_FILE_NAME) must exist", gpuModel.exists() && gpuModel.length() > 0L)
 
-        val npuModelName = SocDetector.resolveModelName(context, HardwareAccelerator.NPU)
+        val npuModelName = ModelFiles.resolveModelName(context, HardwareAccelerator.NPU)
         val npuModel = Embedder.ensureModelFile(context, npuModelName)
         assumeTrue("NPU model file ($npuModelName) must exist", npuModel.exists() && npuModel.length() > 0L)
 
@@ -145,7 +145,7 @@ class GpuVsNpuBenchmarkTest {
         Log.i(TAG, ">>> TEST 0: VERIFY NPU PRIMITIVES (Text, Single Image Bitmap, Multi-Part) <<<")
         Log.i(TAG, "================================================================================")
 
-        val npuModelName = SocDetector.resolveModelName(context, HardwareAccelerator.NPU)
+        val npuModelName = ModelFiles.resolveModelName(context, HardwareAccelerator.NPU)
         Embedder(context, HardwareAccelerator.NPU, npuModelName).use { embedder ->
             Log.i(TAG, "Embedder initialized: isNpuVision=${embedder.isNpuVisionEnabled}, isNpuText=${embedder.isNpuTextEnabled}, isGpu=${embedder.isGpuVisionEnabled}")
             assertTrue("NPU vision must be active", embedder.isNpuVisionEnabled)
@@ -207,7 +207,7 @@ class GpuVsNpuBenchmarkTest {
         val cdsprpc = File("/dev/cdsprpc-smd")
         Log.i(TAG, "Checking Qualcomm cDSP FastRPC node (/dev/cdsprpc-smd): exists=${cdsprpc.exists()}, canRead=${cdsprpc.canRead()}")
 
-        val npuModelName = SocDetector.resolveModelName(context, HardwareAccelerator.NPU)
+        val npuModelName = ModelFiles.resolveModelName(context, HardwareAccelerator.NPU)
         val run = runVideoIndexBenchmark(
             modeLabel = "NPU",
             accelerator = HardwareAccelerator.NPU,

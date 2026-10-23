@@ -13,7 +13,7 @@ import android.content.Context
 import android.util.Log
 import com.localfind.embed.Embedder
 import com.localfind.embed.resolveEffective
-import com.localfind.embed.SocDetector
+import com.localfind.embed.ModelFiles
 import com.localfind.index.Indexer
 import com.localfind.search.Searcher
 import kotlinx.coroutines.Dispatchers
@@ -92,7 +92,7 @@ object EngineManager {
     suspend fun ensureModelLoaded(context: Context): ModelStatus = withContext(Dispatchers.IO) {
         _modelStatus.value = ModelStatus.Loading
 
-        val modelFile = SocDetector.ensureModelFile(context)
+        val modelFile = ModelFiles.ensureModelFile(context)
         if (!modelFile.exists() || modelFile.length() == 0L) {
             val instructions = "To install the model on this emulator or device:\n" +
                     "1. Connect with ADB\n" +
@@ -176,7 +176,7 @@ object EngineManager {
         embedder = Embedder(context.applicationContext, configured).also {
             Log.i(TAG, "Initialized singleton Embedder instance with configured=$configured (effective=$effective).")
             _embeddingSpaceId.value = it.embeddingSpaceId
-            val activeFile = SocDetector.getActiveModelFile(context, effective)
+            val activeFile = ModelFiles.getActiveModelFile(context, effective)
             if (activeFile.exists()) {
                 _modelStatus.value = ModelStatus.Loaded(activeFile.length())
             }

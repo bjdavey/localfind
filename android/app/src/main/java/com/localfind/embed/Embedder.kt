@@ -65,7 +65,7 @@ class Embedder(
 
     init {
         // Locate the model file (from Play AI Pack or internal storage), copying from staging paths if missing.
-        val model = SocDetector.ensureModelFile(context, effectiveAccelerator, preferredModelName)
+        val model = ModelFiles.ensureModelFile(context, effectiveAccelerator, preferredModelName)
 
         require(model.exists() && model.length() > 0L) {
             "Embedding model not found at ${model.absolutePath}. " +
@@ -312,10 +312,10 @@ class Embedder(
 
         /**
          * Ensures that the on-device model file exists in [context.filesDir].
-         * Delegates to [SocDetector.ensureModelFile].
+         * Delegates to [ModelFiles.ensureModelFile].
          */
         fun ensureModelFile(context: Context, modelName: String = MODEL_FILE_NAME): File {
-            return SocDetector.ensureModelFile(context, modelName = modelName)
+            return ModelFiles.ensureModelFile(context, modelName = modelName)
         }
     }
 }

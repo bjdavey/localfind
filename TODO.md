@@ -87,6 +87,7 @@
 - [x] ~~Load only the needed encoders~~ spike result: `UniversalEmbedderOptions` (MediaPipe 1.1.1) has no per-modality switch (only delegates, `maxInputLength`, `visionTokensPerImage`), so nothing to do now; see Backlog
 - [x] Decide: LiteRT 2.3.0 Maven NPU packages vs current Feature Delivery modules + fetch scripts. Decision: keep Feature Delivery (it already uses the Maven dispatch libraries); documented in ARCHITECTURE §3.1
 - [x] Grouping matches by file (one card per file with its best hit; "N more matches" expands the rest)
+- [x] Split `SocDetector`: model file resolution/staging (`stageAiPackModel`, `ensureModelFile`, ...) moved to `ModelFiles`; the two temp-file copy blocks merged into one `copyAtomically`. `SocDetector` keeps chip detection + NPU runtime. (Follow-ups, not done: AI-pack model shares `MODEL_FILE_NAME` with the generic model; model location is resolved in 3 places; ADB staging paths are also checked in release builds)
 
 ## Milestone 7: First publish
 - What else?
