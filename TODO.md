@@ -88,7 +88,7 @@
 - [x] AI pack: switch `fast-follow` to `install-time` so the model is present at first launch (copied once into `filesDir`; check Play's size limits for the larger NPU files before release)
 - [x] Use the NPU model file for GPU/CPU fallback on NPU devices (remove the separate fallback-model branch)
 - [x] Embedding-space id stored per file; banner offers re-analysis when it differs from the current one (GPU vs CPU vectors assumed to agree; unmeasured)
-- [ ] Foreground service timeout (Android 15+): save the checkpoint and re-enqueue the indexing worker
+- [x] Foreground service timeout (Android 15+): checkpoint + retry already existed on stop; now the user is told why indexing paused (`STOP_REASON_FOREGROUND_SERVICE_TIMEOUT`)
 - [ ] Use `NpuCompatibilityChecker` for the NPU availability check (ask before adding a dependency)
 - [ ] Load only the needed encoders (audio on demand), if `UniversalEmbedder` supports it
 - [ ] Decide: LiteRT 2.3.0 Maven NPU packages vs current Feature Delivery modules + fetch scripts
@@ -100,7 +100,7 @@
 - [ ] Search waits for the in-flight indexing chunk because inference is synchronized (slow queries while indexing)
 - [ ] File identity is the URI: the same file imported via share and via picker becomes two entries; re-importing resets status / folder; same-named folders are merged
 - [ ] Model delivery: `/sdcard` model staging should be debug-only
-- [ ] Foreground service type `dataSync` is capped at 6 h per 24 h on Android 15+ (consider `mediaProcessing`); `largeHeap` hides Java-heap pressure from whole-file `readText`
+- [ ] `largeHeap` hides Java-heap pressure from whole-file `readText`
 - [ ] SocDetector: `Build.UNKNOWN` ("unknown") is not treated as empty, `rawBoard.contains("sun")` also matches e.g. "sunfish"; resume checkpoint ignores chunk-size setting changes
 - [ ] "Paused: Model not loaded" message is wiped by the worker's `finally` right after it is set
 - [ ] FileProvider `files-path "."` exposes all of `filesDir` (including DB and model); `data_extraction_rules.xml` is still an empty template (decide what to back up)

@@ -6,6 +6,7 @@ import android.content.pm.ServiceInfo
 import android.util.Log
 import androidx.work.CoroutineWorker
 import androidx.work.ForegroundInfo
+import androidx.work.WorkInfo
 import androidx.work.WorkManager
 import androidx.work.WorkerParameters
 import com.localfind.data.EngineManager
@@ -399,7 +400,24 @@ class IndexingWorker(
             Log.e(TAG_INDEXING, "Fatal error in IndexingWorker", e)
             Result.failure()
         } finally {
-            if (IndexingQueue.isPaused(context)) {
+            // Android 15+ caps the `dataSync` foreground service (6 h per 24 h) and then stops this worker with a
+            // dedicated reason. The loops above already handle a stop: the file in flight goes back to PENDING at
+            // its checkpoint and Result.retry() reschedules. Here the user is told why indexing stopped, so the
+            // banner does not just fall back to "Ready" with files still waiting.
+            val foregroundTimedOut = isStopped &&
+                stopReason == WorkInfo.STOP_REASON_FOREGROUND_SERVICE_TIMEOUT &&
+                !IndexingCancellationState.isAllCancelled()
+            if (foregroundTimedOut) {
+                Log.w(TAG_INDEXING, "Foreground service time limit reached; pending files resume when the app is opened")
+                try {
+                    val remaining = fileStore.getPendingFiles().size
+                    IndexingProgressState.setPaused(
+                        "Paused: Android limits long background analysis ($remaining pending). Open LocalFind to continue."
+                    )
+                } catch (e: Exception) {
+                    Log.w(TAG_INDEXING, "Could not publish the timeout message: ${e.message}")
+                }
+            } else if (IndexingQueue.isPaused(context)) {
                 val remaining = fileStore.getPendingFiles().size
                 if (remaining > 0) {
                     val notificationManager = IndexingNotifications.manager(context)
