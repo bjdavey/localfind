@@ -294,8 +294,8 @@ object SocDetector {
 
         for (src in dispatchLibs) {
             val dst = File(targetDir, src.name)
-            if (dst.exists() && dst.length() == src.length()) continue
-            // Remove any dangling symlink or outdated binary when nativeLibraryDir changes across APK updates
+            if (isLinkUpToDate(src, dst)) continue
+            // Remove any stale symlink (pointing at an old nativeLibraryDir) or outdated binary after an APK update
             try {
                 Os.remove(dst.absolutePath)
             } catch (_: Throwable) {
@@ -314,6 +314,21 @@ object SocDetector {
             }
         }
     }
+
+    /**
+     * True when [dst] already serves the current [src] library.
+     *
+     * A symlink is only current if it points at [src]'s present path: `File.exists()` follows links, so after an
+     * APK update an old link whose target directory still exists would wrongly look fine. A regular file is the
+     * copy fallback (used when symlinking fails) and is compared by size. A missing [dst] is never up to date.
+     */
+    private fun isLinkUpToDate(src: File, dst: File): Boolean =
+        try {
+            Os.readlink(dst.absolutePath) == src.absolutePath
+        } catch (_: Throwable) {
+            // Not a symlink (EINVAL for a regular file, ENOENT when missing)
+            dst.isFile && dst.length() == src.length()
+        }
 
     /**
      * Determines whether the native NPU dispatch and architecture-specific driver binaries
