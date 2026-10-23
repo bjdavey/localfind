@@ -1,5 +1,6 @@
 package com.localfind
 
+import com.localfind.index.IndexingQueue
 import com.localfind.core.library.LibraryFilters
 import com.localfind.core.model.ChunkMetadata
 import com.localfind.core.model.FileTypes
@@ -205,7 +206,7 @@ fun MainScreen(
     // Observable background indexing state from WorkManager
     val indexingProgress by IndexingProgressState.progress.collectAsState()
     val workManager = remember { WorkManager.getInstance(context) }
-    val workInfos by workManager.getWorkInfosForUniqueWorkFlow(IndexingWorker.WORK_NAME)
+    val workInfos by workManager.getWorkInfosForUniqueWorkFlow(IndexingQueue.WORK_NAME)
         .collectAsState(initial = emptyList())
     val activeWorkInfo = workInfos.firstOrNull()
     val isWorkActive = activeWorkInfo?.state == WorkInfo.State.RUNNING ||
@@ -286,7 +287,7 @@ fun MainScreen(
             if (result is ModelStatus.Loaded) {
                 val store = FileStore.getInstance(context)
                 if (store.getPendingFiles().isNotEmpty()) {
-                    IndexingWorker.enqueue(context, replace = true)
+                    IndexingQueue.enqueue(context, replace = true)
                 }
             }
         }
@@ -321,11 +322,11 @@ fun MainScreen(
      * in which case only the paused banner is refreshed. Blocking: call from a background dispatcher.
      */
     fun enqueueOrMarkPaused(replace: Boolean = false) {
-        if (IndexingWorker.isPaused(context)) {
+        if (IndexingQueue.isPaused(context)) {
             val pendingCount = FileStore.getInstance(context).getPendingFiles().size
             IndexingProgressState.setPaused("Paused ($pendingCount pending)")
         } else {
-            IndexingWorker.enqueue(context, replace)
+            IndexingQueue.enqueue(context, replace)
         }
     }
 
@@ -406,7 +407,7 @@ fun MainScreen(
      * persistable SAF read grant. Blocking: call from a background dispatcher.
      */
     fun releaseFileResources(uri: String) {
-        IndexingWorker.cancelFile(context, uri)
+        IndexingQueue.cancelFile(context, uri)
         ThumbnailHelper.evictPreview(uri)
         ShareImporter.deleteInternalFileIfShared(context, uri)
         try {
@@ -990,7 +991,7 @@ fun MainScreen(
                         val store = FileStore.getInstance(context)
                         store.updateStatus(file.uri, IndexingStatus.PENDING)
                         importedFiles = store.getAll()
-                        IndexingWorker.enqueue(context, replace = true)
+                        IndexingQueue.enqueue(context, replace = true)
                     }
                 }
             },
@@ -999,7 +1000,7 @@ fun MainScreen(
                     val store = FileStore.getInstance(context)
                     store.markFailedAsPending()
                     importedFiles = store.getAll()
-                    IndexingWorker.enqueue(context, replace = true)
+                    IndexingQueue.enqueue(context, replace = true)
                     withContext(Dispatchers.Main) {
                         Toast.makeText(context, "Retrying failed files...", Toast.LENGTH_SHORT).show()
                     }
@@ -1007,7 +1008,7 @@ fun MainScreen(
             },
             onPauseIndexing = {
                 scope.launch(Dispatchers.IO) {
-                    IndexingWorker.pause(context)
+                    IndexingQueue.pause(context)
                     withContext(Dispatchers.Main) {
                         Toast.makeText(context, "Paused", Toast.LENGTH_SHORT).show()
                     }
@@ -1017,7 +1018,7 @@ fun MainScreen(
             onResumeIndexing = {
                 scope.launch(Dispatchers.IO) {
                     status = "Resuming..."
-                    IndexingWorker.resume(context)
+                    IndexingQueue.resume(context)
                     withContext(Dispatchers.Main) {
                         Toast.makeText(context, "Resumed", Toast.LENGTH_SHORT).show()
                     }
@@ -1026,7 +1027,7 @@ fun MainScreen(
             },
             onCancelIndexing = {
                 scope.launch(Dispatchers.IO) {
-                    IndexingWorker.cancel(context)
+                    IndexingQueue.cancel(context)
                     withContext(Dispatchers.Main) {
                         status = "Ready"
                         Toast.makeText(context, "Analysis cancelled", Toast.LENGTH_SHORT).show()
@@ -1036,7 +1037,7 @@ fun MainScreen(
             },
             onCancelIndexFile = { file ->
                 scope.launch(Dispatchers.IO) {
-                    IndexingWorker.cancelFile(context, file.uri)
+                    IndexingQueue.cancelFile(context, file.uri)
                     withContext(Dispatchers.Main) {
                         status = "Ready"
                         Toast.makeText(context, "Cancelled sync for ${file.displayName}", Toast.LENGTH_SHORT).show()
@@ -1166,7 +1167,7 @@ fun MainScreen(
                         val store = FileStore.getInstance(context)
                         store.markAllPending()
                         importedFiles = store.getAll()
-                        IndexingWorker.enqueue(context, replace = true)
+                        IndexingQueue.enqueue(context, replace = true)
                     }
                     isSettingsOpen = false
                 },

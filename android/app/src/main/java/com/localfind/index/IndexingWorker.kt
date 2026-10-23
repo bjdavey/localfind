@@ -1,23 +1,13 @@
 package com.localfind.index
 
-import android.app.Notification
-import android.app.NotificationChannel
 import android.app.NotificationManager
-import android.app.PendingIntent
 import android.content.Context
-import android.content.Intent
 import android.content.pm.ServiceInfo
 import android.util.Log
-import androidx.core.app.NotificationCompat
-import androidx.core.content.edit
 import androidx.work.CoroutineWorker
-import androidx.work.ExistingWorkPolicy
 import androidx.work.ForegroundInfo
-import androidx.work.OneTimeWorkRequestBuilder
 import androidx.work.WorkManager
 import androidx.work.WorkerParameters
-import com.localfind.MainActivity
-import com.localfind.R
 import com.localfind.data.EngineManager
 import com.localfind.data.FileStore
 import com.localfind.core.model.ImportedFile
@@ -39,7 +29,7 @@ import kotlinx.coroutines.withContext
  *   while interrupted or newly queued files are picked up and indexed seamlessly.
  * - Concurrency Control: Coordinates through [EngineManager.withIndexer], ensuring
  *   only one 485MB EmbeddingGemma 2 model is loaded and synchronized with search queries.
- * - Live Progress: Emits chunk-level progress to [IndexingProgressState] and WorkManager progress.
+ * - Live Progress: Emits chunk-level progress to [IndexingProgressState] for the UI.
  */
 class IndexingWorker(
     private val context: Context,
@@ -47,276 +37,8 @@ class IndexingWorker(
 ) : CoroutineWorker(context, params) {
 
     companion object {
-        const val WORK_NAME = "localfind_background_indexing"
+        /** Log tag for the indexing pipeline. */
         const val TAG_INDEXING = "localfind_indexing"
-        const val NOTIFICATION_CHANNEL_ID = "localfind_indexing_channel"
-        const val NOTIFICATION_ID = 1001
-
-        private const val PREFS_NAME = IndexingResumeManager.PREFS_NAME
-        const val KEY_IS_PAUSED = "key_is_indexing_paused"
-
-        /**
-         * Checks whether background indexing is currently paused by the user.
-         */
-        fun isPaused(context: Context): Boolean {
-            if (IndexingCancellationState.isPaused()) return true
-            val prefs = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
-            return prefs.getBoolean(KEY_IS_PAUSED, false)
-        }
-
-        /**
-         * Persists paused preference flag to survive app process recreation.
-         */
-        fun setPausedPref(context: Context, paused: Boolean) {
-            val prefs = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
-            prefs.edit { putBoolean(KEY_IS_PAUSED, paused) }
-        }
-
-        /**
-         * Flips the pause flag in both places that [isPaused] reads: the persisted preference
-         * (survives process death) and the in-memory flag (cheap check inside indexing loops).
-         */
-        private fun setPausedFlags(context: Context, paused: Boolean) {
-            setPausedPref(context, paused)
-            if (paused) IndexingCancellationState.pause() else IndexingCancellationState.resume()
-        }
-
-        private fun notificationManager(context: Context): NotificationManager? =
-            context.getSystemService(Context.NOTIFICATION_SERVICE) as? NotificationManager
-
-        /**
-         * Enqueues or resumes background indexing.
-         *
-         * @param context Application context.
-         * @param replace If true, replaces any existing/completed unique work with a fresh worker.
-         *                If false (default), uses [ExistingWorkPolicy.APPEND_OR_REPLACE] so that any
-         *                actively executing worker continues uninterrupted while newly imported
-         *                files are picked up and indexed seamlessly.
-         */
-        fun enqueue(context: Context, replace: Boolean = false) {
-            // Reset pause and global cancellation before enqueueing new work
-            setPausedFlags(context, false)
-            IndexingCancellationState.resetAllCancelled()
-            val request = OneTimeWorkRequestBuilder<IndexingWorker>().build()
-
-            WorkManager.getInstance(context.applicationContext).enqueueUniqueWork(
-                WORK_NAME,
-                if (replace) ExistingWorkPolicy.REPLACE else ExistingWorkPolicy.APPEND_OR_REPLACE,
-                request
-            )
-        }
-
-        /**
-         * Pauses the background indexing queue.
-         * Signals running workers to stop chunk extraction/embedding cooperatively,
-         * reverts any in-flight file from INDEXING to PENDING so it can be resumed later,
-         * cancels the active WorkManager work, updates [IndexingProgressState], and displays
-         * a paused notification with a Resume action.
-         */
-        fun pause(context: Context) {
-            setPausedFlags(context, true)
-            WorkManager.getInstance(context.applicationContext).cancelUniqueWork(WORK_NAME)
-
-            val fileStore = FileStore.getInstance(context)
-            val pending = fileStore.getPendingFiles()
-            for (f in pending) {
-                if (f.indexingStatus == IndexingStatus.INDEXING) {
-                    val resumeChunk = IndexingResumeManager.getResumeChunk(context, f.uri, f.size)
-                    fileStore.updateStatus(f.uri, IndexingStatus.PENDING, resumeChunk)
-                }
-            }
-            val remainingCount = fileStore.getPendingFiles().size
-            val notificationManager = notificationManager(context)
-            if (remainingCount > 0) {
-                val msg = "Paused ($remainingCount pending)"
-                IndexingProgressState.setPaused(message = msg)
-                notificationManager?.notify(NOTIFICATION_ID, buildPausedNotification(context, remainingCount))
-            } else {
-                IndexingProgressState.reset()
-                notificationManager?.cancel(NOTIFICATION_ID)
-            }
-        }
-
-        /**
-         * Resumes the background indexing queue.
-         * Resets paused states, updates UI progress banner to resuming, and enqueues
-         * a fresh WorkManager worker to pick up all remaining PENDING files.
-         */
-        fun resume(context: Context) {
-            setPausedFlags(context, false)
-            IndexingCancellationState.resetAllCancelled()
-            val fileStore = FileStore.getInstance(context)
-            val pending = fileStore.getPendingFiles()
-            if (pending.isEmpty()) {
-                IndexingProgressState.reset()
-                return
-            }
-            val msg = "Resuming indexing (${pending.size} pending)..."
-            IndexingProgressState.update(
-                isIndexing = true,
-                currentUri = pending.firstOrNull()?.uri,
-                currentFileName = pending.firstOrNull()?.displayName,
-                fileIndex = 0,
-                totalFiles = pending.size,
-                currentChunk = 0,
-                progressFraction = 0f,
-                message = msg
-            )
-            enqueue(context, replace = true)
-        }
-
-        /**
-         * Cancels any running or enqueued indexing work.
-         * Signals immediate cooperative cancellation to running workers, clears resume checkpoints,
-         * purges partial embeddings, and marks all pending or active indexing files as FAILED.
-         */
-        fun cancel(context: Context) {
-            setPausedPref(context, false)
-            IndexingCancellationState.cancelAll()
-            IndexingResumeManager.clearAll(context)
-            WorkManager.getInstance(context.applicationContext).cancelUniqueWork(WORK_NAME)
-            IndexingProgressState.reset()
-            val notificationManager = notificationManager(context)
-            notificationManager?.cancel(NOTIFICATION_ID)
-            val fileStore = FileStore.getInstance(context)
-            val pending = fileStore.getPendingFiles()
-            for (f in pending) {
-                fileStore.updateStatus(f.uri, IndexingStatus.FAILED, 0)
-            }
-            try {
-                val store = EngineManager.getStore(context)
-                for (f in pending) {
-                    store.deleteByFileUri(f.uri)
-                }
-            } catch (e: Exception) {
-                Log.w(TAG_INDEXING, "Failed to delete chunks for cancelled files: ${e.message}")
-            }
-        }
-
-        /**
-         * Cancels indexing for a specific file.
-         * Signals the active worker (if currently processing this file) to abort,
-         * clears its resume checkpoint, removes any partial embeddings, and marks it as FAILED.
-         */
-        fun cancelFile(context: Context, uri: String) {
-            IndexingCancellationState.cancelFile(uri)
-            IndexingResumeManager.clearResumeChunk(context, uri)
-            val fileStore = FileStore.getInstance(context)
-            fileStore.updateStatus(uri, IndexingStatus.FAILED, 0)
-            try {
-                val store = EngineManager.getStore(context)
-                store.deleteByFileUri(uri)
-            } catch (e: Exception) {
-                Log.w(TAG_INDEXING, "Failed to delete chunks for cancelled file $uri: ${e.message}")
-            }
-            if (IndexingProgressState.progress.value.currentUri == uri) {
-                IndexingProgressState.reset()
-            }
-        }
-
-        fun createNotificationChannel(context: Context) {
-            val channel = NotificationChannel(
-                NOTIFICATION_CHANNEL_ID,
-                "File Analysis",
-                NotificationManager.IMPORTANCE_LOW
-            ).apply {
-                description = "Shows progress while LocalFind analyzes files in the background"
-                setShowBadge(false)
-            }
-            val notificationManager = notificationManager(context)
-            notificationManager?.createNotificationChannel(channel)
-        }
-
-        fun buildNotification(
-            context: Context,
-            message: String,
-            progressFraction: Float,
-            fileIndex: Int,
-            totalFiles: Int,
-            isPaused: Boolean
-        ): Notification {
-            createNotificationChannel(context)
-
-            val title = if (isPaused) {
-                "Paused"
-            } else if (totalFiles > 0) {
-                "Analyzing files ($fileIndex/$totalFiles)"
-            } else {
-                "Analyzing files"
-            }
-
-            val openAppIntent = Intent(context, MainActivity::class.java).apply {
-                flags = Intent.FLAG_ACTIVITY_SINGLE_TOP or Intent.FLAG_ACTIVITY_CLEAR_TOP
-            }
-            val pendingIntent = PendingIntent.getActivity(
-                context,
-                0,
-                openAppIntent,
-                PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
-            )
-
-            val maxProgress = 100
-            val currentProgress = (progressFraction * 100).toInt().coerceIn(0, 100)
-            val isIndeterminate = progressFraction <= 0f && totalFiles <= 0 && !isPaused
-
-            val builder = NotificationCompat.Builder(context, NOTIFICATION_CHANNEL_ID)
-                .setContentTitle(title)
-                .setContentText(message)
-                .setSmallIcon(R.drawable.ic_search)
-                .setOngoing(!isPaused)
-                .setOnlyAlertOnce(true)
-                .setContentIntent(pendingIntent)
-                .setProgress(maxProgress, currentProgress, isIndeterminate)
-
-            // Add Pause/Resume and Cancel notification action buttons
-            if (isPaused) {
-                val resumeIntent = Intent(context, IndexingActionReceiver::class.java).apply {
-                    action = IndexingActionReceiver.ACTION_RESUME
-                }
-                val resumePending = PendingIntent.getBroadcast(
-                    context,
-                    1,
-                    resumeIntent,
-                    PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
-                )
-                builder.addAction(android.R.drawable.ic_media_play, "Resume", resumePending)
-            } else {
-                val pauseIntent = Intent(context, IndexingActionReceiver::class.java).apply {
-                    action = IndexingActionReceiver.ACTION_PAUSE
-                }
-                val pausePending = PendingIntent.getBroadcast(
-                    context,
-                    2,
-                    pauseIntent,
-                    PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
-                )
-                builder.addAction(android.R.drawable.ic_media_pause, "Pause", pausePending)
-            }
-
-            val cancelIntent = Intent(context, IndexingActionReceiver::class.java).apply {
-                action = IndexingActionReceiver.ACTION_CANCEL
-            }
-            val cancelPending = PendingIntent.getBroadcast(
-                context,
-                3,
-                cancelIntent,
-                PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
-            )
-            builder.addAction(android.R.drawable.ic_menu_close_clear_cancel, "Cancel", cancelPending)
-
-            return builder.build()
-        }
-
-        fun buildPausedNotification(context: Context, remainingCount: Int): Notification {
-            return buildNotification(
-                context = context,
-                message = "Paused: $remainingCount file(s) waiting in queue",
-                progressFraction = 0f,
-                fileIndex = 0,
-                totalFiles = remainingCount,
-                isPaused = true
-            )
-        }
     }
 
     /**
@@ -328,7 +50,7 @@ class IndexingWorker(
         fileIndex: Int,
         totalFiles: Int
     ): ForegroundInfo {
-        val notification = buildNotification(
+        val notification = IndexingNotifications.build(
             context = context,
             message = message,
             progressFraction = progressFraction,
@@ -337,7 +59,7 @@ class IndexingWorker(
             isPaused = false
         )
         return ForegroundInfo(
-            NOTIFICATION_ID,
+            IndexingNotifications.NOTIFICATION_ID,
             notification,
             ServiceInfo.FOREGROUND_SERVICE_TYPE_DATA_SYNC
         )
@@ -377,8 +99,8 @@ class IndexingWorker(
                 setForegroundAsync(info)
             } catch (_: Exception) {
                 // If setForegroundAsync is unavailable or throws, fallback to NotificationManager
-                val notificationManager = notificationManager(context)
-                notificationManager?.notify(NOTIFICATION_ID, info.notification)
+                val notificationManager = IndexingNotifications.manager(context)
+                notificationManager?.notify(IndexingNotifications.NOTIFICATION_ID, info.notification)
             }
         } catch (e: Exception) {
             Log.w(TAG_INDEXING, "Failed to update notification: ${e.message}")
@@ -415,7 +137,7 @@ class IndexingWorker(
 
         try {
             // Check if the indexing queue is currently paused
-            if (isPaused(context)) {
+            if (IndexingQueue.isPaused(context)) {
                 publishPaused(fileStore)
                 return@withContext Result.success()
             }
@@ -449,8 +171,8 @@ class IndexingWorker(
 
             // Process batches until no pending or interrupted files remain in FileStore
             while (true) {
-                if (isStopped || IndexingCancellationState.isAllCancelled() || isPaused(context)) {
-                    if (isPaused(context)) {
+                if (isStopped || IndexingCancellationState.isAllCancelled() || IndexingQueue.isPaused(context)) {
+                    if (IndexingQueue.isPaused(context)) {
                         publishPaused(fileStore)
                         return@withContext Result.success()
                     }
@@ -466,8 +188,8 @@ class IndexingWorker(
                 val totalInBatch = pending.size
 
                 for ((idx, file) in pending.withIndex()) {
-                    if (isStopped || IndexingCancellationState.isAllCancelled() || isPaused(context)) {
-                        if (isPaused(context)) {
+                    if (isStopped || IndexingCancellationState.isAllCancelled() || IndexingQueue.isPaused(context)) {
+                        if (IndexingQueue.isPaused(context)) {
                             fileStore.updateStatus(file.uri, IndexingStatus.PENDING)
                             publishPaused(fileStore)
                             return@withContext Result.success()
@@ -509,10 +231,10 @@ class IndexingWorker(
                                 isCancelled = {
                                     isStopped ||
                                     IndexingCancellationState.isCancelled(file.uri) ||
-                                    isPaused(context)
+                                    IndexingQueue.isPaused(context)
                                 },
                                 onProgress = { cur, tot ->
-                                    if (isPaused(context)) return@indexFile
+                                    if (IndexingQueue.isPaused(context)) return@indexFile
                                     val fraction = if (tot > 0) cur.toFloat() / tot.toFloat() else 0f
                                     val percent = (fraction * 100).toInt()
                                     val activeDelegate = indexer.getActiveEmbedder().effectiveAccelerator.name
@@ -533,7 +255,7 @@ class IndexingWorker(
                         }
 
                         // Explicit user pause during file indexing
-                        if (isPaused(context)) {
+                        if (IndexingQueue.isPaused(context)) {
                             val resumeChunk = revertToPending(fileStore, file)
                             Log.i(TAG_INDEXING, "Indexing paused by user while indexing ${file.displayName} at chunk $resumeChunk, reverted to PENDING")
                             publishPaused(fileStore)
@@ -595,7 +317,7 @@ class IndexingWorker(
                         }
                     } catch (e: Throwable) {
                         Log.e(TAG_INDEXING, "Exception indexing ${file.displayName}", e)
-                        if (isPaused(context)) {
+                        if (IndexingQueue.isPaused(context)) {
                             revertToPending(fileStore, file)
                             publishPaused(fileStore)
                             return@withContext Result.success()
@@ -622,7 +344,7 @@ class IndexingWorker(
                     // Micro-pacing / Frame yielding: brief pause between consecutive files
                     // yields GPU and CPU time slices to SurfaceFlinger and HWUI compositor,
                     // keeping the phone's UI buttery smooth even during bulk image/file indexing.
-                    if (idx < pending.lastIndex && !isStopped && !isPaused(context)) {
+                    if (idx < pending.lastIndex && !isStopped && !IndexingQueue.isPaused(context)) {
                         kotlinx.coroutines.delay(com.localfind.core.indexing.DEFAULT_MICRO_PACING_DELAY_MS)
                     }
                 }
@@ -633,15 +355,15 @@ class IndexingWorker(
             Log.e(TAG_INDEXING, "Fatal error in IndexingWorker", e)
             Result.failure()
         } finally {
-            if (isPaused(context)) {
+            if (IndexingQueue.isPaused(context)) {
                 val remaining = fileStore.getPendingFiles().size
                 if (remaining > 0) {
-                    val notificationManager = notificationManager(context)
-                    notificationManager?.notify(NOTIFICATION_ID, buildPausedNotification(context, remaining))
+                    val notificationManager = IndexingNotifications.manager(context)
+                    notificationManager?.notify(IndexingNotifications.NOTIFICATION_ID, IndexingNotifications.buildPaused(context, remaining))
                 }
             } else {
-                val notificationManager = notificationManager(context)
-                notificationManager?.cancel(NOTIFICATION_ID)
+                val notificationManager = IndexingNotifications.manager(context)
+                notificationManager?.cancel(IndexingNotifications.NOTIFICATION_ID)
                 IndexingProgressState.reset()
             }
             // If worker was stopped by OS preemption (not user cancellation or pause), revert in-flight files from INDEXING to PENDING

@@ -17,18 +17,13 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
-import androidx.compose.material3.AlertDialog
-import androidx.compose.material3.Button
 import androidx.compose.material3.ExperimentalMaterial3Api
-import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
-import androidx.compose.material3.RadioButton
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Slider
-import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
@@ -43,12 +38,10 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.unit.sp
 import com.localfind.R
 import com.localfind.core.settings.AppSettings
 import com.localfind.core.settings.HardwareAccelerator
 import com.localfind.core.model.ModelStatus
-import com.localfind.core.settings.ThemeMode
 import kotlin.math.roundToInt
 
 /**
@@ -92,161 +85,37 @@ fun SettingsScreen(
     }
 
     if (showThemeDialog) {
-        AlertDialog(
-            onDismissRequest = { showThemeDialog = false },
-            title = { Text("Choose theme") },
-            text = {
-                Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                    ThemeMode.values().forEach { mode ->
-                        Row(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .clickable {
-                                    onSettingsChange(
-                                        settings.copy(
-                                            themeMode = mode,
-                                            darkMode = when (mode) {
-                                                ThemeMode.SYSTEM -> isSystemDark
-                                                ThemeMode.LIGHT -> false
-                                                ThemeMode.DARK -> true
-                                            }
-                                        )
-                                    )
-                                    showThemeDialog = false
-                                }
-                                .padding(vertical = 8.dp),
-                            verticalAlignment = Alignment.CenterVertically,
-                            horizontalArrangement = Arrangement.spacedBy(12.dp)
-                        ) {
-                            RadioButton(
-                                selected = (settings.themeMode == mode),
-                                onClick = null // Handled by outer Row clickable
-                            )
-                            Text(
-                                text = mode.title,
-                                style = MaterialTheme.typography.bodyLarge,
-                                color = MaterialTheme.colorScheme.onSurface
-                            )
-                        }
-                    }
-                }
-            },
-            confirmButton = {
-                TextButton(onClick = { showThemeDialog = false }) {
-                    Text("Cancel")
-                }
-            }
+        ThemeModeDialog(
+            settings = settings,
+            isSystemDark = isSystemDark,
+            onSettingsChange = onSettingsChange,
+            onDismiss = { showThemeDialog = false }
         )
     }
 
     if (showAcceleratorDialog) {
-        AlertDialog(
-            onDismissRequest = { showAcceleratorDialog = false },
-            title = { Text("Vision hardware accelerator") },
-            text = {
-                Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                    HardwareAccelerator.values().forEach { mode ->
-                        val isModeEnabled = mode != HardwareAccelerator.NPU || isNpuReady
-                        Row(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .clickable(enabled = isModeEnabled) {
-                                    onSettingsChange(settings.copy(accelerator = mode))
-                                    showAcceleratorDialog = false
-                                }
-                                .padding(vertical = 8.dp),
-                            verticalAlignment = Alignment.CenterVertically,
-                            horizontalArrangement = Arrangement.spacedBy(12.dp)
-                        ) {
-                            RadioButton(
-                                selected = (activeAcceleratorOption == mode),
-                                onClick = null, // Handled by outer Row clickable
-                                enabled = isModeEnabled
-                            )
-                            Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
-                                Text(
-                                    text = mode.title,
-                                    style = MaterialTheme.typography.bodyLarge,
-                                    color = if (isModeEnabled) {
-                                        MaterialTheme.colorScheme.onSurface
-                                    } else {
-                                        MaterialTheme.colorScheme.onSurface.copy(alpha = 0.38f)
-                                    }
-                                )
-                                Text(
-                                    text = when (mode) {
-                                        HardwareAccelerator.NPU -> if (isNpuReady) {
-                                            "NPU (${detectedSoc.marketingName}): Default. Dedicated AI tensor cores for maximum indexing speed and consistent vectors."
-                                        } else {
-                                            "NPU (${detectedSoc.marketingName}): Not supported on this device. Automatically falls back to Smart (Auto)."
-                                        }
-                                        HardwareAccelerator.SMART -> "Auto: Uses GPU when screen is off, CPU when screen is on or Battery Saver is on."
-                                        HardwareAccelerator.GPU -> "Always use mobile GPU compute shaders for maximum indexing speed."
-                                        HardwareAccelerator.CPU -> "Always use CPU (XNNPack) to keep phone cool and eliminate UI lag."
-                                    },
-                                    style = MaterialTheme.typography.bodySmall,
-                                    color = if (isModeEnabled) {
-                                        MaterialTheme.colorScheme.onSurfaceVariant
-                                    } else {
-                                        MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.38f)
-                                    }
-                                )
-                            }
-                        }
-                    }
-                }
-            },
-            confirmButton = {
-                TextButton(onClick = { showAcceleratorDialog = false }) {
-                    Text("Cancel")
-                }
-            }
+        AcceleratorDialog(
+            settings = settings,
+            activeOption = activeAcceleratorOption,
+            isNpuReady = isNpuReady,
+            soc = detectedSoc,
+            onSettingsChange = onSettingsChange,
+            onDismiss = { showAcceleratorDialog = false }
         )
     }
 
     if (showReindexDialog) {
-        AlertDialog(
-            onDismissRequest = { showReindexDialog = false },
-            title = { Text("Reindex library files?") },
-            text = { Text("Clear and regenerate embeddings for all $fileCount imported files using current settings?") },
-            confirmButton = {
-                TextButton(
-                    onClick = {
-                        showReindexDialog = false
-                        onReindexAll()
-                    }
-                ) {
-                    Text("Reindex", color = MaterialTheme.colorScheme.primary)
-                }
-            },
-            dismissButton = {
-                TextButton(onClick = { showReindexDialog = false }) {
-                    Text("Cancel")
-                }
-            }
+        ReindexDialog(
+            fileCount = fileCount,
+            onConfirm = onReindexAll,
+            onDismiss = { showReindexDialog = false }
         )
     }
 
     if (showResetDialog) {
-        AlertDialog(
-            onDismissRequest = { showResetDialog = false },
-            title = { Text("Reset settings?") },
-            text = { Text("Restore all search and indexing variables to their default values?") },
-            confirmButton = {
-                TextButton(
-                    onClick = {
-                        showResetDialog = false
-                        onResetDefaults()
-                    }
-                ) {
-                    Text("Reset to Defaults", color = MaterialTheme.colorScheme.error)
-                }
-            },
-            dismissButton = {
-                TextButton(onClick = { showResetDialog = false }) {
-                    Text("Cancel")
-                }
-            }
+        ResetSettingsDialog(
+            onConfirm = onResetDefaults,
+            onDismiss = { showResetDialog = false }
         )
     }
 
@@ -591,242 +460,6 @@ fun SettingsScreen(
             }
 
             Spacer(modifier = Modifier.height(24.dp))
-        }
-    }
-}
-
-@Composable
-private fun SettingsCategoryHeader(title: String) {
-    Text(
-        text = title,
-        style = MaterialTheme.typography.labelMedium.copy(
-            letterSpacing = 0.8.sp,
-            fontWeight = FontWeight.Bold
-        ),
-        color = MaterialTheme.colorScheme.primary,
-        modifier = Modifier.padding(start = 20.dp, end = 20.dp, top = 14.dp, bottom = 6.dp)
-    )
-}
-
-@Composable
-private fun SettingsSectionDivider() {
-    HorizontalDivider(
-        modifier = Modifier.padding(vertical = 8.dp),
-        color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f)
-    )
-}
-
-@Composable
-private fun SettingSliderRow(
-    title: String,
-    subtitle: String,
-    description: String,
-    control: @Composable () -> Unit
-) {
-    Column(
-        modifier = Modifier
-            .fillMaxWidth()
-            .padding(horizontal = 20.dp, vertical = 10.dp),
-        verticalArrangement = Arrangement.spacedBy(2.dp)
-    ) {
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.SpaceBetween,
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            Text(
-                text = title,
-                style = MaterialTheme.typography.bodyLarge,
-                color = MaterialTheme.colorScheme.onSurface
-            )
-            Text(
-                text = subtitle,
-                style = MaterialTheme.typography.bodyMedium,
-                color = MaterialTheme.colorScheme.primary,
-                fontWeight = FontWeight.SemiBold
-            )
-        }
-        Text(
-            text = description,
-            style = MaterialTheme.typography.bodySmall,
-            color = MaterialTheme.colorScheme.onSurfaceVariant
-        )
-        control()
-    }
-}
-
-@Composable
-private fun SettingsInfoRow(
-    title: String,
-    subtitle: String
-) {
-    Column(
-        modifier = Modifier
-            .fillMaxWidth()
-            .padding(horizontal = 20.dp, vertical = 10.dp),
-        verticalArrangement = Arrangement.spacedBy(2.dp)
-    ) {
-        Text(
-            text = title,
-            style = MaterialTheme.typography.bodyLarge,
-            color = MaterialTheme.colorScheme.onSurface
-        )
-        Text(
-            text = subtitle,
-            style = MaterialTheme.typography.bodyMedium,
-            color = MaterialTheme.colorScheme.onSurfaceVariant
-        )
-    }
-}
-
-@Composable
-private fun SettingClickableRow(
-    title: String,
-    subtitle: String,
-    description: String,
-    onClick: () -> Unit
-) {
-    Row(
-        modifier = Modifier
-            .fillMaxWidth()
-            .clickable(onClick = onClick)
-            .padding(horizontal = 20.dp, vertical = 12.dp),
-        horizontalArrangement = Arrangement.SpaceBetween,
-        verticalAlignment = Alignment.CenterVertically
-    ) {
-        Column(
-            modifier = Modifier
-                .weight(1f)
-                .padding(end = 16.dp),
-            verticalArrangement = Arrangement.spacedBy(2.dp)
-        ) {
-            Row(
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.spacedBy(8.dp)
-            ) {
-                Text(
-                    text = title,
-                    style = MaterialTheme.typography.bodyLarge,
-                    color = MaterialTheme.colorScheme.onSurface
-                )
-                Text(
-                    text = subtitle,
-                    style = MaterialTheme.typography.bodyMedium,
-                    color = MaterialTheme.colorScheme.primary,
-                    fontWeight = FontWeight.SemiBold
-                )
-            }
-            Text(
-                text = description,
-                style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant
-            )
-        }
-    }
-}
-
-@Composable
-private fun SettingSwitchRow(
-    title: String,
-    subtitle: String,
-    description: String,
-    checked: Boolean,
-    onCheckedChange: (Boolean) -> Unit
-) {
-    Row(
-        modifier = Modifier
-            .fillMaxWidth()
-            .clickable { onCheckedChange(!checked) }
-            .padding(horizontal = 20.dp, vertical = 12.dp),
-        horizontalArrangement = Arrangement.SpaceBetween,
-        verticalAlignment = Alignment.CenterVertically
-    ) {
-        Column(
-            modifier = Modifier
-                .weight(1f)
-                .padding(end = 16.dp),
-            verticalArrangement = Arrangement.spacedBy(2.dp)
-        ) {
-            Row(
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.spacedBy(8.dp)
-            ) {
-                Text(
-                    text = title,
-                    style = MaterialTheme.typography.bodyLarge,
-                    color = MaterialTheme.colorScheme.onSurface
-                )
-                Text(
-                    text = subtitle,
-                    style = MaterialTheme.typography.bodyMedium,
-                    color = MaterialTheme.colorScheme.primary,
-                    fontWeight = FontWeight.SemiBold
-                )
-            }
-            Text(
-                text = description,
-                style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant
-            )
-        }
-        Switch(
-            checked = checked,
-            onCheckedChange = onCheckedChange
-        )
-    }
-}
-
-@Composable
-private fun SettingActionRow(
-    title: String,
-    subtitle: String,
-    description: String,
-    buttonText: String,
-    enabled: Boolean,
-    onClick: () -> Unit
-) {
-    Column(
-        modifier = Modifier
-            .fillMaxWidth()
-            .padding(horizontal = 20.dp, vertical = 10.dp),
-        verticalArrangement = Arrangement.spacedBy(4.dp)
-    ) {
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.SpaceBetween,
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            Column(
-                modifier = Modifier
-                    .weight(1f)
-                    .padding(end = 12.dp),
-                verticalArrangement = Arrangement.spacedBy(2.dp)
-            ) {
-                Text(
-                    text = title,
-                    style = MaterialTheme.typography.bodyLarge,
-                    color = MaterialTheme.colorScheme.onSurface
-                )
-                if (subtitle.isNotBlank()) {
-                    Text(
-                        text = subtitle,
-                        style = MaterialTheme.typography.bodyMedium,
-                        color = MaterialTheme.colorScheme.primary,
-                        fontWeight = FontWeight.SemiBold
-                    )
-                }
-                Text(
-                    text = description,
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                )
-            }
-            Button(
-                onClick = onClick,
-                enabled = enabled
-            ) {
-                Text(buttonText)
-            }
         }
     }
 }

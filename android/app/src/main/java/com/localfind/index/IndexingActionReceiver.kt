@@ -35,13 +35,13 @@ class IndexingActionReceiver : BroadcastReceiver() {
             try {
                 when (action) {
                     ACTION_PAUSE -> {
-                        IndexingWorker.pause(context)
+                        IndexingQueue.pause(context)
                     }
                     ACTION_RESUME -> {
-                        IndexingWorker.resume(context)
+                        IndexingQueue.resume(context)
                     }
                     ACTION_CANCEL -> {
-                        IndexingWorker.cancel(context)
+                        IndexingQueue.cancel(context)
                     }
                     else -> {
                         Log.w(TAG, "Unknown action received: $action")

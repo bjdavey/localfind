@@ -12,17 +12,13 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
-import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.ColumnScope
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.CircularProgressIndicator
@@ -31,11 +27,7 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.LaunchedEffect
-import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
-import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
@@ -46,24 +38,15 @@ import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.painterResource
-import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.unit.sp
 import androidx.core.net.toUri
 import coil.compose.AsyncImage
 import coil.request.ImageRequest
 import com.localfind.R
-import com.localfind.core.model.Folder
 import com.localfind.core.model.ImportedFile
 import com.localfind.core.model.IndexingStatus
-import com.localfind.index.Indexer
-import com.localfind.ui.theme.BadgePdf
-import com.localfind.ui.theme.BadgeText
-import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.withContext
 
 /**
  * Individual square visual tile in the 2-column gallery grid.
@@ -459,262 +442,6 @@ fun MediaGalleryTile(
                     color = Color.White,
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis
-                )
-            }
-        }
-    }
-}
-
-/** Centered column shared by the tile's indexing / queued / failed status overlays. */
-@Composable
-private fun TileStatusOverlay(content: @Composable ColumnScope.() -> Unit) {
-    Box(
-        modifier = Modifier.fillMaxSize(),
-        contentAlignment = Alignment.Center
-    ) {
-        Column(
-            horizontalAlignment = Alignment.CenterHorizontally,
-            verticalArrangement = Arrangement.spacedBy(8.dp),
-            modifier = Modifier.padding(horizontal = 8.dp),
-            content = content
-        )
-    }
-}
-
-/** Frozen circular ring in a muted outline with a status [iconRes] inside (paused, queued, failed). */
-@Composable
-private fun StatusRing(iconRes: Int) {
-    Box(
-        modifier = Modifier
-            .size(38.dp)
-            .clip(CircleShape)
-            .border(3.5.dp, Color.White.copy(alpha = 0.55f), CircleShape),
-        contentAlignment = Alignment.Center
-    ) {
-        Icon(
-            painter = painterResource(iconRes),
-            contentDescription = null,
-            tint = Color.White.copy(alpha = 0.75f),
-            modifier = Modifier.size(16.dp)
-        )
-    }
-}
-
-/** Red "Cancel" pill used on active and queued tiles. */
-@Composable
-private fun CancelIndexButton(onCancel: () -> Unit) {
-    StatusActionButton(
-        text = "Cancel",
-        iconRes = R.drawable.ic_close,
-        contentColor = Color(0xFFFF8A80),
-        onClick = onCancel
-    )
-}
-
-/**
- * Compact pill button used in gallery tiles for quick indexing actions (Cancel, Retry, Pause, Resume).
- */
-@Composable
-private fun StatusActionButton(
-    text: String,
-    iconRes: Int,
-    contentColor: Color,
-    backgroundColor: Color = Color.Black.copy(alpha = 0.65f),
-    onClick: () -> Unit
-) {
-    Surface(
-        shape = RoundedCornerShape(12.dp),
-        color = backgroundColor,
-        modifier = Modifier
-            .clip(RoundedCornerShape(12.dp))
-            .clickable(onClick = onClick)
-    ) {
-        Row(
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(4.dp),
-            modifier = Modifier.padding(horizontal = 8.dp, vertical = 3.dp)
-        ) {
-            Icon(
-                painter = painterResource(iconRes),
-                contentDescription = text,
-                tint = contentColor,
-                modifier = Modifier.size(12.dp)
-            )
-            Text(
-                text = text,
-                style = MaterialTheme.typography.labelSmall,
-                fontWeight = FontWeight.Bold,
-                color = contentColor
-            )
-        }
-    }
-}
-
-/**
- * Miniature document page preview card displaying the first lines of a `.txt` or `.md` file
- * on a realistic paper-like surface so documents are visually recognizable in the gallery grid.
- */
-@Composable
-internal fun DocumentPlaceholderSheet(
-    snippet: String,
-    isPdf: Boolean
-) {
-    Box(
-        modifier = Modifier
-            .fillMaxSize()
-            .background(
-                Brush.linearGradient(
-                    listOf(Color(0xFF263238), Color(0xFF37474F))
-                )
-            )
-            .padding(top = 36.dp, start = 10.dp, end = 10.dp, bottom = 10.dp)
-    ) {
-        Surface(
-            modifier = Modifier.fillMaxSize(),
-            shape = RoundedCornerShape(topStart = 8.dp, topEnd = 8.dp, bottomStart = 4.dp, bottomEnd = 4.dp),
-            color = Color(0xFFFAFAFA),
-            shadowElevation = 2.dp
-        ) {
-            Column(
-                modifier = Modifier
-                    .fillMaxSize()
-                    .padding(horizontal = 10.dp, vertical = 8.dp)
-            ) {
-                // Decorative header accent line
-                Box(
-                    modifier = Modifier
-                        .width(36.dp)
-                        .height(3.dp)
-                        .clip(RoundedCornerShape(2.dp))
-                        .background(if (isPdf) BadgePdf else BadgeText)
-                )
-                Spacer(modifier = Modifier.height(6.dp))
-                Text(
-                    text = snippet,
-                    style = MaterialTheme.typography.bodySmall.copy(
-                        fontFamily = FontFamily.Monospace,
-                        fontSize = 10.sp,
-                        lineHeight = 13.sp
-                    ),
-                    color = Color(0xFF212121),
-                    maxLines = 7,
-                    overflow = TextOverflow.Ellipsis
-                )
-            }
-        }
-    }
-}
-
-/**
- * Stylized audio card for audio files without embedded album art.
- */
-@Composable
-internal fun AudioWaveformPlaceholder() {
-    Box(
-        modifier = Modifier
-            .fillMaxSize()
-            .background(
-                Brush.linearGradient(
-                    listOf(Color(0xFF1E293B), Color(0xFF2A3B4F), Color(0xFF1E293B))
-                )
-            ),
-        contentAlignment = Alignment.Center
-    ) {
-        Row(
-            horizontalArrangement = Arrangement.spacedBy(5.dp),
-            verticalAlignment = Alignment.CenterVertically,
-            modifier = Modifier.padding(bottom = 16.dp)
-        ) {
-            val heights = listOf(18.dp, 34.dp, 24.dp, 46.dp, 30.dp, 40.dp, 20.dp, 28.dp, 16.dp)
-            heights.forEach { barHeight ->
-                Box(
-                    modifier = Modifier
-                        .width(5.dp)
-                        .height(barHeight)
-                        .clip(RoundedCornerShape(3.dp))
-                        .background(Color.White.copy(alpha = 0.75f))
-                )
-            }
-        }
-    }
-}
-
-/**
- * Individual square card in the 2-column gallery grid representing a folder.
- */
-@OptIn(ExperimentalFoundationApi::class)
-@Composable
-fun FolderGalleryTile(
-    folder: Folder,
-    itemCount: Int,
-    onClick: () -> Unit,
-    onLongClick: () -> Unit,
-    modifier: Modifier = Modifier
-) {
-    Surface(
-        modifier = modifier
-            .fillMaxWidth()
-            .aspectRatio(1f)
-            .clip(RoundedCornerShape(16.dp))
-            .combinedClickable(
-                onClick = onClick,
-                onLongClick = onLongClick
-            ),
-        shape = RoundedCornerShape(16.dp),
-        color = MaterialTheme.colorScheme.surfaceVariant,
-        tonalElevation = 2.dp
-    ) {
-        Box(modifier = Modifier.fillMaxSize()) {
-            // Top-right quick actions 3-dot button
-            Surface(
-                modifier = Modifier
-                    .align(Alignment.TopEnd)
-                    .padding(8.dp)
-                    .size(28.dp)
-                    .clip(CircleShape)
-                    .clickable(onClick = onLongClick),
-                shape = CircleShape,
-                color = MaterialTheme.colorScheme.surface.copy(alpha = 0.85f)
-            ) {
-                Box(contentAlignment = Alignment.Center) {
-                    Icon(
-                        painter = painterResource(R.drawable.ic_more_vert),
-                        contentDescription = "Folder options",
-                        tint = MaterialTheme.colorScheme.onSurface,
-                        modifier = Modifier.size(16.dp)
-                    )
-                }
-            }
-
-            // Folder Icon & Details
-            Column(
-                modifier = Modifier
-                    .fillMaxSize()
-                    .padding(horizontal = 12.dp, vertical = 10.dp),
-                horizontalAlignment = Alignment.CenterHorizontally,
-                verticalArrangement = Arrangement.Center
-            ) {
-                Icon(
-                    painter = painterResource(R.drawable.ic_folder),
-                    contentDescription = null,
-                    modifier = Modifier.size(64.dp),
-                    tint = MaterialTheme.colorScheme.primary
-                )
-                Spacer(modifier = Modifier.height(8.dp))
-                Text(
-                    text = folder.name,
-                    style = MaterialTheme.typography.titleMedium,
-                    fontWeight = FontWeight.Bold,
-                    color = MaterialTheme.colorScheme.onSurface,
-                    textAlign = TextAlign.Center,
-                    maxLines = 2,
-                    overflow = TextOverflow.Ellipsis
-                )
-                Spacer(modifier = Modifier.height(2.dp))
-                Text(
-                    text = if (itemCount == 1) "1 item" else "$itemCount items",
-                    style = MaterialTheme.typography.labelSmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
             }
         }
