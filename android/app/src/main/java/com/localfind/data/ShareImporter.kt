@@ -1,5 +1,8 @@
 package com.localfind.data
 
+import com.localfind.core.format.FileNames
+import com.localfind.core.model.ImportedFile
+import com.localfind.core.model.IndexingStatus
 import android.content.ContentResolver
 import android.content.Context
 import android.content.Intent
@@ -142,29 +145,14 @@ object ShareImporter {
         return text?.takeIf { it.isNotBlank() }
     }
 
-    /**
-     * Replaces filesystem-illegal or problematic characters in file names.
-     */
-    fun sanitizeFileName(name: String): String {
-        return name.replace(Regex("[/\\\\?%*:|\"<>]"), "_").trim()
-    }
 
     /**
      * Generates a collision-free target file within `context.filesDir/shared_imports/`.
      */
     fun createUniqueInternalFile(context: Context, fileName: String): File {
         val baseDir = File(context.filesDir, SHARED_IMPORTS_DIR).apply { mkdirs() }
-        val sanitized = sanitizeFileName(fileName).ifBlank { "shared_file" }
-        val nameWithoutExt = sanitized.substringBeforeLast('.')
-        val ext = if (sanitized.contains('.')) ".${sanitized.substringAfterLast('.')}" else ""
-
-        var candidate = File(baseDir, sanitized)
-        var index = 1
-        while (candidate.exists()) {
-            candidate = File(baseDir, "${nameWithoutExt}_$index$ext")
-            index++
-        }
-        return candidate
+        val sanitized = FileNames.sanitize(fileName).ifBlank { "shared_file" }
+        return File(baseDir, FileNames.uniqueName(sanitized) { File(baseDir, it).exists() })
     }
 
     /**
@@ -305,7 +293,7 @@ object ShareImporter {
     ): ImportedFile? {
         return try {
             val baseName = if (!subject.isNullOrBlank()) {
-                sanitizeFileName(subject)
+                FileNames.sanitize(subject)
             } else {
                 val dateStr = SimpleDateFormat("yyyy-MM-dd_HH-mm-ss", Locale.US).format(Date())
                 "Shared_Note_$dateStr"

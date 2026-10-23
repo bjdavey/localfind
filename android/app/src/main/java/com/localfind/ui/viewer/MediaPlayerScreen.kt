@@ -1,5 +1,6 @@
 package com.localfind.ui.viewer
 
+import com.localfind.core.model.FileTypes
 import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
@@ -40,7 +41,7 @@ import androidx.media3.ui.PlayerView
 import com.localfind.R
 import com.localfind.data.FileOpener
 import com.localfind.index.Indexer
-import com.localfind.ui.search.SearchResultFormatter
+import com.localfind.core.format.SearchResultFormatter
 
 /**
  * Parameters used to open the in-app audio/video player.
@@ -175,7 +176,7 @@ fun MediaPlayerScreen(
                         this.player = player
                         setShutterBackgroundColor(android.graphics.Color.BLACK)
                         setShowBuffering(PlayerView.SHOW_BUFFERING_ALWAYS)
-                        val isAudio = Indexer.isAudioNameOrMime(params.fileName, null)
+                        val isAudio = FileTypes.isAudioNameOrMime(params.fileName, null)
                         controllerShowTimeoutMs = if (isAudio) 0 else 3000
                         controllerHideOnTouch = !isAudio
                         showController()
@@ -185,7 +186,7 @@ fun MediaPlayerScreen(
                     if (playerView.player != player) {
                         playerView.player = player
                     }
-                    val isAudio = Indexer.isAudioNameOrMime(params.fileName, null)
+                    val isAudio = FileTypes.isAudioNameOrMime(params.fileName, null)
                     playerView.controllerShowTimeoutMs = if (isAudio) 0 else 3000
                     playerView.controllerHideOnTouch = !isAudio
                     playerView.showController()

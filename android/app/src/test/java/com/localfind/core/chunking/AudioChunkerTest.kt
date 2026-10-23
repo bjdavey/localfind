@@ -1,9 +1,10 @@
-package com.localfind.index
+package com.localfind.core.chunking
 
-import com.localfind.data.DEFAULT_AUDIO_WINDOW_SECONDS
-import com.localfind.index.audio.AUDIO_SAMPLE_RATE
-import com.localfind.index.audio.AudioChunker
-import com.localfind.index.audio.AudioWindow
+import com.localfind.core.model.FileTypes
+import com.localfind.core.settings.DEFAULT_AUDIO_WINDOW_SECONDS
+import com.localfind.core.chunking.AUDIO_SAMPLE_RATE
+import com.localfind.core.chunking.AudioChunker
+import com.localfind.core.chunking.AudioWindow
 import org.junit.Assert.assertArrayEquals
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
@@ -19,10 +20,10 @@ class AudioChunkerTest {
 
     @Test
     fun audioDetection_byExtensionOrMime() {
-        assertTrue(Indexer.isAudioNameOrMime("song.MP3", null))
-        assertTrue(Indexer.isAudioNameOrMime("voice.m4a", null))
-        assertTrue(Indexer.isAudioNameOrMime("noext", "audio/wav"))
-        assertTrue(!Indexer.isAudioNameOrMime("notes.txt", "text/plain"))
+        assertTrue(FileTypes.isAudioNameOrMime("song.MP3", null))
+        assertTrue(FileTypes.isAudioNameOrMime("voice.m4a", null))
+        assertTrue(FileTypes.isAudioNameOrMime("noext", "audio/wav"))
+        assertTrue(!FileTypes.isAudioNameOrMime("notes.txt", "text/plain"))
     }
 
     @Test

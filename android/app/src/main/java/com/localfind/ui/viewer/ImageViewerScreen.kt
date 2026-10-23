@@ -1,5 +1,7 @@
 package com.localfind.ui.viewer
 
+import com.localfind.core.model.FileTypes
+import com.localfind.core.text.PdfPageMath
 import android.graphics.ImageDecoder
 import android.graphics.drawable.Animatable
 import android.graphics.drawable.AnimatedImageDrawable
@@ -92,8 +94,8 @@ fun ImageViewerScreen(
 
     // Detect if this image is a GIF (animated or static)
     val isGif = remember(params.fileName, params.uri) {
-        Indexer.isGifNameOrMime(params.fileName, null) ||
-            Indexer.isGifNameOrMime(
+        FileTypes.isGifNameOrMime(params.fileName, null) ||
+            FileTypes.isGifNameOrMime(
                 "",
                 try { context.contentResolver.getType(params.uri.toUri()) } catch (_: Exception) { null }
             )
@@ -259,7 +261,7 @@ fun ImageViewerScreen(
                 }
                 .pointerInput(params.uri) {
                     detectTransformGestures { _, pan, zoom, _ ->
-                        val newScale = PdfViewerHelper.clampZoom(scale, zoom, maxScale = 5f)
+                        val newScale = PdfPageMath.clampZoom(scale, zoom, maxScale = 5f)
                         scale = newScale
                         if (newScale > 1f) {
                             offset += pan

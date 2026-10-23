@@ -1,5 +1,6 @@
 package com.localfind.data
 
+import com.localfind.core.model.EMBEDDING_DIMENSION
 import android.content.Context
 import com.google.mediapipe.tasks.retrieval.components.SqliteVectorStore
 import com.google.mediapipe.tasks.retrieval.components.VectorStore
@@ -8,9 +9,6 @@ import java.io.File
 
 /** Default filename for the SQLite-backed vector database in app files dir. */
 private const val DATABASE_NAME = "localfind_vectors.db"
-
-/** Dimension of the embeddings output by EmbeddingGemma 2 740M model. */
-private const val EMBEDDING_DIMENSION = 768
 
 /**
  * Local vector store backed by MediaPipe's [SqliteVectorStore].

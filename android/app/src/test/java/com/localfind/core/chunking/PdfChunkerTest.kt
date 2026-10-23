@@ -1,6 +1,6 @@
-package com.localfind.index
+package com.localfind.core.chunking
 
-import com.localfind.index.document.PdfChunker
+import com.localfind.core.chunking.PdfChunker
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
 import org.junit.Test

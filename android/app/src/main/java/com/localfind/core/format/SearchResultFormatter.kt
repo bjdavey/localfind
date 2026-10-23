@@ -1,9 +1,10 @@
-package com.localfind.ui.search
+package com.localfind.core.format
 
+import com.localfind.core.model.FileKind
 import java.util.Locale
 
 /**
- * Utility functions for formatting [com.localfind.search.SearchResult] data for presentation in the UI.
+ * Utility functions for formatting [com.localfind.core.model.SearchResult] data for presentation in the UI.
  *
  * Implements formatting rules specified in PRD.md §2:
  * - Text: character offset of matching passage
@@ -22,10 +23,10 @@ object SearchResultFormatter {
      */
     fun formatLocation(fileType: String, location: Long): String {
         return when (fileType.lowercase(Locale.ROOT)) {
-            "text" -> "Matching passage"
-            "pdf" -> "Page $location"
-            "image" -> ""
-            "audio", "video" -> formatTimeMs(location)
+            FileKind.TEXT.id -> "Matching passage"
+            FileKind.PDF.id -> "Page $location"
+            FileKind.IMAGE.id -> ""
+            FileKind.AUDIO.id, FileKind.VIDEO.id -> formatTimeMs(location)
             else -> "Location $location"
         }
     }

@@ -1,5 +1,6 @@
 package com.localfind.index.audio
 
+import com.localfind.core.chunking.AudioChunker
 import android.content.Context
 import android.media.MediaCodec
 import android.media.MediaExtractor

@@ -1,5 +1,7 @@
 package com.localfind.ui.search
 
+import com.localfind.core.library.LibraryFilters
+import com.localfind.core.format.SearchResultFormatter
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
@@ -49,8 +51,8 @@ import androidx.core.net.toUri
 import coil.compose.AsyncImage
 import coil.request.ImageRequest
 import com.localfind.R
-import com.localfind.search.SearchResult
-import com.localfind.ui.gallery.GalleryCategory
+import com.localfind.core.model.SearchResult
+import com.localfind.core.library.GalleryCategory
 import com.localfind.ui.gallery.ThumbnailHelper
 import com.localfind.ui.gallery.badgeColor
 import com.localfind.ui.gallery.rememberFilePreview
@@ -104,7 +106,7 @@ fun SearchResultCard(
 ) {
     val context = LocalContext.current
     val category = remember(result.fileType, result.fileName) {
-        ThumbnailHelper.categorizeSearchResult(result)
+        LibraryFilters.categorizeSearchResult(result)
     }
 
     // For video results, locate the thumbnail at the matched chunk's timestamp offset (+ 2s offset)

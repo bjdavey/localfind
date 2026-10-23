@@ -1,7 +1,7 @@
-package com.localfind.ui
+package com.localfind.core.text
 
-import com.localfind.ui.viewer.TextLine
-import com.localfind.ui.viewer.TextViewerHelper
+import com.localfind.core.text.TextLine
+import com.localfind.core.text.TextViewerHelper
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertNull

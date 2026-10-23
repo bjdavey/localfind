@@ -1,10 +1,14 @@
 package com.localfind.index.document
 
+import com.localfind.core.model.FileKind
+import com.localfind.core.chunking.PdfChunker
+import com.localfind.core.chunking.PdfChunk
+import com.localfind.core.chunking.TextChunker
 import androidx.core.net.toUri
-import com.localfind.data.ImportedFile
+import com.localfind.core.model.ImportedFile
 import com.localfind.index.ChunkEmbeddingData
-import com.localfind.index.INDEXING_CANCELLED_MESSAGE
-import com.localfind.index.IndexResult
+import com.localfind.core.model.INDEXING_CANCELLED_MESSAGE
+import com.localfind.core.model.IndexResult
 import com.localfind.index.Indexer
 import com.tom_roush.pdfbox.android.PDFBoxResourceLoader
 import com.tom_roush.pdfbox.pdmodel.PDDocument
@@ -61,7 +65,7 @@ fun Indexer.indexTextFile(
 
     return indexChunkedItems(
         file = file,
-        type = "text",
+        kind = FileKind.TEXT,
         items = chunks,
         batchSize = 10,
         deleteOnEmpty = true,
@@ -148,7 +152,7 @@ fun Indexer.indexPdfFile(
 
     return indexChunkedItems(
         file = file,
-        type = "pdf",
+        kind = FileKind.PDF,
         items = chunks,
         batchSize = 10,
         deleteOnEmpty = true,

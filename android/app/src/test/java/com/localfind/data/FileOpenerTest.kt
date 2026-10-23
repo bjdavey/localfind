@@ -1,5 +1,6 @@
 package com.localfind.data
 
+import com.localfind.core.model.FileTypes
 import org.junit.Assert.assertEquals
 import org.junit.Test
 
@@ -12,11 +13,11 @@ class FileOpenerTest {
     fun resolveMimeTypeFromExtension_withExplicitMime_usesExplicit() {
         assertEquals(
             "image/webp",
-            FileOpener.resolveMimeTypeFromExtension("test.webp", "image/webp")
+            FileTypes.resolveMimeTypeFromExtension("test.webp", "image/webp")
         )
         assertEquals(
             "video/x-matroska",
-            FileOpener.resolveMimeTypeFromExtension("clip.mkv", "video/x-matroska")
+            FileTypes.resolveMimeTypeFromExtension("clip.mkv", "video/x-matroska")
         )
     }
 
@@ -24,41 +25,41 @@ class FileOpenerTest {
     fun resolveMimeTypeFromExtension_withGenericMime_fallsBackToExtension() {
         assertEquals(
             "video/mp4",
-            FileOpener.resolveMimeTypeFromExtension("BBC The New Wild.mp4", "*/*")
+            FileTypes.resolveMimeTypeFromExtension("BBC The New Wild.mp4", "*/*")
         )
         assertEquals(
             "video/mp4",
-            FileOpener.resolveMimeTypeFromExtension("BBC The New Wild.mp4", "application/octet-stream")
+            FileTypes.resolveMimeTypeFromExtension("BBC The New Wild.mp4", "application/octet-stream")
         )
     }
 
     @Test
     fun resolveMimeTypeFromExtension_commonExtensions_resolvesCorrectMime() {
         // Videos
-        assertEquals("video/mp4", FileOpener.resolveMimeTypeFromExtension("nature.mp4"))
+        assertEquals("video/mp4", FileTypes.resolveMimeTypeFromExtension("nature.mp4"))
 
         // Images
-        assertEquals("image/jpeg", FileOpener.resolveMimeTypeFromExtension("sunset.jpg"))
-        assertEquals("image/jpeg", FileOpener.resolveMimeTypeFromExtension("landscape.jpeg"))
-        assertEquals("image/png", FileOpener.resolveMimeTypeFromExtension("screenshot.png"))
-        assertEquals("image/gif", FileOpener.resolveMimeTypeFromExtension("animation.gif"))
+        assertEquals("image/jpeg", FileTypes.resolveMimeTypeFromExtension("sunset.jpg"))
+        assertEquals("image/jpeg", FileTypes.resolveMimeTypeFromExtension("landscape.jpeg"))
+        assertEquals("image/png", FileTypes.resolveMimeTypeFromExtension("screenshot.png"))
+        assertEquals("image/gif", FileTypes.resolveMimeTypeFromExtension("animation.gif"))
 
         // PDFs
-        assertEquals("application/pdf", FileOpener.resolveMimeTypeFromExtension("report.pdf"))
+        assertEquals("application/pdf", FileTypes.resolveMimeTypeFromExtension("report.pdf"))
 
         // Documents
-        assertEquals("text/plain", FileOpener.resolveMimeTypeFromExtension("notes.txt"))
-        assertEquals("text/plain", FileOpener.resolveMimeTypeFromExtension("README.md"))
+        assertEquals("text/plain", FileTypes.resolveMimeTypeFromExtension("notes.txt"))
+        assertEquals("text/plain", FileTypes.resolveMimeTypeFromExtension("README.md"))
 
         // Audio
-        assertEquals("audio/mpeg", FileOpener.resolveMimeTypeFromExtension("podcast.mp3"))
-        assertEquals("audio/mp4", FileOpener.resolveMimeTypeFromExtension("recording.m4a"))
-        assertEquals("audio/wav", FileOpener.resolveMimeTypeFromExtension("track.wav"))
+        assertEquals("audio/mpeg", FileTypes.resolveMimeTypeFromExtension("podcast.mp3"))
+        assertEquals("audio/mp4", FileTypes.resolveMimeTypeFromExtension("recording.m4a"))
+        assertEquals("audio/wav", FileTypes.resolveMimeTypeFromExtension("track.wav"))
     }
 
     @Test
     fun resolveMimeTypeFromExtension_unknownExtension_fallsBackToWildcard() {
-        assertEquals("*/*", FileOpener.resolveMimeTypeFromExtension("archive.xyz"))
+        assertEquals("*/*", FileTypes.resolveMimeTypeFromExtension("archive.xyz"))
     }
 }
 

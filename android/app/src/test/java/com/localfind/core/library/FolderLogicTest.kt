@@ -1,6 +1,9 @@
-package com.localfind.data
+package com.localfind.core.library
 
-import com.localfind.ui.gallery.GalleryCategory
+import com.localfind.core.library.LibraryFilters
+import com.localfind.core.model.ImportedFile
+import com.localfind.core.model.Folder
+import com.localfind.core.library.GalleryCategory
 import com.localfind.ui.gallery.ThumbnailHelper
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNull
@@ -81,19 +84,19 @@ class FolderLogicTest {
         val allFiles = listOf(fileRoot, fileFolderA, fileFolderB)
 
         // Root files only
-        val rootFiles = ThumbnailHelper.filterFilesByFolder(allFiles, folderId = null)
+        val rootFiles = LibraryFilters.filterFilesByFolder(allFiles, folderId = null)
         assertEquals(1, rootFiles.size)
         assertEquals("root.txt", rootFiles[0].displayName)
 
         // Folder A files only
-        val folderAFiles = ThumbnailHelper.filterFilesByFolder(allFiles, folderId = "folder-a")
+        val folderAFiles = LibraryFilters.filterFilesByFolder(allFiles, folderId = "folder-a")
         assertEquals(1, folderAFiles.size)
         assertEquals("a.jpg", folderAFiles[0].displayName)
 
         // Folder A with category filter
-        val folderAPhotos = ThumbnailHelper.filterFilesByFolder(allFiles, folderId = "folder-a", category = GalleryCategory.PHOTOS)
+        val folderAPhotos = LibraryFilters.filterFilesByFolder(allFiles, folderId = "folder-a", category = GalleryCategory.PHOTOS)
         assertEquals(1, folderAPhotos.size)
-        val folderAPDFs = ThumbnailHelper.filterFilesByFolder(allFiles, folderId = "folder-a", category = GalleryCategory.PDFS)
+        val folderAPDFs = LibraryFilters.filterFilesByFolder(allFiles, folderId = "folder-a", category = GalleryCategory.PDFS)
         assertEquals(0, folderAPDFs.size)
     }
 
@@ -113,15 +116,15 @@ class FolderLogicTest {
         )
 
         // root-folder has 2 subfolders + 2 files = 4 direct items
-        val countRootFolder = ThumbnailHelper.getFolderItemCount(files, folders, "root-folder")
+        val countRootFolder = LibraryFilters.getFolderItemCount(files, folders, "root-folder")
         assertEquals(4, countRootFolder)
 
         // sub-1 has 0 subfolders + 1 file = 1 direct item
-        val countSub1 = ThumbnailHelper.getFolderItemCount(files, folders, "sub-1")
+        val countSub1 = LibraryFilters.getFolderItemCount(files, folders, "sub-1")
         assertEquals(1, countSub1)
 
         // sub-2 has 0 subfolders + 0 files = 0 direct items
-        val countSub2 = ThumbnailHelper.getFolderItemCount(files, folders, "sub-2")
+        val countSub2 = LibraryFilters.getFolderItemCount(files, folders, "sub-2")
         assertEquals(0, countSub2)
     }
 }

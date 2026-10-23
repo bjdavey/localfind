@@ -1,4 +1,4 @@
-package com.localfind.index.audio
+package com.localfind.core.chunking
 
 /** Sample rate expected by EmbeddingGemma's mel-spectrogram frontend (GOOGLE_AI_EDGE_GALLERY.md §6.2). */
 const val AUDIO_SAMPLE_RATE = 16_000

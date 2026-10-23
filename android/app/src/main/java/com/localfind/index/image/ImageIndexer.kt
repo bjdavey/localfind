@@ -1,5 +1,8 @@
 package com.localfind.index.image
 
+import com.localfind.core.model.FileKind
+import com.localfind.core.model.ChunkMetadata
+import com.localfind.core.indexing.ImageSizing
 import android.content.Context
 import android.graphics.Bitmap
 import android.graphics.ImageDecoder
@@ -7,10 +10,10 @@ import android.net.Uri
 import androidx.core.net.toUri
 import com.google.mediapipe.tasks.core.ImagePart
 import com.google.mediapipe.tasks.retrieval.model.RetrievalRecord
-import com.localfind.data.DEFAULT_MAX_IMAGE_DIMENSION
-import com.localfind.data.ImportedFile
-import com.localfind.index.INDEXING_CANCELLED_MESSAGE
-import com.localfind.index.IndexResult
+import com.localfind.core.settings.DEFAULT_MAX_IMAGE_DIMENSION
+import com.localfind.core.model.ImportedFile
+import com.localfind.core.model.INDEXING_CANCELLED_MESSAGE
+import com.localfind.core.model.IndexResult
 import com.localfind.index.Indexer
 import com.localfind.index.IndexingResumeManager
 
@@ -18,33 +21,6 @@ import com.localfind.index.IndexingResumeManager
  * Image (`.jpg`, `.jpeg`, `.png`) indexing pipeline and hardware-subsampled bitmap decoding utilities.
  */
 object ImageIndexer {
-
-    /**
-     * Calculates bounded target dimensions (width, height) that fit within [maxDimension]
-     * while preserving the original aspect ratio.
-     *
-     * @param width Original image width in pixels.
-     * @param height Original image height in pixels.
-     * @param maxDimension Maximum allowed width or height (default [DEFAULT_MAX_IMAGE_DIMENSION]).
-     * @return Pair of (targetWidth, targetHeight), each guaranteed to be >= 1.
-     */
-    fun calculateTargetDimensions(
-        width: Int,
-        height: Int,
-        maxDimension: Int = DEFAULT_MAX_IMAGE_DIMENSION
-    ): Pair<Int, Int> {
-        val safeW = width.coerceAtLeast(1)
-        val safeH = height.coerceAtLeast(1)
-        val safeMax = maxDimension.coerceAtLeast(1)
-        val maxSide = maxOf(safeW, safeH)
-        if (maxSide <= safeMax) {
-            return safeW to safeH
-        }
-        val scale = safeMax.toFloat() / maxSide.toFloat()
-        val targetW = (safeW * scale).toInt().coerceAtLeast(1)
-        val targetH = (safeH * scale).toInt().coerceAtLeast(1)
-        return targetW to targetH
-    }
 
     /**
      * Decodes an image from [uri] into a software-backed `ARGB_8888` [Bitmap] with EXIF
@@ -60,7 +36,7 @@ object ImageIndexer {
     ): Bitmap {
         val source = ImageDecoder.createSource(context.contentResolver, uri)
         return ImageDecoder.decodeBitmap(source) { decoder, info, _ ->
-            val (targetW, targetH) = calculateTargetDimensions(
+            val (targetW, targetH) = ImageSizing.calculateTargetDimensions(
                 info.size.width,
                 info.size.height,
                 maxDimension
@@ -127,10 +103,10 @@ fun Indexer.indexImageFile(
     embeddingStore.deleteByFileUri(file.uri)
 
     val record = RetrievalRecord(
-        "${file.uri}_0",
+        ChunkMetadata.chunkId(file.uri, 0),
         listOf(ImagePart(uri)),
         embedding,
-        buildChunkMetadata(file, type = "image", location = "0")
+        ChunkMetadata.build(file, kind = FileKind.IMAGE, location = "0")
     )
 
     embeddingStore.storeBatch(listOf(record))

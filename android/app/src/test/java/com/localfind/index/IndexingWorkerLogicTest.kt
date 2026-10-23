@@ -1,7 +1,7 @@
 package com.localfind.index
 
-import com.localfind.data.ImportedFile
-import com.localfind.data.IndexingStatus
+import com.localfind.core.model.ImportedFile
+import com.localfind.core.model.IndexingStatus
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue

@@ -1,34 +1,14 @@
 package com.localfind.search
 
+import com.localfind.core.model.ChunkMetadata
+import com.localfind.core.search.VectorMath
+import com.localfind.core.search.ResultRanking
+import com.localfind.core.model.SearchResult
 import android.graphics.Bitmap
 import com.google.mediapipe.tasks.core.TextPart
-import com.localfind.data.DEFAULT_TOP_K
+import com.localfind.core.settings.DEFAULT_TOP_K
 import com.localfind.data.EmbeddingStore
 import com.localfind.embed.Embedder
-import kotlin.math.sqrt
-
-/**
- * Domain model representing a ranked search result item.
- *
- * Designed according to ARCHITECTURE.md §6 & §7 and PRD.md §2:
- *
- * @property chunkId Unique identifier of the matched chunk (e.g., `"<fileUri>_<chunkIndex>"`).
- * @property fileUri Content URI of the document (used by the UI to open/view the document).
- * @property fileName Display name of the file (e.g., `"notes.md"`).
- * @property fileType Category of the file (`"text"`, `"pdf"`, `"image"`, `"audio"`, `"video"`).
- * @property snippet Text passage or snippet of the match.
- * @property location Offset location within the document (character offset for text, page for PDF, ms for audio/video).
- * @property score Cosine similarity score between the query embedding and chunk embedding (1.0 = identical direction).
- */
-data class SearchResult(
-    val chunkId: String,
-    val fileUri: String,
-    val fileName: String,
-    val fileType: String,
-    val snippet: String,
-    val location: Long,
-    val score: Float
-)
 
 /**
  * Orchestrates semantic and visual similarity search over indexed file chunks.
@@ -143,87 +123,34 @@ class Searcher(
         val records = if (fileTypes.isNullOrEmpty()) {
             embeddingStore.search(queryEmbedding, fetchLimit, metadataFilter)
         } else if (fileTypes.size == 1) {
-            embeddingStore.search(queryEmbedding, fetchLimit, metadataFilter + ("type" to fileTypes.first()))
+            embeddingStore.search(queryEmbedding, fetchLimit, metadataFilter + (ChunkMetadata.TYPE to fileTypes.first()))
         } else {
             // For categories spanning multiple formats (e.g. Docs spanning "pdf" and "text"),
             // retrieve top candidates for each type and merge before ranking
             fileTypes
                 .flatMap { type ->
-                    embeddingStore.search(queryEmbedding, fetchLimit, metadataFilter + ("type" to type))
+                    embeddingStore.search(queryEmbedding, fetchLimit, metadataFilter + (ChunkMetadata.TYPE to type))
                 }
         }.distinctBy { it.id }
 
-        // Map RetrievalRecord items to SearchResult objects, filtering out excluded source URI if present
+        // Map stored chunks to results (dropping the excluded source file) and rank them
         val results = records.mapNotNull { record ->
-            val fileUri = record.metadata["uri"] ?: record.metadata["fileId"] ?: ""
-            // Omit the query file itself if requested (e.g. when querying visual similarity for an existing library file)
-            if (excludeFileUri != null && fileUri == excludeFileUri) {
-                return@mapNotNull null
-            }
-
             // Extract text passage from TextPart if present
             val snippet = record.content
                 .filterIsInstance<TextPart>()
                 .firstOrNull()?.text
                 ?: ""
 
-            // Extract structured metadata populated by Indexer
-            val fileName = record.metadata["name"] ?: ""
-            val fileType = record.metadata["type"] ?: "text"
-            val location = record.metadata["location"]?.toLongOrNull() ?: 0L
-
-            // Calculate cosine similarity between query and chunk embedding if vector is present
+            // Cosine similarity between query and chunk embedding if a vector is present
             val score = if (record.embeddings.isNotEmpty()) {
-                calculateCosineSimilarity(queryEmbedding, record.embeddings)
+                VectorMath.cosineSimilarity(queryEmbedding, record.embeddings)
             } else {
                 0f
             }
 
-            SearchResult(
-                chunkId = record.id,
-                fileUri = fileUri,
-                fileName = fileName,
-                fileType = fileType,
-                snippet = snippet,
-                location = location,
-                score = score
-            )
+            ResultRanking.toResult(record.id, record.metadata, snippet, score, excludeFileUri)
         }
 
-        // Filter by minimum similarity threshold, deduplicate by chunk ID to prevent duplicate UI keys,
-        // order by descending score, and take topK
-        return results
-            .filter { it.score >= threshold }
-            .distinctBy { it.chunkId }
-            .sortedByDescending { it.score }
-            .take(topK)
-    }
-
-    companion object {
-        /**
-         * Computes the cosine similarity between two float vectors:
-         *   similarity = (u · v) / (||u|| * ||v||)
-         *
-         * Returns a value between -1.0 and 1.0 (clamped). Returns 0.0 if vectors are empty
-         * or dimension mismatched.
-         */
-        fun calculateCosineSimilarity(v1: FloatArray, v2: FloatArray): Float {
-            if (v1.isEmpty() || v2.isEmpty() || v1.size != v2.size) return 0f
-            var dot = 0f
-            var norm1 = 0f
-            var norm2 = 0f
-            for (i in v1.indices) {
-                dot += v1[i] * v2[i]
-                norm1 += v1[i] * v1[i]
-                norm2 += v2[i] * v2[i]
-            }
-            val denominator = (sqrt(norm1.toDouble()) * sqrt(norm2.toDouble())).toFloat()
-            return if (denominator > 0f) {
-                (dot / denominator).coerceIn(-1f, 1f)
-            } else {
-                0f
-            }
-        }
+        return ResultRanking.rank(results, threshold, topK)
     }
 }
-

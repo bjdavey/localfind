@@ -1,5 +1,7 @@
 package com.localfind.data
 
+import com.localfind.core.model.FileTypes
+import com.localfind.core.model.ImportedFile
 import com.localfind.index.Indexer
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNotNull
@@ -72,9 +74,9 @@ class SampleFilesTest {
                 size = file.length()
             )
 
-            val isAudio = Indexer.isAudioNameOrMime(file.name, null)
-            val isVideo = Indexer.isVideoNameOrMime(file.name, null)
-            val isImage = Indexer.isImageNameOrMime(file.name, null)
+            val isAudio = FileTypes.isAudioNameOrMime(file.name, null)
+            val isVideo = FileTypes.isVideoNameOrMime(file.name, null)
+            val isImage = FileTypes.isImageNameOrMime(file.name, null)
             val isPdf = file.name.endsWith(".pdf", ignoreCase = true)
             val isText = file.name.endsWith(".txt", ignoreCase = true) || file.name.endsWith(".md", ignoreCase = true)
 

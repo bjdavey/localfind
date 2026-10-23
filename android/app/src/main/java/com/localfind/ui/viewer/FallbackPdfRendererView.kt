@@ -1,5 +1,6 @@
 package com.localfind.ui.viewer
 
+import com.localfind.core.text.PdfPageMath
 import android.graphics.Bitmap
 import android.graphics.Canvas
 import android.graphics.Color
@@ -92,14 +93,14 @@ fun FallbackPdfRendererView(
     // Keep currentPageNumber synchronized if params.initialPage changes externally
     LaunchedEffect(params.initialPage) {
         if (totalPages > 0) {
-            currentPageNumber = PdfViewerHelper.clampPage(params.initialPage, totalPages)
+            currentPageNumber = PdfPageMath.clampPage(params.initialPage, totalPages)
         } else {
             currentPageNumber = params.initialPage.coerceAtLeast(1)
         }
     }
 
     val transformState = rememberTransformableState { zoomChange, offsetChange, _ ->
-        val newScale = PdfViewerHelper.clampZoom(scale, zoomChange, minScale = 1f, maxScale = 4f)
+        val newScale = PdfPageMath.clampZoom(scale, zoomChange, minScale = 1f, maxScale = 4f)
         scale = newScale
         if (newScale <= 1.02f) {
             offset = Offset.Zero
@@ -160,7 +161,7 @@ fun FallbackPdfRendererView(
                 pdfRenderer = renderer
                 totalPages = renderer.pageCount
                 if (totalPages > 0) {
-                    currentPageNumber = PdfViewerHelper.clampPage(params.initialPage, totalPages)
+                    currentPageNumber = PdfPageMath.clampPage(params.initialPage, totalPages)
                 }
             } catch (e: Exception) {
                 errorMessage = "Failed to open PDF: ${e.message}"
@@ -180,7 +181,7 @@ fun FallbackPdfRendererView(
             try {
                 val bitmap = synchronized(rendererLock) {
                     if (pdfRenderer !== renderer) return@withContext
-                    val zeroBasedIndex = PdfViewerHelper.toZeroBasedPage(currentPageNumber, totalPages)
+                    val zeroBasedIndex = PdfPageMath.toZeroBasedPage(currentPageNumber, totalPages)
                     renderer.openPage(zeroBasedIndex).use { page ->
                         val density = context.resources.displayMetrics.density.coerceIn(1.5f, 3f)
                         val width = (page.width * density).toInt().coerceAtLeast(1)

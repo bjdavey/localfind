@@ -1,12 +1,14 @@
 package com.localfind.index.audio
 
+import com.localfind.core.model.FileKind
+import com.localfind.core.chunking.AudioChunker
 import androidx.core.net.toUri
-import com.localfind.data.ImportedFile
+import com.localfind.core.model.ImportedFile
 import com.localfind.index.ChunkEmbeddingData
-import com.localfind.index.INDEXING_CANCELLED_MESSAGE
-import com.localfind.index.IndexResult
+import com.localfind.core.model.INDEXING_CANCELLED_MESSAGE
+import com.localfind.core.model.IndexResult
 import com.localfind.index.Indexer
-import com.localfind.ui.search.SearchResultFormatter
+import com.localfind.core.format.SearchResultFormatter
 
 /**
  * Audio (`.mp3`, `.m4a`, `.wav`) indexing pipeline for [Indexer].
@@ -48,7 +50,7 @@ fun Indexer.indexAudioFile(
 
     return indexChunkedItems(
         file = file,
-        type = "audio",
+        kind = FileKind.AUDIO,
         items = windows,
         batchSize = 5,
         deleteOnEmpty = false,

@@ -1,5 +1,6 @@
 package com.localfind
 
+import com.localfind.core.model.FileTypes
 import android.graphics.Bitmap
 import android.graphics.Canvas
 import android.graphics.Color
@@ -9,7 +10,7 @@ import android.os.ParcelFileDescriptor
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.platform.app.InstrumentationRegistry
 import com.localfind.data.EmbeddingStore
-import com.localfind.data.ImportedFile
+import com.localfind.core.model.ImportedFile
 import com.localfind.embed.Embedder
 import com.localfind.index.Indexer
 import com.localfind.search.Searcher
@@ -59,7 +60,7 @@ class PdfIndexingIntegrationTest {
                 val indexer = Indexer(context, embedder, store)
 
                 assertTrue("File should be recognized as PDF", indexer.isPdfFile(importedFile))
-                assertTrue("File should be supported", Indexer.isSupported(importedFile.displayName, importedFile.mimeType))
+                assertTrue("File should be supported", FileTypes.isSupported(importedFile.displayName, importedFile.mimeType))
 
                 val result = indexer.indexFile(importedFile)
                 assertTrue("PDF indexing must succeed: ${result.errorMessage}", result.isSuccess)

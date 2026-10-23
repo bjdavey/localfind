@@ -20,9 +20,9 @@ import com.localfind.MainActivity
 import com.localfind.R
 import com.localfind.data.EngineManager
 import com.localfind.data.FileStore
-import com.localfind.data.ImportedFile
-import com.localfind.data.IndexingStatus
-import com.localfind.data.ModelStatus
+import com.localfind.core.model.ImportedFile
+import com.localfind.core.model.IndexingStatus
+import com.localfind.core.model.ModelStatus
 import com.localfind.data.SettingsStore
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
@@ -623,7 +623,7 @@ class IndexingWorker(
                     // yields GPU and CPU time slices to SurfaceFlinger and HWUI compositor,
                     // keeping the phone's UI buttery smooth even during bulk image/file indexing.
                     if (idx < pending.lastIndex && !isStopped && !isPaused(context)) {
-                        kotlinx.coroutines.delay(com.localfind.index.video.DEFAULT_MICRO_PACING_DELAY_MS)
+                        kotlinx.coroutines.delay(com.localfind.core.indexing.DEFAULT_MICRO_PACING_DELAY_MS)
                     }
                 }
             }

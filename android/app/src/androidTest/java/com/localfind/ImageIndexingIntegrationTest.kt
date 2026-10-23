@@ -1,5 +1,6 @@
 package com.localfind
 
+import com.localfind.core.model.FileTypes
 import com.localfind.index.image.ImageIndexer
 import android.graphics.Bitmap
 import android.graphics.Canvas
@@ -9,7 +10,7 @@ import android.net.Uri
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.platform.app.InstrumentationRegistry
 import com.localfind.data.EmbeddingStore
-import com.localfind.data.ImportedFile
+import com.localfind.core.model.ImportedFile
 import com.localfind.embed.Embedder
 import com.localfind.index.Indexer
 import com.localfind.search.Searcher
@@ -80,8 +81,8 @@ class ImageIndexingIntegrationTest {
 
                 assertTrue(indexer.isImageFile(redImported))
                 assertTrue(indexer.isImageFile(blueImported))
-                assertTrue(Indexer.isSupported(redImported.displayName, redImported.mimeType))
-                assertTrue(Indexer.isSupported(blueImported.displayName, blueImported.mimeType))
+                assertTrue(FileTypes.isSupported(redImported.displayName, redImported.mimeType))
+                assertTrue(FileTypes.isSupported(blueImported.displayName, blueImported.mimeType))
 
                 val resRed = indexer.indexFile(redImported)
                 assertTrue("PNG indexing must succeed: ${resRed.errorMessage}", resRed.isSuccess)

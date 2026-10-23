@@ -96,6 +96,12 @@ if ([string]::IsNullOrWhiteSpace($DeviceId)) {
 
 Write-Host "      Target device: $DeviceId" -ForegroundColor Green
 
+$IsEmulatorTarget = ((adb -s $DeviceId shell getprop ro.kernel.qemu).Trim() -eq "1") -or
+    ((adb -s $DeviceId shell getprop ro.hardware).Trim() -match "goldfish|ranchu")
+if ($IsEmulatorTarget) {
+    Write-Host "      Emulator target detected: forcing the persisted accelerator preference to CPU." -ForegroundColor Yellow
+}
+
 # 3. Query Device SoC and match Device Group & LiteRT Model
 Write-Host "[3/7] Querying device SoC for Play Feature Delivery & Model targeting..." -ForegroundColor Yellow
 $SocMfr = (adb -s $DeviceId shell getprop ro.soc.manufacturer).Trim()
@@ -241,7 +247,11 @@ if (-not $SkipModelPush) {
     Write-Host "[7/7] Ensuring LiteRT-LM model ($ModelName) is present on device..." -ForegroundColor Yellow
     
     # Check if target model is already staged in /data/local/tmp on the device and non-empty
-    $DeviceCheck = (adb -s $DeviceId shell "if [ -f /data/local/tmp/$ModelName ] && [ -s /data/local/tmp/$ModelName ]; then echo EXISTS; fi").Trim()
+    $DeviceCheckOutput = @(adb -s $DeviceId shell "if [ -f /data/local/tmp/$ModelName ] && [ -s /data/local/tmp/$ModelName ]; then echo EXISTS; fi")
+    if ($LASTEXITCODE -ne 0) {
+        Write-Error "Could not check for the model on device '$DeviceId'."
+    }
+    $DeviceCheck = ($DeviceCheckOutput -join "`n").Trim()
     
     if ($DeviceCheck -eq "EXISTS") {
         Write-Host "      Model '$ModelName' is already present on device (/data/local/tmp)." -ForegroundColor Green
@@ -273,7 +283,7 @@ if (-not $SkipModelPush) {
                 try {
                     Write-Host "      Downloading via Invoke-WebRequest: $HfUrl" -ForegroundColor DarkCyan
                     Invoke-WebRequest -Uri $HfUrl -OutFile $CachedModelFile -UseBasicParsing
-                    if (Test-Path $CachedModelFile -and (Get-Item $CachedModelFile).Length -gt 0) {
+                    if ((Test-Path $CachedModelFile) -and (Get-Item $CachedModelFile).Length -gt 0) {
                         $DownloadOk = $true
                     }
                 } catch {
@@ -293,7 +303,7 @@ if (-not $SkipModelPush) {
                         & curl.exe -L --fail --progress-bar -o "$CachedFallback" "$FallbackUrl"
                     }
                 }
-                if (Test-Path $CachedFallback -and (Get-Item $CachedFallback).Length -gt 0) {
+                if ((Test-Path $CachedFallback) -and (Get-Item $CachedFallback).Length -gt 0) {
                     $ModelName = $FallbackModel
                     $CachedModelFile = $CachedFallback
                 }
@@ -301,7 +311,7 @@ if (-not $SkipModelPush) {
         }
 
         # Push to device if cached model file is available
-        if (Test-Path $CachedModelFile -and (Get-Item $CachedModelFile).Length -gt 0) {
+        if ((Test-Path $CachedModelFile) -and (Get-Item $CachedModelFile).Length -gt 0) {
             Write-Host "      Pushing '$ModelName' to device (/data/local/tmp/)..." -ForegroundColor Yellow
             adb -s $DeviceId push "$CachedModelFile" "/data/local/tmp/$ModelName"
             if ($LASTEXITCODE -eq 0) {
@@ -315,6 +325,43 @@ if (-not $SkipModelPush) {
     }
 } else {
     Write-Host "[7/7] Skipping model staging (-SkipModelPush specified)..." -ForegroundColor DarkCyan
+}
+
+# Do not let a persisted NPU selection route an emulator into an unavailable native delegate.
+if ($IsEmulatorTarget) {
+    $PrefsTemp = Join-Path $env:TEMP "localfind_settings.xml"
+    $PrefsDir = "shared_prefs"
+    $PrefsPath = "$PrefsDir/localfind_settings.xml"
+    adb -s $DeviceId shell am force-stop com.localfind
+    adb -s $DeviceId shell run-as com.localfind test -f $PrefsPath
+    if ($LASTEXITCODE -eq 0) {
+        adb -s $DeviceId exec-out run-as com.localfind cat $PrefsPath > $PrefsTemp
+    }
+    if ($LASTEXITCODE -ne 0 -or -not (Test-Path $PrefsTemp) -or (Get-Item $PrefsTemp).Length -eq 0) {
+        @'
+<?xml version="1.0" encoding="utf-8" standalone="yes" ?>
+<map />
+'@ | Set-Content -Path $PrefsTemp -Encoding utf8
+    }
+    try {
+        [xml]$PrefsXml = Get-Content -Raw -Path $PrefsTemp
+        $Accelerator = $PrefsXml.map.string | Where-Object { $_.name -eq "hardware_accelerator" }
+        if ($null -eq $Accelerator) {
+            $Accelerator = $PrefsXml.CreateElement("string")
+            $Accelerator.SetAttribute("name", "hardware_accelerator")
+            [void]$PrefsXml.DocumentElement.AppendChild($Accelerator)
+        }
+        $Accelerator.InnerText = "CPU"
+        $PrefsXml.Save($PrefsTemp)
+        adb -s $DeviceId push $PrefsTemp "/data/local/tmp/localfind_settings.xml" | Out-Null
+        adb -s $DeviceId shell run-as com.localfind mkdir -p $PrefsDir
+        adb -s $DeviceId shell run-as com.localfind cp "/data/local/tmp/localfind_settings.xml" $PrefsPath
+        if ($LASTEXITCODE -ne 0) {
+            Write-Error "Could not apply the emulator CPU accelerator preference."
+        }
+    } finally {
+        Remove-Item $PrefsTemp -Force -ErrorAction SilentlyContinue
+    }
 }
 
 # 8. Launch App

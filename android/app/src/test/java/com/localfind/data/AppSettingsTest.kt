@@ -1,5 +1,10 @@
 package com.localfind.data
 
+import com.localfind.core.settings.AppSettings
+import com.localfind.core.settings.DEFAULT_TEXT_CHUNK_SIZE
+import com.localfind.core.settings.DEFAULT_TOP_K
+import com.localfind.core.settings.DEFAULT_SIMILARITY_THRESHOLD
+import com.localfind.core.settings.HardwareAccelerator
 import android.content.SharedPreferences
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue

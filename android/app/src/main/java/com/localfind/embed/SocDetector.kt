@@ -1,11 +1,12 @@
 package com.localfind.embed
 
+import com.localfind.core.model.MODEL_FILE_NAME
 import android.content.Context
 import android.os.Build
 import android.system.Os
 import android.util.Log
 import com.google.android.play.core.aipacks.AiPackManagerFactory
-import com.localfind.data.HardwareAccelerator
+import com.localfind.core.settings.HardwareAccelerator
 import java.io.File
 
 /**

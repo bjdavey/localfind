@@ -1,5 +1,8 @@
 package com.localfind.ui.gallery
 
+import com.localfind.core.library.GalleryCategory
+import com.localfind.core.library.LibraryFilters
+import com.localfind.core.model.FileTypes
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -34,16 +37,16 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import com.localfind.R
-import com.localfind.data.Folder
-import com.localfind.data.ImportedFile
-import com.localfind.data.IndexingStatus
+import com.localfind.core.model.Folder
+import com.localfind.core.model.ImportedFile
+import com.localfind.core.model.IndexingStatus
 import com.localfind.index.Indexer
 import android.widget.Toast
 import androidx.compose.foundation.text.selection.SelectionContainer
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.ui.platform.LocalContext
 import com.localfind.data.FilePathHelper
-import com.localfind.data.formatFileSize
+import com.localfind.core.format.formatFileSize
 
 /**
  * Dialog displaying file metadata and providing quick actions ("Open", "Open with/Gallery", "Search in File", "Move", "Remove from Library").
@@ -68,7 +71,7 @@ internal fun FileDetailsDialog(
         FilePathHelper.formatUserFriendlyPath(originalPath)
     }
     val category = remember(file.displayName, file.mimeType) {
-        ThumbnailHelper.categorizeFile(file.displayName, file.mimeType)
+        LibraryFilters.categorizeFile(file.displayName, file.mimeType)
     }
 
     AlertDialog(
@@ -135,7 +138,7 @@ internal fun FileDetailsDialog(
                         }
 
                         val friendlyType = when {
-                            Indexer.isPdfNameOrMime(file.displayName, file.mimeType) -> "PDF Document"
+                            FileTypes.isPdfNameOrMime(file.displayName, file.mimeType) -> "PDF Document"
                             file.displayName.endsWith(".txt", ignoreCase = true) -> "Text Document (.txt)"
                             file.displayName.endsWith(".md", ignoreCase = true) -> "Markdown Document (.md)"
                             category == GalleryCategory.PHOTOS -> "Photo"

@@ -1,5 +1,7 @@
 package com.localfind.embed
 
+import com.localfind.core.model.DEFAULT_VISION_TOKENS_PER_IMAGE
+import com.localfind.core.model.MODEL_FILE_NAME
 import android.content.Context
 import android.graphics.Bitmap
 import android.util.Log
@@ -10,30 +12,9 @@ import com.google.mediapipe.tasks.core.BaseOptions
 import com.google.mediapipe.tasks.core.Part
 import com.google.mediapipe.tasks.retrieval.universalembedder.UniversalEmbedder
 import com.google.mediapipe.tasks.retrieval.universalembedder.UniversalEmbedderOptions
-import com.localfind.data.HardwareAccelerator
-import com.localfind.data.resolveEffective
+import com.localfind.core.settings.HardwareAccelerator
 import java.io.File
 
-/**
- * Default base on-device embedding model file name.
- *
- * Model details:
- * - EmbeddingGemma 2 740M multimodal (text, image, audio)
- * - Output dimensionality: 768 float values per embedding
- * - Runtime delivery:
- *     - Production: Google Play Asset Delivery (install-time asset pack)
- *     - Development: Pushed via ADB to context.filesDir (`adb push ...`)
- * - 100% offline: Inference runs entirely on-device via LiteRT / MediaPipe Tasks.
- */
-const val MODEL_FILE_NAME = "embeddinggemma-2-740m.litertlm"
-
-/**
- * Vision token budget per image (GOOGLE_AI_EDGE_GALLERY.md §6.2).
- *
- * Using 70 tokens per image reduces transformer prefill length during image embedding
- * for significantly faster indexing while preserving semantic retrieval accuracy.
- */
-const val DEFAULT_VISION_TOKENS_PER_IMAGE = 70
 
 /**
  * Wrapper around MediaPipe's [UniversalEmbedder].

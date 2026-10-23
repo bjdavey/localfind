@@ -1,5 +1,8 @@
 package com.localfind
 
+import com.localfind.core.library.LibraryFilters
+import com.localfind.core.model.ChunkMetadata
+import com.localfind.core.model.FileTypes
 import android.content.Intent
 import android.os.Bundle
 import android.widget.Toast
@@ -42,24 +45,24 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.core.net.toUri
 import androidx.work.WorkInfo
 import androidx.work.WorkManager
-import com.localfind.data.AppSettings
+import com.localfind.core.settings.AppSettings
 import com.localfind.data.EngineManager
 import com.localfind.data.FileAvailability
 import com.localfind.data.FileImporter
 import com.localfind.data.FileStore
-import com.localfind.data.Folder
-import com.localfind.data.ImportedFile
-import com.localfind.data.IndexingStatus
-import com.localfind.data.ModelStatus
+import com.localfind.core.model.Folder
+import com.localfind.core.model.ImportedFile
+import com.localfind.core.model.IndexingStatus
+import com.localfind.core.model.ModelStatus
 import com.localfind.data.SettingsStore
 import com.localfind.data.ShareImporter
-import com.localfind.data.ThemeMode
+import com.localfind.core.settings.ThemeMode
 import com.localfind.index.IndexingProgressState
 import com.localfind.index.IndexingResumeManager
 import com.localfind.index.IndexingWorker
-import com.localfind.search.SearchResult
+import com.localfind.core.model.SearchResult
 import com.localfind.ui.ModelLoadingOverlay
-import com.localfind.ui.gallery.GalleryCategory
+import com.localfind.core.library.GalleryCategory
 import com.localfind.ui.gallery.GalleryScreen
 import com.localfind.ui.gallery.ThumbnailHelper
 import com.localfind.ui.search.SearchScreen
@@ -234,7 +237,7 @@ fun MainScreen(
     // Modality categories with at least one imported file in the app (plus ALL).
     // Hides filter chips for categories with 0 files in the app.
     val availableCategories = remember(importedFiles) {
-        ThumbnailHelper.getAvailableCategories(importedFiles)
+        LibraryFilters.getAvailableCategories(importedFiles)
     }
 
     LaunchedEffect(availableCategories) {
@@ -576,7 +579,7 @@ fun MainScreen(
                         val existingEmbedding = withContext(Dispatchers.IO) {
                             try {
                                 EngineManager.withStore(context) { store ->
-                                    store.get("${imageUri}_0")?.embeddings
+                                    store.get(ChunkMetadata.chunkId(imageUri.toString(), 0))?.embeddings
                                 }
                             } catch (_: Exception) {
                                 null
@@ -641,7 +644,7 @@ fun MainScreen(
             missingFileToDelete = target
             return
         }
-        val isPhoto = ThumbnailHelper.categorizeFile(target.displayName, target.mimeType) == GalleryCategory.PHOTOS
+        val isPhoto = LibraryFilters.categorizeFile(target.displayName, target.mimeType) == GalleryCategory.PHOTOS
         if (isPhoto) {
             activeSearchFile = null
             searchCategory = GalleryCategory.PHOTOS
@@ -961,7 +964,7 @@ fun MainScreen(
             },
             onImportFiles = {
                 if (!isSearchOpen && !isSettingsOpen && !viewerState.isAnyViewerOpen) {
-                    pickerLauncher.launch(FileImporter.SUPPORTED_MIME_TYPES)
+                    pickerLauncher.launch(FileTypes.SUPPORTED_MIME_TYPES)
                 }
             },
             onOpenSettings = {

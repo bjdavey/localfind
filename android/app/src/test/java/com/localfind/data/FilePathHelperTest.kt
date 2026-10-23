@@ -1,5 +1,6 @@
 package com.localfind.data
 
+import com.localfind.core.model.Folder
 import org.junit.Assert.assertEquals
 import org.junit.Test
 

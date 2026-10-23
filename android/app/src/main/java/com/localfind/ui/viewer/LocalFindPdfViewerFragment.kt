@@ -1,5 +1,6 @@
 package com.localfind.ui.viewer
 
+import com.localfind.core.text.PdfPageMath
 import android.os.Bundle
 import androidx.pdf.ExperimentalPdfApi
 import androidx.pdf.PdfDocument
@@ -64,7 +65,7 @@ class LocalFindPdfViewerFragment : PdfViewerFragment() {
         // toZeroBasedPage clamps to the document bounds (pages < 1 become the first page)
         fun scrollToTarget() {
             val count = pdfView.pdfDocument?.pageCount ?: 0
-            pdfView.scrollToPage(PdfViewerHelper.toZeroBasedPage(pageOneBased, count))
+            pdfView.scrollToPage(PdfPageMath.toZeroBasedPage(pageOneBased, count))
         }
 
         val runScroll = Runnable {

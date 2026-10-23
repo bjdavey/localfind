@@ -1,5 +1,6 @@
 package com.localfind
 
+import com.localfind.core.indexing.ImageSizing
 import com.localfind.index.image.ImageIndexer
 import android.content.Context
 import android.graphics.Bitmap
@@ -13,16 +14,16 @@ import androidx.test.platform.app.InstrumentationRegistry
 import com.google.mediapipe.tasks.core.ImagePart
 import com.google.mediapipe.tasks.core.Part
 import com.google.mediapipe.tasks.core.TextPart
-import com.localfind.data.AppSettings
+import com.localfind.core.settings.AppSettings
 import com.localfind.data.EmbeddingStore
-import com.localfind.data.ImportedFile
+import com.localfind.core.model.ImportedFile
 import com.localfind.embed.Embedder
 import com.localfind.index.Indexer
 import com.localfind.index.audio.AudioDecoder
-import com.localfind.index.video.MAX_INPUT_TOKENS
-import com.localfind.index.video.VideoChunker
+import com.localfind.core.chunking.MAX_INPUT_TOKENS
+import com.localfind.core.chunking.VideoChunker
 import com.localfind.index.video.indexVideoFile
-import com.localfind.ui.search.SearchResultFormatter
+import com.localfind.core.format.SearchResultFormatter
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.async
 import kotlinx.coroutines.runBlocking
@@ -137,7 +138,7 @@ class VideoIndexingBenchmarkTest {
                 val frames = frameTimes.map { timeMs ->
                     val bmp = retriever.getFrameAtTime(timeMs * 1000, MediaMetadataRetriever.OPTION_CLOSEST_SYNC)
                     bmp?.let {
-                        val (w, h) = ImageIndexer.calculateTargetDimensions(it.width, it.height, 512)
+                        val (w, h) = ImageSizing.calculateTargetDimensions(it.width, it.height, 512)
                         val scaled = if (w != it.width || h != it.height) {
                             val s = Bitmap.createScaledBitmap(it, w, h, true)
                             if (s != it) it.recycle()
@@ -244,7 +245,7 @@ class VideoIndexingBenchmarkTest {
         val durationMs = retriever.extractMetadata(MediaMetadataRetriever.METADATA_KEY_DURATION)?.toLongOrNull() ?: 300026L
         val rawW = retriever.extractMetadata(MediaMetadataRetriever.METADATA_KEY_VIDEO_WIDTH)?.toIntOrNull() ?: 1280
         val rawH = retriever.extractMetadata(MediaMetadataRetriever.METADATA_KEY_VIDEO_HEIGHT)?.toIntOrNull() ?: 720
-        val (targetW, targetH) = ImageIndexer.calculateTargetDimensions(rawW, rawH, 256) // 256px hardware target!
+        val (targetW, targetH) = ImageSizing.calculateTargetDimensions(rawW, rawH, 256) // 256px hardware target!
         val windows = VideoChunker.windows(durationMs, windowMs = 5000L, stepMs = 4000L)
 
         val totalStart = System.currentTimeMillis()
@@ -399,7 +400,7 @@ class VideoIndexingBenchmarkTest {
         val durationMs = retriever.extractMetadata(MediaMetadataRetriever.METADATA_KEY_DURATION)?.toLongOrNull() ?: 300026L
         val rawW = retriever.extractMetadata(MediaMetadataRetriever.METADATA_KEY_VIDEO_WIDTH)?.toIntOrNull() ?: 1280
         val rawH = retriever.extractMetadata(MediaMetadataRetriever.METADATA_KEY_VIDEO_HEIGHT)?.toIntOrNull() ?: 720
-        val (targetW, targetH) = ImageIndexer.calculateTargetDimensions(rawW, rawH, 256)
+        val (targetW, targetH) = ImageSizing.calculateTargetDimensions(rawW, rawH, 256)
         val windows = VideoChunker.windows(durationMs, windowMs = 5000L, stepMs = 4000L)
 
         val totalStart = System.currentTimeMillis()
@@ -560,7 +561,7 @@ class VideoIndexingBenchmarkTest {
             val durationMs = retriever.extractMetadata(MediaMetadataRetriever.METADATA_KEY_DURATION)?.toLongOrNull() ?: 300026L
             val rawW = retriever.extractMetadata(MediaMetadataRetriever.METADATA_KEY_VIDEO_WIDTH)?.toIntOrNull() ?: 1280
             val rawH = retriever.extractMetadata(MediaMetadataRetriever.METADATA_KEY_VIDEO_HEIGHT)?.toIntOrNull() ?: 720
-            val (targetW, targetH) = ImageIndexer.calculateTargetDimensions(rawW, rawH, 256)
+            val (targetW, targetH) = ImageSizing.calculateTargetDimensions(rawW, rawH, 256)
             val windows = VideoChunker.windows(durationMs, windowMs = 5000L, stepMs = 4000L)
 
             val totalStart = System.currentTimeMillis()
@@ -914,7 +915,7 @@ class VideoIndexingBenchmarkTest {
     }
 
     private fun buildParts(
-        window: com.localfind.index.video.VideoWindow,
+        window: com.localfind.core.chunking.VideoWindow,
         frames: List<ByteArray?>,
         frameTimes: List<Long>,
         pcm: ShortArray,

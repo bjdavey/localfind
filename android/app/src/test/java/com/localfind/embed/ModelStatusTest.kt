@@ -1,6 +1,7 @@
 package com.localfind.embed
 
-import com.localfind.data.ModelStatus
+import com.localfind.core.model.MODEL_FILE_NAME
+import com.localfind.core.model.ModelStatus
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue

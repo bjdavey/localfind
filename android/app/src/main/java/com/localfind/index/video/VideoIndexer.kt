@@ -1,5 +1,11 @@
 package com.localfind.index.video
 
+import com.localfind.core.model.FileKind
+import com.localfind.core.model.ChunkMetadata
+import com.localfind.core.indexing.DEFAULT_MICRO_PACING_DELAY_MS
+import com.localfind.core.indexing.ImageSizing
+import com.localfind.core.chunking.VideoChunker
+import com.localfind.core.chunking.MAX_INPUT_TOKENS
 import android.graphics.Bitmap
 import android.media.MediaMetadataRetriever
 import android.os.PowerManager
@@ -8,15 +14,15 @@ import com.google.mediapipe.tasks.core.ImagePart
 import com.google.mediapipe.tasks.core.Part
 import com.google.mediapipe.tasks.core.TextPart
 import com.google.mediapipe.tasks.retrieval.model.RetrievalRecord
-import com.localfind.data.ImportedFile
-import com.localfind.index.INDEXING_CANCELLED_MESSAGE
-import com.localfind.index.IndexResult
+import com.localfind.core.model.ImportedFile
+import com.localfind.core.model.INDEXING_CANCELLED_MESSAGE
+import com.localfind.core.model.IndexResult
 import com.localfind.index.Indexer
-import com.localfind.index.IndexingResumeLogic
+import com.localfind.core.indexing.IndexingResumeLogic
 import com.localfind.index.IndexingResumeManager
 import com.localfind.index.audio.AudioDecoder
 import com.localfind.index.image.ImageIndexer
-import com.localfind.ui.search.SearchResultFormatter
+import com.localfind.core.format.SearchResultFormatter
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.async
@@ -27,7 +33,7 @@ import java.io.ByteArrayOutputStream
  * Video (`.mp4`) indexing pipeline and hardware keyframe / thermal pacing utilities for [Indexer].
  *
  * Optimizations (PRD §2, ARCHITECTURE.md §5):
- * 1. Vision-Only by default: Video audio track is skipped by default ([com.localfind.data.AppSettings.videoIncludeAudio] = false),
+ * 1. Vision-Only by default: Video audio track is skipped by default ([com.localfind.core.settings.AppSettings.videoIncludeAudio] = false),
  *    saving audio decoding time and eliminating audio tensor memory allocations.
  * 2. Pipeline Overlap: If audio indexing is enabled in settings, audio decoding is launched concurrently
  *    in the background ([Dispatchers.IO]) and cached once on first await so audio decoding overlaps with
@@ -36,7 +42,7 @@ import java.io.ByteArrayOutputStream
  *    ([MediaMetadataRetriever.getScaledFrameAtTime]) directly to 256px with [MediaMetadataRetriever.OPTION_CLOSEST_SYNC],
  *    bypassing full-resolution software bitmap allocations.
  * 4. Complete Chunk Skipping: Probes the first keyframe of each window. If its visual luminance signature
- *    is >= [com.localfind.data.AppSettings.videoSimilarityThreshold] (default 85%) similar to the previous window,
+ *    is >= [com.localfind.core.settings.AppSettings.videoSimilarityThreshold] (default 85%) similar to the previous window,
  *    the entire window is skipped (no second frame decode, no model inference, no redundant SQLite rows).
  * 5. Adaptive Thermal Mitigation: Uses native Android 12+ [PowerManager.getThermalHeadroom] and
  *    [PowerManager.getCurrentThermalStatus] to insert pacing micro-pauses (40ms - 150ms; 2 s at SEVERE thermal status), preventing
@@ -83,7 +89,7 @@ fun Indexer.indexVideoFile(
 
         val rawW = retriever.extractMetadata(MediaMetadataRetriever.METADATA_KEY_VIDEO_WIDTH)?.toIntOrNull() ?: 1280
         val rawH = retriever.extractMetadata(MediaMetadataRetriever.METADATA_KEY_VIDEO_HEIGHT)?.toIntOrNull() ?: 720
-        val (targetW, targetH) = ImageIndexer.calculateTargetDimensions(
+        val (targetW, targetH) = ImageSizing.calculateTargetDimensions(
             rawW,
             rawH,
             256.coerceAtMost(settings.maxImageDimension)
@@ -226,9 +232,9 @@ fun Indexer.indexVideoFile(
                 }
             }
 
-            val metadata = buildChunkMetadata(file, type = "video", location = window.startMs.toString())
+            val metadata = ChunkMetadata.build(file, kind = FileKind.VIDEO, location = window.startMs.toString())
             val text = "${file.displayName} @ ${SearchResultFormatter.formatTimeMs(window.startMs)}"
-            records.add(RetrievalRecord("${file.uri}_$index", listOf(TextPart(text)), embedding, metadata))
+            records.add(RetrievalRecord(ChunkMetadata.chunkId(file.uri, index), listOf(TextPart(text)), embedding, metadata))
             indexedChunksCount++
 
             // Commit in batches of 3 windows to prevent loss of slow inferences
@@ -260,13 +266,6 @@ fun Indexer.indexVideoFile(
     IndexingResumeManager.clearResumeChunk(context, file.uri)
     return IndexResult(indexedChunksCount.coerceAtLeast(if (totalWindows > 0) 1 else 0), true)
 }
-
-/**
- * Default micro-pacing delay in milliseconds inserted between consecutive media chunks
- * to yield GPU and CPU time-slices to Android's SurfaceFlinger and HWUI compositor,
- * preventing UI lag and frame drops while preserving >90% indexing speed.
- */
-const val DEFAULT_MICRO_PACING_DELAY_MS = 20L
 
 /**
  * Calculates an adaptive pacing delay in milliseconds based on real-time device thermal headroom

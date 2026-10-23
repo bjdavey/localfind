@@ -1,5 +1,11 @@
 package com.localfind.ui.gallery
 
+import com.localfind.core.library.GalleryCategory
+import com.localfind.core.library.LibraryFilters
+import com.localfind.core.library.PreviewMath
+import com.localfind.core.model.FileKind
+import com.localfind.core.model.FileTypes
+import com.localfind.core.text.PdfPageMath
 import android.content.Context
 import android.graphics.Bitmap
 import android.graphics.BitmapFactory
@@ -20,11 +26,11 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import androidx.core.net.toUri
 import com.localfind.R
-import com.localfind.data.Folder
-import com.localfind.data.ImportedFile
+import com.localfind.core.model.Folder
+import com.localfind.core.model.ImportedFile
 import com.localfind.index.Indexer
-import com.localfind.search.SearchResult
-import com.localfind.ui.search.SearchResultFormatter
+import com.localfind.core.model.SearchResult
+import com.localfind.core.format.SearchResultFormatter
 import com.localfind.ui.theme.BadgeAudio
 import com.localfind.ui.theme.BadgeImage
 import com.localfind.ui.theme.BadgePdf
@@ -35,30 +41,6 @@ import java.io.BufferedReader
 import java.io.InputStreamReader
 import kotlin.math.max
 import kotlin.math.roundToInt
-
-/**
- * Filter categories used in both the Gallery Grid and the Dedicated Search View.
- *
- * Allows users to quickly narrow down files or search hits by media modality.
- */
-enum class GalleryCategory(
-    val label: String,
-    /**
-     * Chunk metadata "type" values associated with this category.
-     * Used by Searcher to restrict nearest-neighbor vector search directly in SQLite
-     * ("Search after filter, not filter search results"), preventing irrelevant modalities
-     * from consuming the top-K budget.
-     * Null means no modality restriction (matches all file types).
-     */
-    val types: List<String>? = null
-) {
-    ALL("All", null),
-    PHOTOS("Photos", listOf("image")),
-    VIDEOS("Videos", listOf("video")),
-    PDFS("PDFs", listOf("pdf")),
-    TEXT("Text", listOf("text")),
-    AUDIO("Audio", listOf("audio"))
-}
 
 /**
  * Material Symbol drawable resource associated with each [GalleryCategory].
@@ -151,157 +133,9 @@ data class FilePreviewData(
 object ThumbnailHelper {
 
     private const val THUMBNAIL_MAX_DIM = 360
-    private const val TEXT_PREVIEW_MAX_CHARS = 320
-
-    /** Offset in milliseconds added to video thumbnail extraction to avoid black/fade-in frames. */
-    const val VIDEO_THUMBNAIL_OFFSET_MS = 2_000L
 
     // Thread-safe in-memory cache storing up to 80 file preview records
     private val previewCache = object : LruCache<String, FilePreviewData>(80) {}
-
-    /**
-     * Calculates the target seek time in milliseconds for video thumbnail extraction.
-     *
-     * @param baseTimeMs Starting timestamp (e.g. search chunk offset or 0L for gallery grid).
-     * @param durationMs Total video duration in milliseconds (if known, or 0L).
-     * @param offsetMs Additional offset to advance into the scene (defaults to [VIDEO_THUMBNAIL_OFFSET_MS] = 2000ms).
-     * @return Target timestamp clamped within the video duration boundaries.
-     */
-    fun computeVideoThumbnailTargetTimeMs(
-        baseTimeMs: Long,
-        durationMs: Long,
-        offsetMs: Long = VIDEO_THUMBNAIL_OFFSET_MS
-    ): Long {
-        val rawTarget = baseTimeMs.coerceAtLeast(0L) + offsetMs
-        return if (durationMs > 0L) {
-            rawTarget.coerceAtMost((durationMs - 100L).coerceAtLeast(0L))
-        } else {
-            rawTarget
-        }
-    }
-
-    /**
-     * Computes the 0-based page index to render for a PDF document.
-     *
-     * @param pageNumber 1-based page number from search result location, or null for cover page.
-     * @param pageCount Total page count in the PDF.
-     * @return 0-based page index clamped to [0, pageCount - 1].
-     */
-    fun computePdfTargetPageIndex(pageNumber: Int?, pageCount: Int): Int {
-        return PdfViewerHelper.toZeroBasedPage(pageNumber ?: 1, pageCount)
-    }
-
-    /**
-     * Builds the cache key for preview data. For video search results with a specific timestamp,
-     * or PDF search results with a matching page number, appends the offset so multiple matches
-     * from the same file have distinct previews.
-     */
-    fun previewCacheKey(
-        uriString: String,
-        timeOffsetMs: Long? = null,
-        pageNumber: Int? = null
-    ): String {
-        return when {
-            pageNumber != null -> "$uriString@p$pageNumber"
-            timeOffsetMs != null -> "$uriString@$timeOffsetMs"
-            else -> uriString
-        }
-    }
-
-    /**
-     * Determines the [GalleryCategory] for an [ImportedFile] based on its name and MIME type.
-     */
-    fun categorizeFile(fileName: String, mimeType: String?): GalleryCategory {
-        return when {
-            Indexer.isImageNameOrMime(fileName, mimeType) -> GalleryCategory.PHOTOS
-            Indexer.isVideoNameOrMime(fileName, mimeType) -> GalleryCategory.VIDEOS
-            Indexer.isAudioNameOrMime(fileName, mimeType) -> GalleryCategory.AUDIO
-            Indexer.isPdfNameOrMime(fileName, mimeType) -> GalleryCategory.PDFS
-            // Plain text, Markdown and any other supported file fall back to the text category
-            else -> GalleryCategory.TEXT
-        }
-    }
-
-    /**
-     * Determines the [GalleryCategory] for a [SearchResult] based on its recorded `fileType` or file name.
-     */
-    fun categorizeSearchResult(result: SearchResult): GalleryCategory {
-        return when (result.fileType.lowercase()) {
-            "image" -> GalleryCategory.PHOTOS
-            "video" -> GalleryCategory.VIDEOS
-            "audio" -> GalleryCategory.AUDIO
-            "pdf" -> GalleryCategory.PDFS
-            "text" -> GalleryCategory.TEXT
-            else -> categorizeFile(result.fileName, null)
-        }
-    }
-
-    /**
-     * Filters a list of [ImportedFile] items by the selected [GalleryCategory].
-     */
-    fun filterFiles(files: List<ImportedFile>, category: GalleryCategory): List<ImportedFile> {
-        if (category == GalleryCategory.ALL) return files
-        return files.filter { categorizeFile(it.displayName, it.mimeType) == category }
-    }
-
-    /**
-     * Filters a list of [ImportedFile] items located in the given [folderId]
-     * (or root level if `folderId == null`), and optionally filters by [GalleryCategory].
-     */
-    fun filterFilesByFolder(
-        files: List<ImportedFile>,
-        folderId: String?,
-        category: GalleryCategory = GalleryCategory.ALL
-    ): List<ImportedFile> {
-        val folderFiles = files.filter { it.folderId == folderId }
-        return filterFiles(folderFiles, category)
-    }
-
-    /**
-     * Calculates the total direct items (files + subfolders) inside a folder.
-     */
-    fun getFolderItemCount(
-        files: List<ImportedFile>,
-        folders: List<Folder>,
-        folderId: String
-    ): Int {
-        val fileCount = files.count { it.folderId == folderId }
-        val subfolderCount = folders.count { it.parentId == folderId }
-        return fileCount + subfolderCount
-    }
-
-    /**
-     * Returns the list of [GalleryCategory] entries that have at least one imported file
-     * in the library, always preserving [GalleryCategory.ALL] as the first option.
-     *
-     * Used to hide category filter chips for file types that do not exist in the app,
-     * reducing UI clutter and preventing searches in empty modalities.
-     */
-    fun getAvailableCategories(files: List<ImportedFile>): List<GalleryCategory> {
-        if (files.isEmpty()) return listOf(GalleryCategory.ALL)
-        val presentCategories = files.map { categorizeFile(it.displayName, it.mimeType) }.toSet()
-        return GalleryCategory.entries.filter { it == GalleryCategory.ALL || it in presentCategories }
-    }
-
-    /**
-     * Cleans raw text from the beginning of a `.txt` or `.md` file so it displays neatly
-     * inside a miniature document thumbnail card.
-     */
-    fun formatFirstLinesPreview(rawText: String, maxChars: Int = TEXT_PREVIEW_MAX_CHARS): String {
-        val normalized = rawText
-            .replace("\r\n", "\n")
-            .lines()
-            .map { it.trimEnd() }
-            .dropWhile { it.isBlank() }
-            .joinToString("\n")
-            .trim()
-        if (normalized.isEmpty()) return "(Empty document)"
-        return if (normalized.length <= maxChars) {
-            normalized
-        } else {
-            normalized.take(maxChars).trimEnd() + "…"
-        }
-    }
 
     /**
      * Retrieves cached [FilePreviewData] immediately if available, or `null` if not yet loaded.
@@ -315,7 +149,7 @@ object ThumbnailHelper {
         timeOffsetMs: Long? = null,
         pageNumber: Int? = null
     ): FilePreviewData? {
-        val key = previewCacheKey(uri, timeOffsetMs, pageNumber)
+        val key = PreviewMath.previewCacheKey(uri, timeOffsetMs, pageNumber)
         synchronized(previewCache) {
             return previewCache.get(key)
         }
@@ -350,7 +184,7 @@ object ThumbnailHelper {
         timeOffsetMs: Long? = null,
         pageNumber: Int? = null
     ): FilePreviewData {
-        val cacheKey = previewCacheKey(uriString, timeOffsetMs, pageNumber)
+        val cacheKey = PreviewMath.previewCacheKey(uriString, timeOffsetMs, pageNumber)
         synchronized(previewCache) {
             previewCache.get(cacheKey)?.let { return it }
         }
@@ -362,10 +196,10 @@ object ThumbnailHelper {
         }
 
         val generated = when {
-            Indexer.isPdfNameOrMime(fileName, mimeType) -> loadPdfPreview(context, uri, pageNumber)
-            Indexer.isVideoNameOrMime(fileName, mimeType) -> loadVideoPreview(context, uri, timeOffsetMs)
-            Indexer.isAudioNameOrMime(fileName, mimeType) -> loadAudioPreview(context, uri)
-            Indexer.isTextNameOrMime(fileName, mimeType) -> loadTextPreview(context, uri, fileName)
+            FileTypes.isPdfNameOrMime(fileName, mimeType) -> loadPdfPreview(context, uri, pageNumber)
+            FileTypes.isVideoNameOrMime(fileName, mimeType) -> loadVideoPreview(context, uri, timeOffsetMs)
+            FileTypes.isAudioNameOrMime(fileName, mimeType) -> loadAudioPreview(context, uri)
+            FileTypes.isTextNameOrMime(fileName, mimeType) -> loadTextPreview(context, uri, fileName)
             else -> FilePreviewData()
         }
 
@@ -391,7 +225,7 @@ object ThumbnailHelper {
                     if (pageCount <= 0) {
                         return FilePreviewData()
                     }
-                    val pageIndex = computePdfTargetPageIndex(pageNumber, pageCount)
+                    val pageIndex = PreviewMath.computePdfTargetPageIndex(pageNumber, pageCount)
                     renderer.openPage(pageIndex).use { page ->
                         val scale = THUMBNAIL_MAX_DIM.toFloat() / max(page.width, page.height).coerceAtLeast(1)
                         val width = (page.width * scale).roundToInt().coerceAtLeast(1)
@@ -418,7 +252,7 @@ object ThumbnailHelper {
      * @param context Application context.
      * @param uri Video file URI.
      * @param timeOffsetMs Base timestamp in milliseconds (e.g. search result match chunk, or null for gallery tile).
-     *                     Adds a 2-second offset ([VIDEO_THUMBNAIL_OFFSET_MS]) so thumbnails don't start from
+     *                     Adds a 2-second offset ([PreviewMath.VIDEO_THUMBNAIL_OFFSET_MS]) so thumbnails don't start from
      *                     the first second (avoiding black/blank fade-ins) for both search results and gallery tiles.
      */
     private fun loadVideoPreview(
@@ -435,7 +269,7 @@ object ThumbnailHelper {
             val badge = if (durationMs > 0L) SearchResultFormatter.formatTimeMs(durationMs) else "VIDEO"
 
             // Compute target seek time with the 2-second offset, avoiding the first second and clamping within duration
-            val targetTimeMs = computeVideoThumbnailTargetTimeMs(
+            val targetTimeMs = PreviewMath.computeVideoThumbnailTargetTimeMs(
                 baseTimeMs = timeOffsetMs ?: 0L,
                 durationMs = durationMs
             )
@@ -510,10 +344,10 @@ object ThumbnailHelper {
         try {
             context.contentResolver.openInputStream(uri)?.use { stream ->
                 BufferedReader(InputStreamReader(stream, Charsets.UTF_8)).use { reader ->
-                    val buffer = CharArray(TEXT_PREVIEW_MAX_CHARS * 2)
+                    val buffer = CharArray(PreviewMath.TEXT_PREVIEW_MAX_CHARS * 2)
                     val readCount = reader.read(buffer, 0, buffer.size)
                     val raw = if (readCount > 0) String(buffer, 0, readCount) else ""
-                    return FilePreviewData(textSnippet = formatFirstLinesPreview(raw))
+                    return FilePreviewData(textSnippet = PreviewMath.formatFirstLinesPreview(raw))
                 }
             }
         } catch (_: Exception) {

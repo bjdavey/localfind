@@ -8,13 +8,13 @@ import android.os.Process
 import android.util.Log
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.platform.app.InstrumentationRegistry
-import com.localfind.data.AppSettings
+import com.localfind.core.settings.AppSettings
 import com.localfind.data.EmbeddingStore
 import com.localfind.data.EngineManager
-import com.localfind.data.HardwareAccelerator
-import com.localfind.data.ImportedFile
+import com.localfind.core.settings.HardwareAccelerator
+import com.localfind.core.model.ImportedFile
 import com.localfind.embed.Embedder
-import com.localfind.index.IndexResult
+import com.localfind.core.model.IndexResult
 import com.localfind.index.Indexer
 import com.localfind.index.IndexingResumeManager
 import com.localfind.index.video.indexVideoFile

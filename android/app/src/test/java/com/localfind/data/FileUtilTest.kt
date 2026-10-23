@@ -1,5 +1,8 @@
 package com.localfind.data
 
+import com.localfind.core.model.FileTypes
+import com.localfind.core.format.formatFileSize
+import com.localfind.core.model.ImportedFile
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
@@ -120,7 +123,7 @@ class FileUtilTest {
     @Test
     fun supportedMimeTypes_containsExpectedTypes() {
         // Document picker MIME filter must include all 5 PRD modalities
-        val mimeList = FileImporter.SUPPORTED_MIME_TYPES.toList()
+        val mimeList = FileTypes.SUPPORTED_MIME_TYPES.toList()
         assertTrue(mimeList.contains("application/pdf"))
         assertTrue(mimeList.contains("image/jpeg"))
         assertTrue(mimeList.contains("image/png"))

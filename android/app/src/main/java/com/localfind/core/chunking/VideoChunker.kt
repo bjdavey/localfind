@@ -1,6 +1,7 @@
-package com.localfind.index.video
+package com.localfind.core.chunking
 
-import com.localfind.index.audio.AUDIO_SAMPLE_RATE
+import com.localfind.core.model.DEFAULT_VISION_TOKENS_PER_IMAGE
+
 
 /** Model input limit in tokens (GOOGLE_AI_EDGE_GALLERY.md §6.2). Longer windows fall back to frames only. */
 const val MAX_INPUT_TOKENS = 1024
@@ -48,11 +49,11 @@ object VideoChunker {
 
     /**
      * Estimated model tokens for one window (Gallery numbers): audio ~6.25 tokens/s,
-     * 70 tokens per frame (see DEFAULT_VISION_TOKENS_PER_IMAGE), 8 tokens per slice for time markers.
+     * [DEFAULT_VISION_TOKENS_PER_IMAGE] tokens per frame, 8 tokens per slice for time markers.
      */
     fun estimateTokens(windowMs: Long, frames: Int, withAudio: Boolean): Int {
         val audio = if (withAudio) (windowMs * 6.25 / 1000).toInt() else 0
-        return audio + frames * 70 + frames * 8
+        return audio + frames * DEFAULT_VISION_TOKENS_PER_IMAGE + frames * 8
     }
 
     /**

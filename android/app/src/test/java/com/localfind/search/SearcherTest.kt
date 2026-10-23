@@ -1,5 +1,6 @@
 package com.localfind.search
 
+import com.localfind.core.search.VectorMath
 import com.google.mediapipe.tasks.core.TextPart
 import com.google.mediapipe.tasks.retrieval.components.VectorStore
 import com.google.mediapipe.tasks.retrieval.model.RetrievalRecord
@@ -59,7 +60,7 @@ class SearcherTest {
         ): List<RetrievalRecord> {
             return records
                 .filter { r -> metadataFilter.all { (k, v) -> r.metadata[k] == v } }
-                .sortedByDescending { Searcher.calculateCosineSimilarity(queryEmbedding, it.embeddings) }
+                .sortedByDescending { VectorMath.cosineSimilarity(queryEmbedding, it.embeddings) }
                 .take(topK)
         }
 
@@ -216,30 +217,6 @@ class SearcherTest {
         assertEquals(1, pdfOnly.size)
         assertEquals("pdf", pdfOnly[0].fileType)
         assertEquals("file.pdf", pdfOnly[0].fileName)
-    }
-
-    @Test
-    fun calculateCosineSimilarityMath() {
-        // Identical vectors -> 1.0
-        val v1 = floatArrayOf(3f, 4f)
-        val v2 = floatArrayOf(3f, 4f)
-        assertEquals(1.0f, Searcher.calculateCosineSimilarity(v1, v2), 0.0001f)
-
-        // Scaled vectors in same direction -> 1.0
-        val v3 = floatArrayOf(6f, 8f)
-        assertEquals(1.0f, Searcher.calculateCosineSimilarity(v1, v3), 0.0001f)
-
-        // Opposite vectors -> -1.0
-        val vOpposite = floatArrayOf(-3f, -4f)
-        assertEquals(-1.0f, Searcher.calculateCosineSimilarity(v1, vOpposite), 0.0001f)
-
-        // Orthogonal vectors -> 0.0
-        val vOrtho = floatArrayOf(-4f, 3f) // (3*-4 + 4*3) = 0
-        assertEquals(0.0f, Searcher.calculateCosineSimilarity(v1, vOrtho), 0.0001f)
-
-        // Empty or dimension mismatched -> 0.0
-        assertEquals(0.0f, Searcher.calculateCosineSimilarity(floatArrayOf(), floatArrayOf(1f)), 0.0001f)
-        assertEquals(0.0f, Searcher.calculateCosineSimilarity(floatArrayOf(1f, 2f), floatArrayOf(1f)), 0.0001f)
     }
 
     @Test

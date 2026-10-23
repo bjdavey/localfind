@@ -1,5 +1,7 @@
 package com.localfind.ui.gallery
 
+import com.localfind.core.library.GalleryCategory
+import com.localfind.core.library.LibraryFilters
 import androidx.activity.compose.BackHandler
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.expandVertically
@@ -73,11 +75,11 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import com.localfind.R
 import com.localfind.data.FileOpener
-import com.localfind.data.Folder
-import com.localfind.data.ImportedFile
-import com.localfind.data.IndexingStatus
-import com.localfind.data.ModelStatus
-import com.localfind.index.IndexingProgress
+import com.localfind.core.model.Folder
+import com.localfind.core.model.ImportedFile
+import com.localfind.core.model.IndexingStatus
+import com.localfind.core.model.ModelStatus
+import com.localfind.core.model.IndexingProgress
 
 /**
  * Google Photos-inspired Gallery Home Screen supporting Images, Videos, PDFs, Text Documents, and Audio.
@@ -171,7 +173,7 @@ fun GalleryScreen(
         folders.filter { it.parentId == currentFolderId }.distinctBy { it.id }
     }
     val currentFolderFiles = remember(importedFiles, currentFolderId, selectedCategory) {
-        ThumbnailHelper.filterFilesByFolder(importedFiles, currentFolderId, selectedCategory).distinctBy { it.uri }
+        LibraryFilters.filterFilesByFolder(importedFiles, currentFolderId, selectedCategory).distinctBy { it.uri }
     }
 
     // Breadcrumb path resolution (Root -> Subfolder -> Current)
@@ -921,7 +923,7 @@ fun GalleryScreen(
                 ) {
                     availableCategories.forEach { category ->
                         val count = remember(importedFiles, category) {
-                            ThumbnailHelper.filterFiles(importedFiles, category).size
+                            LibraryFilters.filterFiles(importedFiles, category).size
                         }
                         val isSelected = selectedCategory == category
                         FilterChip(
@@ -1111,7 +1113,7 @@ fun GalleryScreen(
                             key = { "folder_${it.id}" }
                         ) { folder ->
                             val itemCount = remember(importedFiles, folders, folder.id) {
-                                ThumbnailHelper.getFolderItemCount(importedFiles, folders, folder.id)
+                                LibraryFilters.getFolderItemCount(importedFiles, folders, folder.id)
                             }
                             FolderGalleryTile(
                                 folder = folder,

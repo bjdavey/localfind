@@ -1,5 +1,6 @@
 package com.localfind.data
 
+import com.localfind.core.model.FileTypes
 import android.content.ActivityNotFoundException
 import android.content.Context
 import android.content.Intent
@@ -16,44 +17,6 @@ import java.io.File
  * in the phone gallery or its default/installed application.
  */
 object FileOpener {
-
-    /**
-     * Resolves MIME type using file extension and Indexer heuristics without requiring Android Context.
-     * Pure business logic method suitable for fast unit testing.
-     */
-    fun resolveMimeTypeFromExtension(
-        displayName: String,
-        explicitMimeType: String? = null
-    ): String {
-        if (!explicitMimeType.isNullOrBlank() &&
-            explicitMimeType != "*/*" &&
-            explicitMimeType != "application/octet-stream"
-        ) {
-            return explicitMimeType
-        }
-
-        val ext = displayName.substringAfterLast('.', "").lowercase()
-        when (ext) {
-            "mp4" -> return "video/mp4"
-            "jpg", "jpeg" -> return "image/jpeg"
-            "png" -> return "image/png"
-            "gif" -> return "image/gif"
-            "pdf" -> return "application/pdf"
-            "mp3" -> return "audio/mpeg"
-            "m4a" -> return "audio/mp4"
-            "wav" -> return "audio/wav"
-            "txt", "md" -> return "text/plain"
-        }
-
-        return when {
-            Indexer.isImageNameOrMime(displayName, explicitMimeType) -> "image/*"
-            Indexer.isVideoNameOrMime(displayName, explicitMimeType) -> "video/*"
-            Indexer.isAudioNameOrMime(displayName, explicitMimeType) -> "audio/*"
-            Indexer.isPdfNameOrMime(displayName, explicitMimeType) -> "application/pdf"
-            Indexer.isTextNameOrMime(displayName, explicitMimeType) -> "text/plain"
-            else -> "*/*"
-        }
-    }
 
     /**
      * Resolves the best MIME type for the specified file and URI.
@@ -99,7 +62,7 @@ object FileOpener {
         }
 
         // 4. Fallback based on extension heuristics and Indexer categories
-        return resolveMimeTypeFromExtension(displayName, explicitMimeType)
+        return FileTypes.resolveMimeTypeFromExtension(displayName, explicitMimeType)
     }
 
     /**

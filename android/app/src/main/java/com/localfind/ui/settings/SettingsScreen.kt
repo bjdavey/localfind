@@ -45,10 +45,10 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.localfind.R
-import com.localfind.data.AppSettings
-import com.localfind.data.HardwareAccelerator
-import com.localfind.data.ModelStatus
-import com.localfind.data.ThemeMode
+import com.localfind.core.settings.AppSettings
+import com.localfind.core.settings.HardwareAccelerator
+import com.localfind.core.model.ModelStatus
+import com.localfind.core.settings.ThemeMode
 import kotlin.math.roundToInt
 
 /**

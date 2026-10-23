@@ -1,5 +1,8 @@
 package com.localfind.data
 
+import com.localfind.core.model.ImportedFile
+import com.localfind.core.model.IndexingStatus
+import com.localfind.core.model.Folder
 import android.content.ContentValues
 import android.content.Context
 import android.database.Cursor
@@ -8,76 +11,7 @@ import android.database.sqlite.SQLiteOpenHelper
 import androidx.core.database.getIntOrNull
 import androidx.core.database.getStringOrNull
 import androidx.core.database.sqlite.transaction
-import java.util.Locale
 import java.util.UUID
-import kotlin.math.log10
-import kotlin.math.pow
-
-/**
- * Metadata record for a user or imported folder.
- *
- * @property id Unique identifier for the folder (e.g. UUID string).
- * @property name User-facing display name of the folder.
- * @property parentId ID of the parent folder if nested, or null if located at the library root.
- * @property createdAt Epoch timestamp (ms) when the folder was created or imported.
- */
-data class Folder(
-    val id: String,
-    val name: String,
-    val parentId: String? = null,
-    val createdAt: Long = System.currentTimeMillis()
-)
-
-/**
- * Metadata record for a file imported via Android's Storage Access Framework (SAF).
- *
- * Privacy / Link Architecture:
- * - We link, not copy: The original file remains in device storage; we do not duplicate it.
- * - Minimal permissions: No broad storage permission (READ_EXTERNAL_STORAGE / MANAGE_EXTERNAL_STORAGE)
- *   is requested. The app only accesses files explicitly chosen by the user in the system picker.
- *
- * @property uri Persistable Content URI string (e.g., `content://com.android.providers.downloads.documents/...`).
- * @property displayName Human-readable file name (e.g., `notes.txt`).
- * @property mimeType MIME type reported by the system content provider (e.g., `text/plain`, `text/markdown`).
- * @property size Size of the file in bytes.
- * @property addedAt Epoch timestamp (ms) when the file was first imported into LocalFind.
- * @property indexingStatus Current background indexing lifecycle status ([IndexingStatus]).
- * @property chunksCount Number of semantic chunks extracted and stored for this file.
- * @property folderId ID of the containing [Folder], or null if the file resides at the library root.
- */
-enum class IndexingStatus {
-    PENDING,
-    INDEXING,
-    INDEXED,
-    FAILED
-}
-
-data class ImportedFile(
-    val uri: String,
-    val displayName: String,
-    val mimeType: String?,
-    val size: Long,
-    val addedAt: Long = System.currentTimeMillis(),
-    val indexingStatus: IndexingStatus = IndexingStatus.INDEXED,
-    val chunksCount: Int = 0,
-    val folderId: String? = null
-)
-
-/**
- * Formats raw byte sizes into human-readable strings (e.g., "512 B", "1.5 KB", "24.0 MB").
- *
- * Handles negative or zero values safely by returning "0 B".
- */
-fun formatFileSize(bytes: Long): String {
-    if (bytes <= 0) return "0 B"
-    val units = arrayOf("B", "KB", "MB", "GB", "TB")
-    // Calculate the base-1024 scale index (0 = B, 1 = KB, 2 = MB, 3 = GB, 4 = TB)
-    val digitGroups = (log10(bytes.toDouble()) / log10(1024.0)).toInt()
-        .coerceIn(0, units.size - 1)
-    if (digitGroups == 0) return "$bytes B"
-    val value = bytes / 1024.0.pow(digitGroups.toDouble())
-    return String.format(Locale.US, "%.1f %s", value, units[digitGroups])
-}
 
 /**
  * SQLite-backed local store for managing imported files, persistent URIs, and folder hierarchies.

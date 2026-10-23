@@ -1,5 +1,6 @@
 package com.localfind.ui.viewer
 
+import com.localfind.core.text.TextViewerHelper
 import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.background
 import androidx.compose.foundation.horizontalScroll

@@ -1,36 +1,26 @@
 package com.localfind.index
 
+import com.localfind.core.model.FileKind
+import com.localfind.core.model.ChunkMetadata
+import com.localfind.core.model.FileTypes
+import com.localfind.core.indexing.IndexingResumeLogic
+import com.localfind.core.model.INDEXING_CANCELLED_MESSAGE
+import com.localfind.core.model.IndexResult
 import android.content.Context
 import android.os.PowerManager
 import com.google.mediapipe.tasks.core.TextPart
 import com.google.mediapipe.tasks.retrieval.model.RetrievalRecord
-import com.localfind.data.AppSettings
+import com.localfind.core.settings.AppSettings
 import com.localfind.data.EmbeddingStore
 import com.localfind.data.EngineManager
-import com.localfind.data.HardwareAccelerator
-import com.localfind.data.ImportedFile
+import com.localfind.core.settings.HardwareAccelerator
+import com.localfind.core.model.ImportedFile
 import com.localfind.embed.Embedder
 import com.localfind.index.audio.indexAudioFile
 import com.localfind.index.document.indexPdfFile
 import com.localfind.index.document.indexTextFile
 import com.localfind.index.image.indexImageFile
 import com.localfind.index.video.indexVideoFile
-
-/** Error message of an [IndexResult] that stopped because the user cancelled or paused indexing. */
-const val INDEXING_CANCELLED_MESSAGE = "Indexing cancelled"
-
-/**
- * Result report from indexing a file.
- *
- * @property chunksCount Number of chunks extracted, embedded, and saved.
- * @property isSuccess Whether indexing succeeded without errors.
- * @property errorMessage Descriptive error message if indexing failed.
- */
-data class IndexResult(
-    val chunksCount: Int,
-    val isSuccess: Boolean,
-    val errorMessage: String? = null
-)
 
 /**
  * Intermediate payload produced for a single chunk inside [Indexer.indexChunkedItems].
@@ -88,23 +78,23 @@ class Indexer(
 
     /** Determines whether an imported file is supported by the text/markdown indexer (.txt, .md). */
     fun isTextFile(file: ImportedFile): Boolean =
-        isTextNameOrMime(file.displayName, file.mimeType)
+        FileTypes.isTextNameOrMime(file.displayName, file.mimeType)
 
     /** Determines whether an imported file is a PDF document (.pdf). */
     fun isPdfFile(file: ImportedFile): Boolean =
-        isPdfNameOrMime(file.displayName, file.mimeType)
+        FileTypes.isPdfNameOrMime(file.displayName, file.mimeType)
 
     /** Determines whether an imported file is a supported image file (.jpg, .jpeg, .png, .gif). */
     fun isImageFile(file: ImportedFile): Boolean =
-        isImageNameOrMime(file.displayName, file.mimeType)
+        FileTypes.isImageNameOrMime(file.displayName, file.mimeType)
 
     /** Determines whether an imported file is a supported audio file (.mp3, .m4a, .wav). */
     fun isAudioFile(file: ImportedFile): Boolean =
-        isAudioNameOrMime(file.displayName, file.mimeType)
+        FileTypes.isAudioNameOrMime(file.displayName, file.mimeType)
 
     /** Determines whether an imported file is a supported video file (.mp4). */
     fun isVideoFile(file: ImportedFile): Boolean =
-        isVideoNameOrMime(file.displayName, file.mimeType)
+        FileTypes.isVideoNameOrMime(file.displayName, file.mimeType)
 
     /**
      * Automatically dispatches indexing based on the file format
@@ -126,21 +116,6 @@ class Indexer(
     }
 
     /**
-     * Builds the canonical metadata map stored alongside each chunk vector in SQLite.
-     */
-    internal fun buildChunkMetadata(
-        file: ImportedFile,
-        type: String,
-        location: String
-    ): Map<String, String> = mapOf(
-        "fileId" to file.uri,
-        "uri" to file.uri,
-        "name" to file.displayName,
-        "type" to type,
-        "location" to location
-    )
-
-    /**
      * Shared resumable batch-indexing loop used by text, PDF, and audio indexers.
      *
      * Handles:
@@ -151,7 +126,7 @@ class Indexer(
      */
     internal inline fun <T> indexChunkedItems(
         file: ImportedFile,
-        type: String,
+        kind: FileKind,
         items: List<T>,
         batchSize: Int,
         deleteOnEmpty: Boolean,
@@ -194,10 +169,10 @@ class Indexer(
 
                 onProgress?.invoke(index + 1, items.size)
                 val data = embedItem(items[index])
-                val metadata = buildChunkMetadata(file, type = type, location = data.location)
+                val metadata = ChunkMetadata.build(file, kind = kind, location = data.location)
                 records.add(
                     RetrievalRecord(
-                        "${file.uri}_$index",
+                        ChunkMetadata.chunkId(file.uri, index),
                         listOf(TextPart(data.snippetText)),
                         data.embedding,
                         metadata
@@ -231,69 +206,5 @@ class Indexer(
 
         IndexingResumeManager.clearResumeChunk(context, file.uri)
         return IndexResult(items.size, true)
-    }
-
-    companion object {
-        /**
-         * Checks whether a file with the given display name and MIME type is supported by
-         * LocalFind's indexers and has a corresponding builtin viewer.
-         */
-        fun isSupported(displayName: String, mimeType: String?): Boolean {
-            return isPdfNameOrMime(displayName, mimeType) ||
-                isImageNameOrMime(displayName, mimeType) ||
-                isAudioNameOrMime(displayName, mimeType) ||
-                isVideoNameOrMime(displayName, mimeType) ||
-                isTextNameOrMime(displayName, mimeType)
-        }
-
-        /** Checks whether a file name or MIME type corresponds to a supported text or markdown format. */
-        fun isTextNameOrMime(displayName: String, mimeType: String?): Boolean {
-            val name = displayName.lowercase()
-            val mime = mimeType?.lowercase() ?: ""
-            return name.endsWith(".txt") ||
-                name.endsWith(".md") ||
-                mime.startsWith("text/")
-        }
-
-        /** Checks whether a file name or MIME type corresponds to a supported PDF document. */
-        fun isPdfNameOrMime(displayName: String, mimeType: String?): Boolean {
-            val name = displayName.lowercase()
-            val mime = mimeType?.lowercase() ?: ""
-            return name.endsWith(".pdf") || mime == "application/pdf"
-        }
-
-        /** Checks whether a file name or MIME type corresponds to a supported video format (.mp4). */
-        fun isVideoNameOrMime(displayName: String, mimeType: String?): Boolean =
-            displayName.lowercase().endsWith(".mp4") || mimeType?.lowercase() == "video/mp4"
-
-        /** Checks whether a file name or MIME type corresponds to a supported audio format. */
-        fun isAudioNameOrMime(displayName: String, mimeType: String?): Boolean {
-            val name = displayName.lowercase()
-            return name.endsWith(".mp3") ||
-                name.endsWith(".m4a") ||
-                name.endsWith(".wav") ||
-                mimeType?.lowercase()?.startsWith("audio/") == true
-        }
-
-        /** Checks whether a file name or MIME type corresponds to a supported image format (.jpg, .jpeg, .png, .gif). */
-        fun isImageNameOrMime(displayName: String, mimeType: String?): Boolean {
-            val name = displayName.lowercase()
-            val mime = mimeType?.lowercase() ?: ""
-            return name.endsWith(".jpg") ||
-                name.endsWith(".jpeg") ||
-                name.endsWith(".png") ||
-                name.endsWith(".gif") ||
-                mime == "image/jpeg" ||
-                mime == "image/jpg" ||
-                mime == "image/png" ||
-                mime == "image/gif"
-        }
-
-        /** Checks whether a file name or MIME type specifically corresponds to a GIF image (.gif, image/gif). */
-        fun isGifNameOrMime(displayName: String, mimeType: String?): Boolean {
-            val name = displayName.lowercase()
-            val mime = mimeType?.lowercase() ?: ""
-            return name.endsWith(".gif") || mime == "image/gif"
-        }
     }
 }

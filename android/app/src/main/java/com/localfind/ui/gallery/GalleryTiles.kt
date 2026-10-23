@@ -1,5 +1,8 @@
 package com.localfind.ui.gallery
 
+import com.localfind.core.library.GalleryCategory
+import com.localfind.core.library.LibraryFilters
+import com.localfind.core.model.FileTypes
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.Image
@@ -53,9 +56,9 @@ import androidx.core.net.toUri
 import coil.compose.AsyncImage
 import coil.request.ImageRequest
 import com.localfind.R
-import com.localfind.data.Folder
-import com.localfind.data.ImportedFile
-import com.localfind.data.IndexingStatus
+import com.localfind.core.model.Folder
+import com.localfind.core.model.ImportedFile
+import com.localfind.core.model.IndexingStatus
 import com.localfind.index.Indexer
 import com.localfind.ui.theme.BadgePdf
 import com.localfind.ui.theme.BadgeText
@@ -92,10 +95,10 @@ fun MediaGalleryTile(
 ) {
     val context = LocalContext.current
     val category = remember(file.displayName, file.mimeType) {
-        ThumbnailHelper.categorizeFile(file.displayName, file.mimeType)
+        LibraryFilters.categorizeFile(file.displayName, file.mimeType)
     }
     val isPdf = remember(file.displayName, file.mimeType) {
-        Indexer.isPdfNameOrMime(file.displayName, file.mimeType)
+        FileTypes.isPdfNameOrMime(file.displayName, file.mimeType)
     }
 
     val previewData = rememberFilePreview(
@@ -382,7 +385,7 @@ fun MediaGalleryTile(
                             }
                         }
                     }
-                } else if (Indexer.isGifNameOrMime(file.displayName, file.mimeType)) {
+                } else if (FileTypes.isGifNameOrMime(file.displayName, file.mimeType)) {
                     // Modality Badge for GIF images
                     Surface(
                         shape = RoundedCornerShape(8.dp),

@@ -1,5 +1,9 @@
 package com.localfind.data
 
+import com.localfind.core.model.FileTypes
+import com.localfind.core.model.ImportedFile
+import com.localfind.core.model.IndexingStatus
+import com.localfind.core.model.Folder
 import android.content.ContentResolver
 import android.content.Context
 import android.content.Intent
@@ -36,31 +40,10 @@ data class FolderImportResult(
 object FileImporter {
 
     /**
-     * Supported MIME types for system document pickers.
-     * Restricts the system file picker to only show supported file types with builtin viewers.
-     */
-    val SUPPORTED_MIME_TYPES = arrayOf(
-        "text/plain",
-        "text/markdown",
-        "text/*",
-        "application/pdf",
-        "image/jpeg",
-        "image/png",
-        "image/gif",
-        "audio/mpeg",
-        "audio/mp4",
-        "audio/x-m4a",
-        "audio/wav",
-        "audio/x-wav",
-        "audio/*",
-        "video/mp4"
-    )
-
-    /**
      * Checks whether a file with given name and MIME type is supported and has a builtin viewer.
      */
     fun isSupported(displayName: String, mimeType: String?): Boolean =
-        Indexer.isSupported(displayName, mimeType)
+        FileTypes.isSupported(displayName, mimeType)
 
     /**
      * Resolves the human-readable display name for a given [Uri] from its content provider,

@@ -1,7 +1,7 @@
-package com.localfind.index.document
+package com.localfind.core.chunking
 
-import com.localfind.data.DEFAULT_TEXT_CHUNK_OVERLAP
-import com.localfind.data.DEFAULT_TEXT_CHUNK_SIZE
+import com.localfind.core.settings.DEFAULT_TEXT_CHUNK_OVERLAP
+import com.localfind.core.settings.DEFAULT_TEXT_CHUNK_SIZE
 
 /**
  * Represents a text passage extracted from a document for embedding and indexing.

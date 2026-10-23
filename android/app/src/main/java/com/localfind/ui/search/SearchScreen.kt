@@ -1,5 +1,6 @@
 package com.localfind.ui.search
 
+import com.localfind.core.library.LibraryFilters
 import android.net.Uri
 import androidx.activity.compose.BackHandler
 import androidx.activity.compose.rememberLauncherForActivityResult
@@ -55,9 +56,9 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import com.localfind.R
-import com.localfind.data.ImportedFile
-import com.localfind.search.SearchResult
-import com.localfind.ui.gallery.GalleryCategory
+import com.localfind.core.model.ImportedFile
+import com.localfind.core.model.SearchResult
+import com.localfind.core.library.GalleryCategory
 import com.localfind.ui.gallery.ThumbnailHelper
 import com.localfind.ui.gallery.iconResId
 
@@ -243,7 +244,7 @@ fun SearchScreen(
         if (targetFile != null) {
             // Determine file modality to display the corresponding Material Symbol icon
             val targetCategory = remember(targetFile) {
-                ThumbnailHelper.categorizeFile(targetFile.displayName, targetFile.mimeType)
+                LibraryFilters.categorizeFile(targetFile.displayName, targetFile.mimeType)
             }
 
             Surface(

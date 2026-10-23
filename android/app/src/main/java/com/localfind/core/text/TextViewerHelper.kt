@@ -1,4 +1,4 @@
-package com.localfind.ui.viewer
+package com.localfind.core.text
 
 /**
  * Represents a single text line within a document with its 0-based character offsets.

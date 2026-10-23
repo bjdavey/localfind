@@ -1,8 +1,12 @@
 package com.localfind.data
 
+import com.localfind.core.settings.AppSettings
+import com.localfind.core.settings.HardwareAccelerator
+import com.localfind.core.model.ModelStatus
 import android.content.Context
 import android.util.Log
 import com.localfind.embed.Embedder
+import com.localfind.embed.resolveEffective
 import com.localfind.embed.SocDetector
 import com.localfind.index.Indexer
 import com.localfind.search.Searcher
@@ -13,29 +17,6 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
-
-/**
- * Observable lifecycle status of the on-device embedding model.
- */
-sealed interface ModelStatus {
-    /** Model is currently being verified, copied, or initialized in memory. */
-    data object Loading : ModelStatus
-
-    /**
-     * Model is verified in internal storage and initialized in memory.
-     *
-     * @property sizeBytes File size in bytes.
-     */
-    data class Loaded(val sizeBytes: Long) : ModelStatus
-
-    /**
-     * Model is not loaded or failed to initialize.
-     *
-     * @property message Descriptive explanation of the issue.
-     * @property instructions Clear action steps for loading the model on device or emulator.
-     */
-    data class Error(val message: String, val instructions: String) : ModelStatus
-}
 
 /**
  * Singleton coordinator for on-device AI inference and local vector storage.

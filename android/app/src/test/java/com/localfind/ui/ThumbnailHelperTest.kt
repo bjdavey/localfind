@@ -1,7 +1,9 @@
 package com.localfind.ui
 
-import com.localfind.data.ImportedFile
-import com.localfind.ui.gallery.GalleryCategory
+import com.localfind.core.library.PreviewMath
+import com.localfind.core.library.LibraryFilters
+import com.localfind.core.model.ImportedFile
+import com.localfind.core.library.GalleryCategory
 import com.localfind.ui.gallery.ThumbnailHelper
 import com.localfind.ui.gallery.iconResId
 import org.junit.Assert.assertEquals
@@ -17,35 +19,35 @@ class ThumbnailHelperTest {
     fun `categorizeFile classifies photos, videos, audio, and documents accurately`() {
         assertEquals(
             GalleryCategory.PHOTOS,
-            ThumbnailHelper.categorizeFile("vacation.jpg", "image/jpeg")
+            LibraryFilters.categorizeFile("vacation.jpg", "image/jpeg")
         )
         assertEquals(
             GalleryCategory.PHOTOS,
-            ThumbnailHelper.categorizeFile("diagram.png", null)
+            LibraryFilters.categorizeFile("diagram.png", null)
         )
         assertEquals(
             GalleryCategory.PHOTOS,
-            ThumbnailHelper.categorizeFile("animation.gif", "image/gif")
+            LibraryFilters.categorizeFile("animation.gif", "image/gif")
         )
         assertEquals(
             GalleryCategory.PHOTOS,
-            ThumbnailHelper.categorizeFile("reaction.gif", null)
+            LibraryFilters.categorizeFile("reaction.gif", null)
         )
         assertEquals(
             GalleryCategory.VIDEOS,
-            ThumbnailHelper.categorizeFile("clip.mp4", "video/mp4")
+            LibraryFilters.categorizeFile("clip.mp4", "video/mp4")
         )
         assertEquals(
             GalleryCategory.AUDIO,
-            ThumbnailHelper.categorizeFile("memo.m4a", "audio/mp4")
+            LibraryFilters.categorizeFile("memo.m4a", "audio/mp4")
         )
         assertEquals(
             GalleryCategory.PDFS,
-            ThumbnailHelper.categorizeFile("contract.pdf", "application/pdf")
+            LibraryFilters.categorizeFile("contract.pdf", "application/pdf")
         )
         assertEquals(
             GalleryCategory.TEXT,
-            ThumbnailHelper.categorizeFile("notes.md", "text/markdown")
+            LibraryFilters.categorizeFile("notes.md", "text/markdown")
         )
     }
 
@@ -59,22 +61,22 @@ class ThumbnailHelperTest {
             ImportedFile("uri://5", "song.mp3", "audio/mpeg", 3072L)
         )
 
-        assertEquals(5, ThumbnailHelper.filterFiles(files, GalleryCategory.ALL).size)
-        assertEquals(1, ThumbnailHelper.filterFiles(files, GalleryCategory.PHOTOS).size)
-        assertEquals(1, ThumbnailHelper.filterFiles(files, GalleryCategory.VIDEOS).size)
-        assertEquals(1, ThumbnailHelper.filterFiles(files, GalleryCategory.PDFS).size)
-        assertEquals(1, ThumbnailHelper.filterFiles(files, GalleryCategory.TEXT).size)
-        assertEquals(1, ThumbnailHelper.filterFiles(files, GalleryCategory.AUDIO).size)
+        assertEquals(5, LibraryFilters.filterFiles(files, GalleryCategory.ALL).size)
+        assertEquals(1, LibraryFilters.filterFiles(files, GalleryCategory.PHOTOS).size)
+        assertEquals(1, LibraryFilters.filterFiles(files, GalleryCategory.VIDEOS).size)
+        assertEquals(1, LibraryFilters.filterFiles(files, GalleryCategory.PDFS).size)
+        assertEquals(1, LibraryFilters.filterFiles(files, GalleryCategory.TEXT).size)
+        assertEquals(1, LibraryFilters.filterFiles(files, GalleryCategory.AUDIO).size)
     }
 
     @Test
     fun `formatFirstLinesPreview strips leading blank lines and truncates cleanly`() {
         val raw = "\n  \n# Project Roadmap\n1. Build offline multimodal gallery\n2. Add seamless viewer transitions"
-        val preview = ThumbnailHelper.formatFirstLinesPreview(raw, maxChars = 45)
+        val preview = PreviewMath.formatFirstLinesPreview(raw, maxChars = 45)
         assertTrue(preview.startsWith("# Project Roadmap"))
         assertTrue(preview.endsWith("…"))
 
-        val emptyPreview = ThumbnailHelper.formatFirstLinesPreview("   \n  \r\n ")
+        val emptyPreview = PreviewMath.formatFirstLinesPreview("   \n  \r\n ")
         assertEquals("(Empty document)", emptyPreview)
     }
 
@@ -93,13 +95,13 @@ class ThumbnailHelperTest {
     @Test
     fun `getAvailableCategories returns only categories present in imported files plus ALL`() {
         // Empty library returns only ALL
-        assertEquals(listOf(GalleryCategory.ALL), ThumbnailHelper.getAvailableCategories(emptyList()))
+        assertEquals(listOf(GalleryCategory.ALL), LibraryFilters.getAvailableCategories(emptyList()))
 
         // Library with only photos returns ALL and PHOTOS (omits VIDEOS, PDFS, TEXT, AUDIO)
         val photosOnly = listOf(ImportedFile("u1", "photo.jpg", "image/jpeg", 100L))
         assertEquals(
             listOf(GalleryCategory.ALL, GalleryCategory.PHOTOS),
-            ThumbnailHelper.getAvailableCategories(photosOnly)
+            LibraryFilters.getAvailableCategories(photosOnly)
         )
 
         // Library with photos and PDFs returns ALL, PHOTOS, and PDFS
@@ -109,7 +111,7 @@ class ThumbnailHelperTest {
         )
         assertEquals(
             listOf(GalleryCategory.ALL, GalleryCategory.PHOTOS, GalleryCategory.PDFS),
-            ThumbnailHelper.getAvailableCategories(mixedFiles)
+            LibraryFilters.getAvailableCategories(mixedFiles)
         )
 
         // Library with all file types returns all 6 categories
@@ -122,7 +124,7 @@ class ThumbnailHelperTest {
         )
         assertEquals(
             GalleryCategory.entries.toList(),
-            ThumbnailHelper.getAvailableCategories(allTypes)
+            LibraryFilters.getAvailableCategories(allTypes)
         )
     }
 
@@ -140,14 +142,14 @@ class ThumbnailHelperTest {
     @Test
     fun `computeVideoThumbnailTargetTimeMs applies 2s offset and avoids first second`() {
         // Main gallery tile (baseTimeMs = 0L) with long video: extracts at 2000ms (2.0s), not at the start
-        val galleryTargetMs = ThumbnailHelper.computeVideoThumbnailTargetTimeMs(
+        val galleryTargetMs = PreviewMath.computeVideoThumbnailTargetTimeMs(
             baseTimeMs = 0L,
             durationMs = 60_000L
         )
         assertEquals(2_000L, galleryTargetMs)
 
         // Video search result at 15000ms: extracts at 17000ms (15000 + 2000ms)
-        val searchTargetMs = ThumbnailHelper.computeVideoThumbnailTargetTimeMs(
+        val searchTargetMs = PreviewMath.computeVideoThumbnailTargetTimeMs(
             baseTimeMs = 15_000L,
             durationMs = 60_000L
         )
@@ -157,14 +159,14 @@ class ThumbnailHelperTest {
     @Test
     fun `computeVideoThumbnailTargetTimeMs clamps within video duration for short videos`() {
         // Short video of 1500ms duration: does not seek past end of video
-        val shortTargetMs = ThumbnailHelper.computeVideoThumbnailTargetTimeMs(
+        val shortTargetMs = PreviewMath.computeVideoThumbnailTargetTimeMs(
             baseTimeMs = 0L,
             durationMs = 1_500L
         )
         assertEquals(1_400L, shortTargetMs)
 
         // Video with 0 or unknown duration returns base + 2000ms without throwing
-        val unknownDurationTargetMs = ThumbnailHelper.computeVideoThumbnailTargetTimeMs(
+        val unknownDurationTargetMs = PreviewMath.computeVideoThumbnailTargetTimeMs(
             baseTimeMs = 5_000L,
             durationMs = 0L
         )
@@ -174,34 +176,34 @@ class ThumbnailHelperTest {
     @Test
     fun `previewCacheKey differentiates timestamps for search results while keeping base uri for standard gallery tiles`() {
         // Main gallery preview uses raw URI as key
-        assertEquals("content://video.mp4", ThumbnailHelper.previewCacheKey("content://video.mp4", null))
+        assertEquals("content://video.mp4", PreviewMath.previewCacheKey("content://video.mp4", null))
 
         // Search results with moment timestamps use distinct URI@timestamp keys
-        assertEquals("content://video.mp4@0", ThumbnailHelper.previewCacheKey("content://video.mp4", 0L))
-        assertEquals("content://video.mp4@15000", ThumbnailHelper.previewCacheKey("content://video.mp4", 15_000L))
+        assertEquals("content://video.mp4@0", PreviewMath.previewCacheKey("content://video.mp4", 0L))
+        assertEquals("content://video.mp4@15000", PreviewMath.previewCacheKey("content://video.mp4", 15_000L))
 
         // Search results with PDF page numbers use distinct URI@p<page> keys
-        assertEquals("content://doc.pdf@p4", ThumbnailHelper.previewCacheKey("content://doc.pdf", pageNumber = 4))
-        assertEquals("content://doc.pdf", ThumbnailHelper.previewCacheKey("content://doc.pdf", pageNumber = null))
+        assertEquals("content://doc.pdf@p4", PreviewMath.previewCacheKey("content://doc.pdf", pageNumber = 4))
+        assertEquals("content://doc.pdf", PreviewMath.previewCacheKey("content://doc.pdf", pageNumber = null))
     }
 
     @Test
     fun `computePdfTargetPageIndex computes 0-based page index with safe clamping`() {
         // Null page defaults to page index 0 (page 1)
-        assertEquals(0, ThumbnailHelper.computePdfTargetPageIndex(null, 10))
+        assertEquals(0, PreviewMath.computePdfTargetPageIndex(null, 10))
 
         // 1-based page 1 maps to index 0
-        assertEquals(0, ThumbnailHelper.computePdfTargetPageIndex(1, 10))
+        assertEquals(0, PreviewMath.computePdfTargetPageIndex(1, 10))
 
         // 1-based page 4 maps to index 3
-        assertEquals(3, ThumbnailHelper.computePdfTargetPageIndex(4, 10))
+        assertEquals(3, PreviewMath.computePdfTargetPageIndex(4, 10))
 
         // Out-of-bounds page numbers clamp safely within [0, pageCount - 1]
-        assertEquals(9, ThumbnailHelper.computePdfTargetPageIndex(15, 10))
-        assertEquals(0, ThumbnailHelper.computePdfTargetPageIndex(0, 10))
-        assertEquals(0, ThumbnailHelper.computePdfTargetPageIndex(-5, 10))
+        assertEquals(9, PreviewMath.computePdfTargetPageIndex(15, 10))
+        assertEquals(0, PreviewMath.computePdfTargetPageIndex(0, 10))
+        assertEquals(0, PreviewMath.computePdfTargetPageIndex(-5, 10))
 
         // Document with 0 pages handled safely without division-by-zero or crash
-        assertEquals(0, ThumbnailHelper.computePdfTargetPageIndex(1, 0))
+        assertEquals(0, PreviewMath.computePdfTargetPageIndex(1, 0))
     }
 }

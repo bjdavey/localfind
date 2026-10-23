@@ -1,5 +1,6 @@
 package com.localfind.data
 
+import com.localfind.core.format.FileNames
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
@@ -23,21 +24,21 @@ class ShareImporterTest {
     fun sanitizeFileName_removesIllegalFilesystemCharacters() {
         val input = "my:file/with\\bad*chars?and<more>\"quotes\"|pipe.jpg"
         val expected = "my_file_with_bad_chars_and_more__quotes__pipe.jpg"
-        assertEquals(expected, ShareImporter.sanitizeFileName(input))
+        assertEquals(expected, FileNames.sanitize(input))
     }
 
     @Test
     fun sanitizeFileName_trimsWhitespace() {
         val input = "   sample document.pdf   "
         val expected = "sample document.pdf"
-        assertEquals(expected, ShareImporter.sanitizeFileName(input))
+        assertEquals(expected, FileNames.sanitize(input))
     }
 
     @Test
     fun sanitizeFileName_emptyOrAllIllegal_fallsBackGracefully() {
         val input = ":::///???"
         val expected = "_________"
-        assertEquals(expected, ShareImporter.sanitizeFileName(input))
+        assertEquals(expected, FileNames.sanitize(input))
     }
 
     @Test
@@ -49,24 +50,10 @@ class ShareImporterTest {
         File(baseDir, "photo.jpg").createNewFile()
         File(baseDir, "photo_1.jpg").createNewFile()
 
-        // Test custom Context stub with tempFolder as filesDir
-        val context = object {
-            val filesDir = rootDir
-        }
+        // The same naming rule used by createUniqueInternalFile: first free "<base>_<n>.<ext>"
+        val name = FileNames.uniqueName(FileNames.sanitize("photo.jpg")) { File(baseDir, it).exists() }
 
-        // We can verify collision avoidance using the collision logic
-        val sanitized = ShareImporter.sanitizeFileName("photo.jpg")
-        val nameWithoutExt = sanitized.substringBeforeLast('.')
-        val ext = ".${sanitized.substringAfterLast('.')}"
-
-        var candidate = File(baseDir, sanitized)
-        var index = 1
-        while (candidate.exists()) {
-            candidate = File(baseDir, "${nameWithoutExt}_$index$ext")
-            index++
-        }
-
-        assertEquals("photo_2.jpg", candidate.name)
+        assertEquals("photo_2.jpg", name)
     }
 
     @Test

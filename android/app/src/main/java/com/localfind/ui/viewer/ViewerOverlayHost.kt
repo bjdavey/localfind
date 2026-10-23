@@ -1,5 +1,6 @@
 package com.localfind.ui.viewer
 
+import com.localfind.core.model.FileTypes
 import android.content.Context
 import android.widget.Toast
 import androidx.compose.animation.AnimatedVisibility
@@ -21,9 +22,9 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.platform.LocalContext
 import com.localfind.data.FileAvailability
 import com.localfind.data.FileOpener
-import com.localfind.data.ImportedFile
+import com.localfind.core.model.ImportedFile
 import com.localfind.index.Indexer
-import com.localfind.search.SearchResult
+import com.localfind.core.model.SearchResult
 
 /**
  * Holds active state and exit-animation display caches for all 4 builtin viewers
@@ -87,7 +88,7 @@ class ViewerState {
         }
 
         val isPdf = result.fileType.equals("pdf", ignoreCase = true) ||
-            Indexer.isPdfNameOrMime(result.fileName, null)
+            FileTypes.isPdfNameOrMime(result.fileName, null)
 
         if (isPdf) {
             val targetPage = result.location.toInt().coerceAtLeast(1)
@@ -102,7 +103,7 @@ class ViewerState {
         }
 
         val isImage = result.fileType.equals("image", ignoreCase = true) ||
-            Indexer.isImageNameOrMime(result.fileName, null)
+            FileTypes.isImageNameOrMime(result.fileName, null)
 
         if (isImage) {
             val params = ImageViewerParams(
@@ -116,8 +117,8 @@ class ViewerState {
 
         val isPlayable = result.fileType.equals("audio", ignoreCase = true) ||
             result.fileType.equals("video", ignoreCase = true) ||
-            Indexer.isAudioNameOrMime(result.fileName, null) ||
-            Indexer.isVideoNameOrMime(result.fileName, null)
+            FileTypes.isAudioNameOrMime(result.fileName, null) ||
+            FileTypes.isVideoNameOrMime(result.fileName, null)
 
         if (isPlayable) {
             val params = MediaPlayerParams(
@@ -131,7 +132,7 @@ class ViewerState {
         }
 
         val isText = result.fileType.equals("text", ignoreCase = true) ||
-            Indexer.isTextNameOrMime(result.fileName, null)
+            FileTypes.isTextNameOrMime(result.fileName, null)
 
         if (isText) {
             val params = TextViewerParams(
@@ -166,7 +167,7 @@ class ViewerState {
             return
         }
 
-        if (Indexer.isPdfNameOrMime(file.displayName, file.mimeType)) {
+        if (FileTypes.isPdfNameOrMime(file.displayName, file.mimeType)) {
             val params = PdfViewerParams(
                 uri = file.uri,
                 fileName = file.displayName,
@@ -177,7 +178,7 @@ class ViewerState {
             return
         }
 
-        if (Indexer.isImageNameOrMime(file.displayName, file.mimeType)) {
+        if (FileTypes.isImageNameOrMime(file.displayName, file.mimeType)) {
             val params = ImageViewerParams(
                 uri = file.uri,
                 fileName = file.displayName
@@ -187,8 +188,8 @@ class ViewerState {
             return
         }
 
-        if (Indexer.isAudioNameOrMime(file.displayName, file.mimeType) ||
-            Indexer.isVideoNameOrMime(file.displayName, file.mimeType)
+        if (FileTypes.isAudioNameOrMime(file.displayName, file.mimeType) ||
+            FileTypes.isVideoNameOrMime(file.displayName, file.mimeType)
         ) {
             val params = MediaPlayerParams(
                 uri = file.uri,
@@ -200,7 +201,7 @@ class ViewerState {
             return
         }
 
-        if (Indexer.isTextNameOrMime(file.displayName, file.mimeType)) {
+        if (FileTypes.isTextNameOrMime(file.displayName, file.mimeType)) {
             val params = TextViewerParams(
                 uri = file.uri,
                 fileName = file.displayName,
