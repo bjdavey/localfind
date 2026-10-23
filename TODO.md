@@ -82,7 +82,7 @@
 ## Milestone 7: Pre-publish hardening
 - [x] Remove `POST_NOTIFICATIONS` permission (notification controls are then unavailable on Android 13+; update PRD / ARCHITECTURE)
 - [x] SocDetector: recreate dispatch-library symlinks when the target path changed (compare `Os.readlink`), not only when dangling
-- [ ] Set the compile cache dir on the GPU/CPU embedder paths and pin `activationDataType` explicitly
+- [x] Set the compile cache dir on the GPU/CPU embedder paths and pin `activationDataType` explicitly
 - [ ] SAF persisted-URI limit: skip the grant for files under a granted tree, warn near the limit, catch grant failures
 - [ ] Storage checks: free-space check before model staging and indexing; pause with "Storage full" on `SQLiteFullException` / I/O errors
 - [ ] AI pack: switch `fast-follow` to `install-time` so the model is present at first launch (check file-path access and Play size limits first)

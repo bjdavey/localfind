@@ -85,11 +85,7 @@ class Embedder(
 
             // Attempt Text=NPU + Vision=NPU (Audio executes on CPU for DSP mel-spectrogram frontend)
             try {
-                val textVisionOptions = UniversalEmbedderOptions.builder()
-                    .setBaseOptions(npuBaseOptions)
-                    .setL2Normalize(true)
-                    .setVisionTokensPerImage(DEFAULT_VISION_TOKENS_PER_IMAGE)
-                    .setCacheDir(context.cacheDir.absolutePath)
+                val textVisionOptions = commonOptions(context, npuBaseOptions)
                     .setTextDelegate(com.google.mediapipe.tasks.core.Delegate.NPU)
                     .setAudioDelegate(com.google.mediapipe.tasks.core.Delegate.CPU)
                     .setVisionDelegate(com.google.mediapipe.tasks.core.Delegate.NPU)
@@ -109,11 +105,7 @@ class Embedder(
             // Fallback: Vision-only NPU (Text=CPU, Audio=CPU, Vision=NPU)
             if (createdEmbedder == null) {
                 try {
-                    val visionOnlyOptions = UniversalEmbedderOptions.builder()
-                        .setBaseOptions(npuBaseOptions)
-                        .setL2Normalize(true)
-                        .setVisionTokensPerImage(DEFAULT_VISION_TOKENS_PER_IMAGE)
-                        .setCacheDir(context.cacheDir.absolutePath)
+                    val visionOnlyOptions = commonOptions(context, npuBaseOptions)
                         .setTextDelegate(com.google.mediapipe.tasks.core.Delegate.CPU)
                         .setAudioDelegate(com.google.mediapipe.tasks.core.Delegate.CPU)
                         .setVisionDelegate(com.google.mediapipe.tasks.core.Delegate.NPU)
@@ -148,10 +140,7 @@ class Embedder(
         if (createdEmbedder == null && fallbackEffective == HardwareAccelerator.GPU) {
             // Attempt 1: Text=GPU + Vision=GPU (Audio=CPU)
             try {
-                val fullGpuOptions = UniversalEmbedderOptions.builder()
-                    .setBaseOptions(fallbackBaseOptions)
-                    .setL2Normalize(true)
-                    .setVisionTokensPerImage(DEFAULT_VISION_TOKENS_PER_IMAGE)
+                val fullGpuOptions = commonOptions(context, fallbackBaseOptions)
                     .setTextDelegate(com.google.mediapipe.tasks.core.Delegate.GPU)
                     .setAudioDelegate(com.google.mediapipe.tasks.core.Delegate.CPU)
                     .setVisionDelegate(com.google.mediapipe.tasks.core.Delegate.GPU)
@@ -170,10 +159,7 @@ class Embedder(
             // Attempt 2: Vision-only GPU (Text=CPU, Audio=CPU, Vision=GPU)
             if (createdEmbedder == null) {
                 try {
-                    val visionOnlyGpuOptions = UniversalEmbedderOptions.builder()
-                        .setBaseOptions(fallbackBaseOptions)
-                        .setL2Normalize(true)
-                        .setVisionTokensPerImage(DEFAULT_VISION_TOKENS_PER_IMAGE)
+                    val visionOnlyGpuOptions = commonOptions(context, fallbackBaseOptions)
                         .setTextDelegate(com.google.mediapipe.tasks.core.Delegate.CPU)
                         .setAudioDelegate(com.google.mediapipe.tasks.core.Delegate.CPU)
                         .setVisionDelegate(com.google.mediapipe.tasks.core.Delegate.GPU)
@@ -190,10 +176,7 @@ class Embedder(
 
         if (createdEmbedder == null) {
             // CPU mode or fallback: All modalities execute via CPU (XNNPack).
-            val cpuOptions = UniversalEmbedderOptions.builder()
-                .setBaseOptions(fallbackBaseOptions)
-                .setL2Normalize(true)
-                .setVisionTokensPerImage(DEFAULT_VISION_TOKENS_PER_IMAGE)
+            val cpuOptions = commonOptions(context, fallbackBaseOptions)
                 .setTextDelegate(com.google.mediapipe.tasks.core.Delegate.CPU)
                 .setAudioDelegate(com.google.mediapipe.tasks.core.Delegate.CPU)
                 .setVisionDelegate(com.google.mediapipe.tasks.core.Delegate.CPU)
@@ -293,6 +276,23 @@ class Embedder(
 
     companion object {
         private const val TAG = "Embedder"
+
+        /**
+         * Options shared by every accelerator path, so they cannot drift apart:
+         * - L2 normalization, so cosine similarity is a plain dot product.
+         * - The vision token budget.
+         * - A compiled-model cache dir, so GPU / NPU graphs are not recompiled on every model load
+         *   (matters most when Smart mode swaps the embedder).
+         * - FLOAT32 activations, pinned explicitly (it is the library default). The precision changes the
+         *   vectors, so it must not change silently with a library update.
+         */
+        private fun commonOptions(context: Context, baseOptions: BaseOptions) =
+            UniversalEmbedderOptions.builder()
+                .setBaseOptions(baseOptions)
+                .setL2Normalize(true)
+                .setVisionTokensPerImage(DEFAULT_VISION_TOKENS_PER_IMAGE)
+                .setCacheDir(context.cacheDir.absolutePath)
+                .setActivationDataType(UniversalEmbedderOptions.ActivationDataType.FLOAT32)
 
         /**
          * Ensures that the on-device model file exists in [context.filesDir].
