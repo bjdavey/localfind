@@ -85,9 +85,9 @@ fun MediaGalleryTile(
     isSelected: Boolean = false,
     onClick: () -> Unit,
     onLongClick: () -> Unit,
-    onMoreOptionsClick: (() -> Unit)? = null,
-    onCancelIndex: (() -> Unit)? = null,
-    onRetryIndex: (() -> Unit)? = null,
+    onMoreOptionsClick: () -> Unit,
+    onCancelIndex: () -> Unit,
+    onRetryIndex: () -> Unit,
     modifier: Modifier = Modifier
 ) {
     val context = LocalContext.current
@@ -293,15 +293,13 @@ fun MediaGalleryTile(
                 TileStatusOverlay {
                     // Failed: muted ring with a warning icon, offering Retry only
                     StatusRing(R.drawable.ic_warning)
-                    if (onRetryIndex != null) {
-                        StatusActionButton(
-                            text = "Try again",
-                            iconRes = R.drawable.ic_refresh,
-                            contentColor = Color.White,
-                            backgroundColor = MaterialTheme.colorScheme.primary.copy(alpha = 0.85f),
-                            onClick = onRetryIndex
-                        )
-                    }
+                    StatusActionButton(
+                        text = "Try again",
+                        iconRes = R.drawable.ic_refresh,
+                        contentColor = Color.White,
+                        backgroundColor = MaterialTheme.colorScheme.primary.copy(alpha = 0.85f),
+                        onClick = onRetryIndex
+                    )
                 }
             }
 
@@ -408,7 +406,7 @@ fun MediaGalleryTile(
                         modifier = Modifier
                             .size(26.dp)
                             .clip(CircleShape)
-                            .clickable(onClick = onMoreOptionsClick ?: onLongClick),
+                            .clickable(onClick = onMoreOptionsClick),
                         shape = CircleShape,
                         color = Color.Black.copy(alpha = 0.45f)
                     ) {
@@ -501,15 +499,13 @@ private fun StatusRing(iconRes: Int) {
 
 /** Red "Cancel" pill used on active and queued tiles. */
 @Composable
-private fun CancelIndexButton(onCancel: (() -> Unit)?) {
-    if (onCancel != null) {
-        StatusActionButton(
-            text = "Cancel",
-            iconRes = R.drawable.ic_close,
-            contentColor = Color(0xFFFF8A80),
-            onClick = onCancel
-        )
-    }
+private fun CancelIndexButton(onCancel: () -> Unit) {
+    StatusActionButton(
+        text = "Cancel",
+        iconRes = R.drawable.ic_close,
+        contentColor = Color(0xFFFF8A80),
+        onClick = onCancel
+    )
 }
 
 /**

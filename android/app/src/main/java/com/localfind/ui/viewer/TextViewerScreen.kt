@@ -79,7 +79,7 @@ data class TextViewerParams(
 fun TextViewerScreen(
     params: TextViewerParams,
     onClose: () -> Unit,
-    onSearchInFile: (() -> Unit)? = null,
+    onSearchInFile: () -> Unit,
     backHandlerEnabled: Boolean = true,
     modifier: Modifier = Modifier
 ) {
@@ -184,13 +184,11 @@ fun TextViewerScreen(
                     }
                 },
                 actions = {
-                    if (onSearchInFile != null) {
-                        IconButton(onClick = onSearchInFile) {
-                            Icon(
-                                painter = painterResource(R.drawable.ic_search),
-                                contentDescription = "Search in file"
-                            )
-                        }
+                    IconButton(onClick = onSearchInFile) {
+                        Icon(
+                            painter = painterResource(R.drawable.ic_search),
+                            contentDescription = "Search in file"
+                        )
                     }
                     IconButton(onClick = {
                         FileOpener.openInExternalApp(context, params.uri, params.fileName)

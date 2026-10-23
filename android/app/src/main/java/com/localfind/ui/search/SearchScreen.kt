@@ -90,12 +90,12 @@ fun SearchScreen(
     onCategoryChange: (GalleryCategory) -> Unit = {},
     availableCategories: List<GalleryCategory> = GalleryCategory.entries,
     targetFile: ImportedFile? = null,
-    onClearTargetFile: (() -> Unit)? = null,
+    onClearTargetFile: () -> Unit,
     errorMessage: String? = null,
     indexedChunksCount: Int = 0,
     listState: LazyListState = rememberLazyListState(),
     backHandlerEnabled: Boolean = true,
-    onClose: (() -> Unit)? = null,
+    onClose: () -> Unit,
     queryImageUri: Uri? = null,
     queryImageName: String? = null,
     onSelectQueryImage: (Uri) -> Unit = {},
@@ -114,10 +114,8 @@ fun SearchScreen(
     }
 
     // Intercept system back button to return to the Gallery
-    if (onClose != null) {
-        BackHandler(enabled = backHandlerEnabled) {
-            onClose()
-        }
+    BackHandler(enabled = backHandlerEnabled) {
+        onClose()
     }
 
     // Automatically focus the search box when entering the dedicated search screen if query is empty and no image query
@@ -159,14 +157,12 @@ fun SearchScreen(
                 .padding(horizontal = 12.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
-            if (onClose != null) {
-                IconButton(onClick = onClose) {
-                    Icon(
-                        painter = painterResource(R.drawable.ic_arrow_back),
-                        contentDescription = "Back",
-                        modifier = Modifier.size(24.dp)
-                    )
-                }
+            IconButton(onClick = onClose) {
+                Icon(
+                    painter = painterResource(R.drawable.ic_arrow_back),
+                    contentDescription = "Back",
+                    modifier = Modifier.size(24.dp)
+                )
             }
 
             if (queryImageUri != null) {
@@ -288,28 +284,26 @@ fun SearchScreen(
                             overflow = TextOverflow.Ellipsis
                         )
                     }
-                    if (onClearTargetFile != null) {
-                        TextButton(
-                            onClick = onClearTargetFile,
-                            contentPadding = PaddingValues(horizontal = 8.dp, vertical = 0.dp)
+                    TextButton(
+                        onClick = onClearTargetFile,
+                        contentPadding = PaddingValues(horizontal = 8.dp, vertical = 0.dp)
+                    ) {
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(4.dp)
                         ) {
-                            Row(
-                                verticalAlignment = Alignment.CenterVertically,
-                                horizontalArrangement = Arrangement.spacedBy(4.dp)
-                            ) {
-                                Text(
-                                    text = "Search All Files",
-                                    style = MaterialTheme.typography.labelMedium,
-                                    fontWeight = FontWeight.Bold,
-                                    color = MaterialTheme.colorScheme.primary
-                                )
-                                Icon(
-                                    painter = painterResource(R.drawable.ic_close),
-                                    contentDescription = "Search all files",
-                                    tint = MaterialTheme.colorScheme.primary,
-                                    modifier = Modifier.size(14.dp)
-                                )
-                            }
+                            Text(
+                                text = "Search All Files",
+                                style = MaterialTheme.typography.labelMedium,
+                                fontWeight = FontWeight.Bold,
+                                color = MaterialTheme.colorScheme.primary
+                            )
+                            Icon(
+                                painter = painterResource(R.drawable.ic_close),
+                                contentDescription = "Search all files",
+                                tint = MaterialTheme.colorScheme.primary,
+                                modifier = Modifier.size(14.dp)
+                            )
                         }
                     }
                 }

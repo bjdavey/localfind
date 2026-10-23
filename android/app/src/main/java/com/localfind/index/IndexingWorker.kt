@@ -20,6 +20,7 @@ import com.localfind.MainActivity
 import com.localfind.R
 import com.localfind.data.EngineManager
 import com.localfind.data.FileStore
+import com.localfind.data.ImportedFile
 import com.localfind.data.IndexingStatus
 import com.localfind.data.ModelStatus
 import com.localfind.data.SettingsStore
@@ -72,6 +73,18 @@ class IndexingWorker(
         }
 
         /**
+         * Flips the pause flag in both places that [isPaused] reads: the persisted preference
+         * (survives process death) and the in-memory flag (cheap check inside indexing loops).
+         */
+        private fun setPausedFlags(context: Context, paused: Boolean) {
+            setPausedPref(context, paused)
+            if (paused) IndexingCancellationState.pause() else IndexingCancellationState.resume()
+        }
+
+        private fun notificationManager(context: Context): NotificationManager? =
+            context.getSystemService(Context.NOTIFICATION_SERVICE) as? NotificationManager
+
+        /**
          * Enqueues or resumes background indexing.
          *
          * @param context Application context.
@@ -82,8 +95,7 @@ class IndexingWorker(
          */
         fun enqueue(context: Context, replace: Boolean = false) {
             // Reset pause and global cancellation before enqueueing new work
-            setPausedPref(context, false)
-            IndexingCancellationState.resume()
+            setPausedFlags(context, false)
             IndexingCancellationState.resetAllCancelled()
             val request = OneTimeWorkRequestBuilder<IndexingWorker>().build()
 
@@ -102,8 +114,7 @@ class IndexingWorker(
          * a paused notification with a Resume action.
          */
         fun pause(context: Context) {
-            setPausedPref(context, true)
-            IndexingCancellationState.pause()
+            setPausedFlags(context, true)
             WorkManager.getInstance(context.applicationContext).cancelUniqueWork(WORK_NAME)
 
             val fileStore = FileStore.getInstance(context)
@@ -115,7 +126,7 @@ class IndexingWorker(
                 }
             }
             val remainingCount = fileStore.getPendingFiles().size
-            val notificationManager = context.getSystemService(Context.NOTIFICATION_SERVICE) as? NotificationManager
+            val notificationManager = notificationManager(context)
             if (remainingCount > 0) {
                 val msg = "Paused ($remainingCount pending)"
                 IndexingProgressState.setPaused(message = msg)
@@ -132,8 +143,7 @@ class IndexingWorker(
          * a fresh WorkManager worker to pick up all remaining PENDING files.
          */
         fun resume(context: Context) {
-            setPausedPref(context, false)
-            IndexingCancellationState.resume()
+            setPausedFlags(context, false)
             IndexingCancellationState.resetAllCancelled()
             val fileStore = FileStore.getInstance(context)
             val pending = fileStore.getPendingFiles()
@@ -166,7 +176,7 @@ class IndexingWorker(
             IndexingResumeManager.clearAll(context)
             WorkManager.getInstance(context.applicationContext).cancelUniqueWork(WORK_NAME)
             IndexingProgressState.reset()
-            val notificationManager = context.getSystemService(Context.NOTIFICATION_SERVICE) as? NotificationManager
+            val notificationManager = notificationManager(context)
             notificationManager?.cancel(NOTIFICATION_ID)
             val fileStore = FileStore.getInstance(context)
             val pending = fileStore.getPendingFiles()
@@ -213,7 +223,7 @@ class IndexingWorker(
                 description = "Shows progress while LocalFind analyzes files in the background"
                 setShowBadge(false)
             }
-            val notificationManager = context.getSystemService(Context.NOTIFICATION_SERVICE) as? NotificationManager
+            val notificationManager = notificationManager(context)
             notificationManager?.createNotificationChannel(channel)
         }
 
@@ -367,12 +377,35 @@ class IndexingWorker(
                 setForegroundAsync(info)
             } catch (_: Exception) {
                 // If setForegroundAsync is unavailable or throws, fallback to NotificationManager
-                val notificationManager = context.getSystemService(Context.NOTIFICATION_SERVICE) as? NotificationManager
+                val notificationManager = notificationManager(context)
                 notificationManager?.notify(NOTIFICATION_ID, info.notification)
             }
         } catch (e: Exception) {
             Log.w(TAG_INDEXING, "Failed to update notification: ${e.message}")
         }
+    }
+
+    /** Publishes the "Paused (n pending)" banner for the files still waiting in the queue. */
+    private fun publishPaused(fileStore: FileStore) {
+        val remaining = fileStore.getPendingFiles()
+        val msg = if (remaining.isNotEmpty()) "Paused (${remaining.size} pending)" else "Paused"
+        IndexingProgressState.setPaused(msg)
+    }
+
+    /** Gives up on [uri]: forgets its resume checkpoint, marks it FAILED and drops its partial vectors. */
+    private suspend fun markFailedAndPurge(fileStore: FileStore, uri: String) {
+        IndexingResumeManager.clearResumeChunk(context, uri)
+        fileStore.updateStatus(uri, IndexingStatus.FAILED, 0)
+        try {
+            EngineManager.withStore(context) { it.deleteByFileUri(uri) }
+        } catch (_: Exception) {}
+    }
+
+    /** Puts [file] back in the queue at its saved resume chunk and returns that chunk (for logging). */
+    private fun revertToPending(fileStore: FileStore, file: ImportedFile): Int {
+        val resumeChunk = IndexingResumeManager.getResumeChunk(context, file.uri, file.size)
+        fileStore.updateStatus(file.uri, IndexingStatus.PENDING, resumeChunk)
+        return resumeChunk
     }
 
     override suspend fun doWork(): Result = withContext(Dispatchers.IO) {
@@ -383,9 +416,7 @@ class IndexingWorker(
         try {
             // Check if the indexing queue is currently paused
             if (isPaused(context)) {
-                val pending = fileStore.getPendingFiles()
-                val msg = if (pending.isNotEmpty()) "Paused (${pending.size} pending)" else "Paused"
-                IndexingProgressState.setPaused(msg)
+                publishPaused(fileStore)
                 return@withContext Result.success()
             }
 
@@ -420,9 +451,7 @@ class IndexingWorker(
             while (true) {
                 if (isStopped || IndexingCancellationState.isAllCancelled() || isPaused(context)) {
                     if (isPaused(context)) {
-                        val pending = fileStore.getPendingFiles()
-                        val msg = if (pending.isNotEmpty()) "Paused (${pending.size} pending)" else "Paused"
-                        IndexingProgressState.setPaused(msg)
+                        publishPaused(fileStore)
                         return@withContext Result.success()
                     }
                     IndexingProgressState.reset()
@@ -440,9 +469,7 @@ class IndexingWorker(
                     if (isStopped || IndexingCancellationState.isAllCancelled() || isPaused(context)) {
                         if (isPaused(context)) {
                             fileStore.updateStatus(file.uri, IndexingStatus.PENDING)
-                            val remaining = fileStore.getPendingFiles()
-                            val msg = if (remaining.isNotEmpty()) "Paused (${remaining.size} pending)" else "Paused"
-                            IndexingProgressState.setPaused(msg)
+                            publishPaused(fileStore)
                             return@withContext Result.success()
                         }
                         if (!IndexingCancellationState.isAllCancelled()) {
@@ -507,24 +534,17 @@ class IndexingWorker(
 
                         // Explicit user pause during file indexing
                         if (isPaused(context)) {
-                            val resumeChunk = IndexingResumeManager.getResumeChunk(context, file.uri, file.size)
-                            Log.i(TAG_INDEXING, "Indexing paused by user while indexing ${file.displayName} at chunk $resumeChunk, reverting to PENDING")
-                            fileStore.updateStatus(file.uri, IndexingStatus.PENDING, resumeChunk)
-                            val remaining = fileStore.getPendingFiles()
-                            val msg = if (remaining.isNotEmpty()) "Paused (${remaining.size} pending)" else "Paused"
-                            IndexingProgressState.setPaused(msg)
+                            val resumeChunk = revertToPending(fileStore, file)
+                            Log.i(TAG_INDEXING, "Indexing paused by user while indexing ${file.displayName} at chunk $resumeChunk, reverted to PENDING")
+                            publishPaused(fileStore)
                             return@withContext Result.success()
                         }
 
                         // Explicit user cancellation of this specific file or all files
                         if (IndexingCancellationState.isCancelled(file.uri)) {
                             IndexingCancellationState.clear(file.uri)
-                            IndexingResumeManager.clearResumeChunk(context, file.uri)
                             Log.i(TAG_INDEXING, "Indexing explicitly cancelled for ${file.displayName}")
-                            fileStore.updateStatus(file.uri, IndexingStatus.FAILED, 0)
-                            try {
-                                EngineManager.withStore(context) { it.deleteByFileUri(file.uri) }
-                            } catch (_: Exception) {}
+                            markFailedAndPurge(fileStore, file.uri)
                             if (IndexingCancellationState.isAllCancelled()) {
                                 IndexingProgressState.reset()
                                 return@withContext Result.success()
@@ -534,19 +554,9 @@ class IndexingWorker(
 
                         // Interruption / worker preemption: revert to PENDING so next session auto-resumes
                         if (isStopped) {
-                            if (IndexingCancellationState.isAllCancelled()) {
-                                Log.i(TAG_INDEXING, "Indexing worker stopped due to cancellation by user for ${file.displayName}")
-                                IndexingResumeManager.clearResumeChunk(context, file.uri)
-                                fileStore.updateStatus(file.uri, IndexingStatus.FAILED, 0)
-                                try {
-                                    EngineManager.withStore(context) { it.deleteByFileUri(file.uri) }
-                                } catch (_: Exception) {}
-                                IndexingProgressState.reset()
-                                return@withContext Result.success()
-                            }
-                            val resumeChunk = IndexingResumeManager.getResumeChunk(context, file.uri, file.size)
-                            Log.i(TAG_INDEXING, "Worker stopped while indexing ${file.displayName} at chunk $resumeChunk, reverting to PENDING for auto-resume")
-                            fileStore.updateStatus(file.uri, IndexingStatus.PENDING, resumeChunk)
+                            // (A user "cancel all" was already handled by the isCancelled branch above)
+                            val resumeChunk = revertToPending(fileStore, file)
+                            Log.i(TAG_INDEXING, "Worker stopped while indexing ${file.displayName} at chunk $resumeChunk, reverted to PENDING for auto-resume")
                             IndexingProgressState.reset()
                             return@withContext Result.retry()
                         }
@@ -571,43 +581,28 @@ class IndexingWorker(
                             if (result.errorMessage?.contains("cancelled", ignoreCase = true) == true ||
                                 result.errorMessage?.contains("not initialized", ignoreCase = true) == true
                             ) {
-                                if (IndexingCancellationState.isAllCancelled() || IndexingCancellationState.isCancelled(file.uri)) {
-                                    IndexingResumeManager.clearResumeChunk(context, file.uri)
-                                    fileStore.updateStatus(file.uri, IndexingStatus.FAILED, 0)
-                                    try {
-                                        EngineManager.withStore(context) { it.deleteByFileUri(file.uri) }
-                                    } catch (_: Exception) {}
+                                // (isAllCancelled implies isCancelled for every URI)
+                                if (IndexingCancellationState.isCancelled(file.uri)) {
+                                    markFailedAndPurge(fileStore, file.uri)
                                 } else {
-                                    val resumeChunk = IndexingResumeManager.getResumeChunk(context, file.uri, file.size)
-                                    Log.i(TAG_INDEXING, "Indexing interrupted for ${file.displayName} (${result.errorMessage}), reverting to PENDING at chunk $resumeChunk")
-                                    fileStore.updateStatus(file.uri, IndexingStatus.PENDING, resumeChunk)
+                                    val resumeChunk = revertToPending(fileStore, file)
+                                    Log.i(TAG_INDEXING, "Indexing interrupted for ${file.displayName} (${result.errorMessage}), reverted to PENDING at chunk $resumeChunk")
                                 }
                             } else {
                                 Log.e(TAG_INDEXING, "Indexing failed for ${file.displayName}: ${result.errorMessage}")
-                                IndexingResumeManager.clearResumeChunk(context, file.uri)
-                                fileStore.updateStatus(file.uri, IndexingStatus.FAILED, 0)
-                                try {
-                                    EngineManager.withStore(context) { it.deleteByFileUri(file.uri) }
-                                } catch (_: Exception) {}
+                                markFailedAndPurge(fileStore, file.uri)
                             }
                         }
                     } catch (e: Throwable) {
                         Log.e(TAG_INDEXING, "Exception indexing ${file.displayName}", e)
-                        val resumeChunk = IndexingResumeManager.getResumeChunk(context, file.uri, file.size)
                         if (isPaused(context)) {
-                            fileStore.updateStatus(file.uri, IndexingStatus.PENDING, resumeChunk)
-                            val remaining = fileStore.getPendingFiles()
-                            val msg = if (remaining.isNotEmpty()) "Paused (${remaining.size} pending)" else "Paused"
-                            IndexingProgressState.setPaused(msg)
+                            revertToPending(fileStore, file)
+                            publishPaused(fileStore)
                             return@withContext Result.success()
                         }
                         if (IndexingCancellationState.isCancelled(file.uri)) {
                             IndexingCancellationState.clear(file.uri)
-                            IndexingResumeManager.clearResumeChunk(context, file.uri)
-                            fileStore.updateStatus(file.uri, IndexingStatus.FAILED, 0)
-                            try {
-                                EngineManager.withStore(context) { it.deleteByFileUri(file.uri) }
-                            } catch (_: Exception) {}
+                            markFailedAndPurge(fileStore, file.uri)
                             if (IndexingCancellationState.isAllCancelled()) {
                                 IndexingProgressState.reset()
                                 return@withContext Result.success()
@@ -615,25 +610,13 @@ class IndexingWorker(
                             continue
                         }
                         if (isStopped || e is kotlinx.coroutines.CancellationException || e is InterruptedException) {
-                            if (IndexingCancellationState.isAllCancelled()) {
-                                IndexingResumeManager.clearResumeChunk(context, file.uri)
-                                fileStore.updateStatus(file.uri, IndexingStatus.FAILED, 0)
-                                try {
-                                    EngineManager.withStore(context) { it.deleteByFileUri(file.uri) }
-                                } catch (_: Exception) {}
-                                IndexingProgressState.reset()
-                                return@withContext Result.success()
-                            }
-                            Log.i(TAG_INDEXING, "Worker interrupted while indexing ${file.displayName}, reverting to PENDING at chunk $resumeChunk")
-                            fileStore.updateStatus(file.uri, IndexingStatus.PENDING, resumeChunk)
+                            // (A user "cancel all" was already handled by the isCancelled branch above)
+                            val resumeChunk = revertToPending(fileStore, file)
+                            Log.i(TAG_INDEXING, "Worker interrupted while indexing ${file.displayName}, reverted to PENDING at chunk $resumeChunk")
                             IndexingProgressState.reset()
                             return@withContext Result.retry()
                         }
-                        IndexingResumeManager.clearResumeChunk(context, file.uri)
-                        fileStore.updateStatus(file.uri, IndexingStatus.FAILED, 0)
-                        try {
-                            EngineManager.withStore(context) { it.deleteByFileUri(file.uri) }
-                        } catch (_: Exception) {}
+                        markFailedAndPurge(fileStore, file.uri)
                     }
 
                     // Micro-pacing / Frame yielding: brief pause between consecutive files
@@ -653,11 +636,11 @@ class IndexingWorker(
             if (isPaused(context)) {
                 val remaining = fileStore.getPendingFiles().size
                 if (remaining > 0) {
-                    val notificationManager = context.getSystemService(Context.NOTIFICATION_SERVICE) as? NotificationManager
+                    val notificationManager = notificationManager(context)
                     notificationManager?.notify(NOTIFICATION_ID, buildPausedNotification(context, remaining))
                 }
             } else {
-                val notificationManager = context.getSystemService(Context.NOTIFICATION_SERVICE) as? NotificationManager
+                val notificationManager = notificationManager(context)
                 notificationManager?.cancel(NOTIFICATION_ID)
                 IndexingProgressState.reset()
             }

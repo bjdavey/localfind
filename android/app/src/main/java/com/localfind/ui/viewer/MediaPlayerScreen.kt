@@ -69,7 +69,7 @@ data class MediaPlayerParams(
 fun MediaPlayerScreen(
     params: MediaPlayerParams,
     onClose: () -> Unit,
-    onSearchInFile: (() -> Unit)? = null,
+    onSearchInFile: () -> Unit,
     backHandlerEnabled: Boolean = true,
     modifier: Modifier = Modifier
 ) {
@@ -143,14 +143,12 @@ fun MediaPlayerScreen(
                     }
                 },
                 actions = {
-                    if (onSearchInFile != null) {
-                        IconButton(onClick = onSearchInFile) {
-                            Icon(
-                                painter = painterResource(R.drawable.ic_search),
-                                contentDescription = "Search in file",
-                                tint = Color.White
-                            )
-                        }
+                    IconButton(onClick = onSearchInFile) {
+                        Icon(
+                            painter = painterResource(R.drawable.ic_search),
+                            contentDescription = "Search in file",
+                            tint = Color.White
+                        )
                     }
                     IconButton(onClick = {
                         player.pause()

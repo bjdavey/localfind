@@ -84,7 +84,7 @@ data class ImageViewerParams(
 fun ImageViewerScreen(
     params: ImageViewerParams,
     onClose: () -> Unit,
-    onSearchSimilar: ((uri: String, fileName: String) -> Unit)? = null,
+    onSearchSimilar: (uri: String, fileName: String) -> Unit,
     backHandlerEnabled: Boolean = true,
     modifier: Modifier = Modifier
 ) {
@@ -207,14 +207,12 @@ fun ImageViewerScreen(
                             )
                         }
                     }
-                    if (onSearchSimilar != null) {
-                        IconButton(onClick = { onSearchSimilar(params.uri, params.fileName) }) {
-                            Icon(
-                                painter = painterResource(R.drawable.ic_search),
-                                contentDescription = "Search by image",
-                                tint = Color.White
-                            )
-                        }
+                    IconButton(onClick = { onSearchSimilar(params.uri, params.fileName) }) {
+                        Icon(
+                            painter = painterResource(R.drawable.ic_search),
+                            contentDescription = "Search by image",
+                            tint = Color.White
+                        )
                     }
                     IconButton(onClick = {
                         FileOpener.openInExternalApp(context, params.uri, params.fileName)

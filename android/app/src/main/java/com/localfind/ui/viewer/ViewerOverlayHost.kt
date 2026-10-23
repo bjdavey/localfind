@@ -229,7 +229,7 @@ fun ViewerOverlayHost(
     viewerState: ViewerState,
     importedFiles: List<ImportedFile>,
     onSearchInFile: (ImportedFile) -> Unit,
-    onSearchSimilarImage: ((uri: String, fileName: String) -> Unit)? = null
+    onSearchSimilarImage: (uri: String, fileName: String) -> Unit
 ) {
     val context = LocalContext.current
     val activity = remember(context) { ViewerOrientationHelper.findActivity(context) }
@@ -259,12 +259,10 @@ fun ViewerOverlayHost(
             ImageViewerScreen(
                 params = params,
                 onClose = { viewerState.activeImageViewer = null },
-                onSearchSimilar = if (onSearchSimilarImage != null) {
-                    { uri, name ->
-                        viewerState.activeImageViewer = null
-                        onSearchSimilarImage(uri, name)
-                    }
-                } else null,
+                onSearchSimilar = { uri, name ->
+                    viewerState.activeImageViewer = null
+                    onSearchSimilarImage(uri, name)
+                },
                 backHandlerEnabled = viewerState.activeImageViewer != null
             )
         }

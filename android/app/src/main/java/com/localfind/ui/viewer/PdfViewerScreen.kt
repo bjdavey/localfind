@@ -68,7 +68,7 @@ data class PdfViewerParams(
 fun PdfViewerScreen(
     params: PdfViewerParams,
     onClose: () -> Unit,
-    onSearchInFile: (() -> Unit)? = null,
+    onSearchInFile: () -> Unit,
     backHandlerEnabled: Boolean = true,
     modifier: Modifier = Modifier
 ) {
@@ -153,13 +153,11 @@ fun PdfViewerScreen(
                     }
 
                     // 2. LocalFind AI semantic search in this document
-                    if (onSearchInFile != null) {
-                        IconButton(onClick = onSearchInFile) {
-                            Icon(
-                                painter = painterResource(R.drawable.ic_auto_awesome),
-                                contentDescription = "Semantic AI search in file"
-                            )
-                        }
+                    IconButton(onClick = onSearchInFile) {
+                        Icon(
+                            painter = painterResource(R.drawable.ic_auto_awesome),
+                            contentDescription = "Semantic AI search in file"
+                        )
                     }
 
                     // 3. Open in external PDF reader app

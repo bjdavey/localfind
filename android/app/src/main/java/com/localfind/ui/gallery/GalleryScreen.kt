@@ -110,17 +110,17 @@ fun GalleryScreen(
     onDeleteMultipleFiles: (List<ImportedFile>) -> Unit = {},
     onRetryLoadModel: () -> Unit = {},
     onOpenSearch: () -> Unit,
-    onSearchInFile: ((ImportedFile) -> Unit)? = null,
+    onSearchInFile: (ImportedFile) -> Unit,
     onImportFiles: () -> Unit,
     onOpenSettings: () -> Unit,
     onFileClick: (ImportedFile) -> Unit,
     onRequestDeleteFile: (ImportedFile) -> Unit,
-    onRetryIndexFile: ((ImportedFile) -> Unit)? = null,
-    onRetryAllFailed: (() -> Unit)? = null,
-    onPauseIndexing: (() -> Unit)? = null,
-    onResumeIndexing: (() -> Unit)? = null,
-    onCancelIndexing: (() -> Unit)? = null,
-    onCancelIndexFile: ((ImportedFile) -> Unit)? = null,
+    onRetryIndexFile: (ImportedFile) -> Unit,
+    onRetryAllFailed: () -> Unit,
+    onPauseIndexing: () -> Unit,
+    onResumeIndexing: () -> Unit,
+    onCancelIndexing: () -> Unit,
+    onCancelIndexFile: (ImportedFile) -> Unit,
     gridState: LazyGridState = rememberLazyGridState(),
     modifier: Modifier = Modifier
 ) {
@@ -202,12 +202,10 @@ fun GalleryScreen(
                 inspectedFile = null
                 FileOpener.openInExternalApp(context, target.uri, target.displayName, target.mimeType)
             },
-            onSearchInFile = onSearchInFile?.let { searchFn ->
-                {
-                    val target = file
-                    inspectedFile = null
-                    searchFn(target)
-                }
+            onSearchInFile = {
+                val target = file
+                inspectedFile = null
+                onSearchInFile(target)
             },
             onMoveToFolder = {
                 val target = file
@@ -219,19 +217,15 @@ fun GalleryScreen(
                 inspectedFile = null
                 onRequestDeleteFile(target)
             },
-            onRetry = onRetryIndexFile?.let { retryFn ->
-                {
-                    val target = file
-                    inspectedFile = null
-                    retryFn(target)
-                }
+            onRetry = {
+                val target = file
+                inspectedFile = null
+                onRetryIndexFile(target)
             },
-            onCancelSync = onCancelIndexFile?.let { cancelFn ->
-                {
-                    val target = file
-                    inspectedFile = null
-                    cancelFn(target)
-                }
+            onCancelSync = {
+                val target = file
+                inspectedFile = null
+                onCancelIndexFile(target)
             }
         )
     }
@@ -728,70 +722,64 @@ fun GalleryScreen(
                                 horizontalArrangement = Arrangement.spacedBy(4.dp)
                             ) {
                                 if (isQueuePaused) {
-                                    if (onResumeIndexing != null) {
-                                        TextButton(
-                                            onClick = onResumeIndexing,
-                                            contentPadding = PaddingValues(horizontal = 8.dp, vertical = 4.dp),
-                                            modifier = Modifier.height(32.dp)
-                                        ) {
-                                            Icon(
-                                                painter = painterResource(R.drawable.ic_play_arrow),
-                                                contentDescription = null,
-                                                modifier = Modifier.size(16.dp),
-                                                tint = MaterialTheme.colorScheme.primary
-                                            )
-                                            Spacer(modifier = Modifier.width(4.dp))
-                                            Text(
-                                                text = "Resume",
-                                                style = MaterialTheme.typography.labelSmall,
-                                                fontWeight = FontWeight.Bold,
-                                                color = MaterialTheme.colorScheme.primary
-                                            )
-                                        }
-                                    }
-                                } else {
-                                    if (onPauseIndexing != null) {
-                                        TextButton(
-                                            onClick = onPauseIndexing,
-                                            contentPadding = PaddingValues(horizontal = 8.dp, vertical = 4.dp),
-                                            modifier = Modifier.height(32.dp)
-                                        ) {
-                                            Icon(
-                                                painter = painterResource(R.drawable.ic_pause),
-                                                contentDescription = null,
-                                                modifier = Modifier.size(16.dp),
-                                                tint = MaterialTheme.colorScheme.secondary
-                                            )
-                                            Spacer(modifier = Modifier.width(4.dp))
-                                            Text(
-                                                text = "Pause",
-                                                style = MaterialTheme.typography.labelSmall,
-                                                fontWeight = FontWeight.Bold,
-                                                color = MaterialTheme.colorScheme.secondary
-                                            )
-                                        }
-                                    }
-                                }
-                                if (onCancelIndexing != null) {
                                     TextButton(
-                                        onClick = onCancelIndexing,
+                                        onClick = onResumeIndexing,
                                         contentPadding = PaddingValues(horizontal = 8.dp, vertical = 4.dp),
                                         modifier = Modifier.height(32.dp)
                                     ) {
                                         Icon(
-                                            painter = painterResource(R.drawable.ic_close),
+                                            painter = painterResource(R.drawable.ic_play_arrow),
                                             contentDescription = null,
                                             modifier = Modifier.size(16.dp),
-                                            tint = MaterialTheme.colorScheme.error
+                                            tint = MaterialTheme.colorScheme.primary
                                         )
                                         Spacer(modifier = Modifier.width(4.dp))
                                         Text(
-                                            text = "Cancel",
+                                            text = "Resume",
                                             style = MaterialTheme.typography.labelSmall,
                                             fontWeight = FontWeight.Bold,
-                                            color = MaterialTheme.colorScheme.error
+                                            color = MaterialTheme.colorScheme.primary
                                         )
                                     }
+                                } else {
+                                    TextButton(
+                                        onClick = onPauseIndexing,
+                                        contentPadding = PaddingValues(horizontal = 8.dp, vertical = 4.dp),
+                                        modifier = Modifier.height(32.dp)
+                                    ) {
+                                        Icon(
+                                            painter = painterResource(R.drawable.ic_pause),
+                                            contentDescription = null,
+                                            modifier = Modifier.size(16.dp),
+                                            tint = MaterialTheme.colorScheme.secondary
+                                        )
+                                        Spacer(modifier = Modifier.width(4.dp))
+                                        Text(
+                                            text = "Pause",
+                                            style = MaterialTheme.typography.labelSmall,
+                                            fontWeight = FontWeight.Bold,
+                                            color = MaterialTheme.colorScheme.secondary
+                                        )
+                                    }
+                                }
+                                TextButton(
+                                    onClick = onCancelIndexing,
+                                    contentPadding = PaddingValues(horizontal = 8.dp, vertical = 4.dp),
+                                    modifier = Modifier.height(32.dp)
+                                ) {
+                                    Icon(
+                                        painter = painterResource(R.drawable.ic_close),
+                                        contentDescription = null,
+                                        modifier = Modifier.size(16.dp),
+                                        tint = MaterialTheme.colorScheme.error
+                                    )
+                                    Spacer(modifier = Modifier.width(4.dp))
+                                    Text(
+                                        text = "Cancel",
+                                        style = MaterialTheme.typography.labelSmall,
+                                        fontWeight = FontWeight.Bold,
+                                        color = MaterialTheme.colorScheme.error
+                                    )
                                 }
                             }
                         }
@@ -893,29 +881,27 @@ fun GalleryScreen(
                                 )
                             }
                         }
-                        if (onRetryAllFailed != null) {
-                            Spacer(modifier = Modifier.width(8.dp))
-                            FilledTonalButton(
-                                onClick = onRetryAllFailed,
-                                colors = ButtonDefaults.filledTonalButtonColors(
-                                    containerColor = MaterialTheme.colorScheme.error,
-                                    contentColor = MaterialTheme.colorScheme.onError
-                                ),
-                                contentPadding = PaddingValues(horizontal = 12.dp, vertical = 4.dp),
-                                modifier = Modifier.height(34.dp)
-                            ) {
-                                Icon(
-                                    painter = painterResource(R.drawable.ic_refresh),
-                                    contentDescription = null,
-                                    modifier = Modifier.size(16.dp)
-                                )
-                                Spacer(modifier = Modifier.width(4.dp))
-                                Text(
-                                    text = "Try again",
-                                    style = MaterialTheme.typography.labelSmall,
-                                    fontWeight = FontWeight.Bold
-                                )
-                            }
+                        Spacer(modifier = Modifier.width(8.dp))
+                        FilledTonalButton(
+                            onClick = onRetryAllFailed,
+                            colors = ButtonDefaults.filledTonalButtonColors(
+                                containerColor = MaterialTheme.colorScheme.error,
+                                contentColor = MaterialTheme.colorScheme.onError
+                            ),
+                            contentPadding = PaddingValues(horizontal = 12.dp, vertical = 4.dp),
+                            modifier = Modifier.height(34.dp)
+                        ) {
+                            Icon(
+                                painter = painterResource(R.drawable.ic_refresh),
+                                contentDescription = null,
+                                modifier = Modifier.size(16.dp)
+                            )
+                            Spacer(modifier = Modifier.width(4.dp))
+                            Text(
+                                text = "Try again",
+                                style = MaterialTheme.typography.labelSmall,
+                                fontWeight = FontWeight.Bold
+                            )
                         }
                     }
                 }
@@ -1183,8 +1169,8 @@ fun GalleryScreen(
                             onMoreOptionsClick = {
                                 inspectedFile = file
                             },
-                            onCancelIndex = onCancelIndexFile?.let { { it(file) } },
-                            onRetryIndex = onRetryIndexFile?.let { { it(file) } }
+                            onCancelIndex = { onCancelIndexFile(file) },
+                            onRetryIndex = { onRetryIndexFile(file) }
                         )
                     }
                 }

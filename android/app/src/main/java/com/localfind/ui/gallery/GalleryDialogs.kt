@@ -53,12 +53,12 @@ internal fun FileDetailsDialog(
     file: ImportedFile,
     isQueuePaused: Boolean = false,
     onDismiss: () -> Unit,
-    onOpenExternal: (() -> Unit)? = null,
-    onSearchInFile: (() -> Unit)? = null,
-    onMoveToFolder: (() -> Unit)? = null,
+    onOpenExternal: () -> Unit,
+    onSearchInFile: () -> Unit,
+    onMoveToFolder: () -> Unit,
     onDelete: () -> Unit,
-    onRetry: (() -> Unit)? = null,
-    onCancelSync: (() -> Unit)? = null
+    onRetry: () -> Unit,
+    onCancelSync: () -> Unit
 ) {
     val context = LocalContext.current
     val originalPath = remember(file.uri, file.displayName) {
@@ -266,7 +266,7 @@ internal fun FileDetailsDialog(
                 }
 
                 // Retry Button if indexing failed
-                if (file.indexingStatus == IndexingStatus.FAILED && onRetry != null) {
+                if (file.indexingStatus == IndexingStatus.FAILED) {
                     Button(
                         onClick = onRetry,
                         modifier = Modifier.fillMaxWidth(),
@@ -286,7 +286,7 @@ internal fun FileDetailsDialog(
                 }
 
                 // Cancel Button if currently indexing or queued
-                if ((file.indexingStatus == IndexingStatus.INDEXING || file.indexingStatus == IndexingStatus.PENDING) && onCancelSync != null) {
+                if ((file.indexingStatus == IndexingStatus.INDEXING || file.indexingStatus == IndexingStatus.PENDING)) {
                     FilledTonalButton(
                         onClick = onCancelSync,
                         modifier = Modifier.fillMaxWidth(),
@@ -306,23 +306,21 @@ internal fun FileDetailsDialog(
                 }
 
                 // Open in phone gallery or native app ("Open in Gallery" or "Open original file")
-                if (onOpenExternal != null) {
-                    val externalLabel = when (category) {
-                        GalleryCategory.PHOTOS -> "Open in Gallery"
-                        else -> "Open original file"
-                    }
-                    Button(
-                        onClick = onOpenExternal,
-                        modifier = Modifier.fillMaxWidth()
-                    ) {
-                        Icon(
-                            painter = painterResource(R.drawable.ic_open_in_new),
-                            contentDescription = null,
-                            modifier = Modifier.size(18.dp)
-                        )
-                        Spacer(modifier = Modifier.width(8.dp))
-                        Text(externalLabel, fontWeight = FontWeight.SemiBold)
-                    }
+                val externalLabel = when (category) {
+                    GalleryCategory.PHOTOS -> "Open in Gallery"
+                    else -> "Open original file"
+                }
+                Button(
+                    onClick = onOpenExternal,
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Icon(
+                        painter = painterResource(R.drawable.ic_open_in_new),
+                        contentDescription = null,
+                        modifier = Modifier.size(18.dp)
+                    )
+                    Spacer(modifier = Modifier.width(8.dp))
+                    Text(externalLabel, fontWeight = FontWeight.SemiBold)
                 }
 
                 // Secondary actions: Search in File (or Search by image for photos) and Move to Folder
@@ -331,7 +329,7 @@ internal fun FileDetailsDialog(
                 val searchActionShortLabel = "Search"
                 val searchActionIcon = if (isPhoto) R.drawable.ic_image else R.drawable.ic_search
 
-                if (file.indexingStatus == IndexingStatus.INDEXED && onSearchInFile != null && onMoveToFolder != null) {
+                if (file.indexingStatus == IndexingStatus.INDEXED) {
                     Row(
                         modifier = Modifier.fillMaxWidth(),
                         horizontalArrangement = Arrangement.spacedBy(8.dp)
@@ -362,33 +360,17 @@ internal fun FileDetailsDialog(
                         }
                     }
                 } else {
-                    if (file.indexingStatus == IndexingStatus.INDEXED && onSearchInFile != null) {
-                        FilledTonalButton(
-                            onClick = onSearchInFile,
-                            modifier = Modifier.fillMaxWidth()
-                        ) {
-                            Icon(
-                                painter = painterResource(searchActionIcon),
-                                contentDescription = null,
-                                modifier = Modifier.size(18.dp)
-                            )
-                            Spacer(modifier = Modifier.width(6.dp))
-                            Text(searchActionLabel)
-                        }
-                    }
-                    if (onMoveToFolder != null) {
-                        FilledTonalButton(
-                            onClick = onMoveToFolder,
-                            modifier = Modifier.fillMaxWidth()
-                        ) {
-                            Icon(
-                                painter = painterResource(R.drawable.ic_drive_file_move),
-                                contentDescription = null,
-                                modifier = Modifier.size(18.dp)
-                            )
-                            Spacer(modifier = Modifier.width(6.dp))
-                            Text("Move to folder")
-                        }
+                    FilledTonalButton(
+                        onClick = onMoveToFolder,
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        Icon(
+                            painter = painterResource(R.drawable.ic_drive_file_move),
+                            contentDescription = null,
+                            modifier = Modifier.size(18.dp)
+                        )
+                        Spacer(modifier = Modifier.width(6.dp))
+                        Text("Move to folder")
                     }
                 }
             }
