@@ -7,6 +7,7 @@ import android.system.Os
 import android.util.Log
 import com.google.android.play.core.aipacks.AiPackManagerFactory
 import com.localfind.core.settings.HardwareAccelerator
+import com.localfind.core.storage.StorageCheck
 import java.io.File
 
 /**
@@ -369,6 +370,11 @@ object SocDetector {
         for (dir in STAGING_DIRECTORIES) {
             val source = File(dir, fileName)
             if (source.exists() && source.canRead() && source.length() > 0L) {
+                // The copy needs the model's size plus headroom; a half-written copy would just fail later
+                if (!StorageCheck.hasEnoughSpace(target.parentFile?.usableSpace ?: 0L, neededBytes = source.length())) {
+                    Log.w(TAG, "Not enough free storage to stage ${source.name} (${source.length()} bytes), skipping")
+                    continue
+                }
                 val tempFile = File(target.parentFile, "${target.name}.tmp")
                 try {
                     Log.i(TAG, "Found model at ${source.absolutePath} (${source.length()} bytes). Copying to ${target.absolutePath}...")

@@ -13,6 +13,7 @@ import com.localfind.data.FileStore
 import com.localfind.core.model.ImportedFile
 import com.localfind.core.model.IndexingStatus
 import com.localfind.core.model.ModelStatus
+import com.localfind.core.storage.StorageCheck
 import com.localfind.data.SettingsStore
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
@@ -114,6 +115,19 @@ class IndexingWorker(
         IndexingProgressState.setPaused(msg)
     }
 
+    /**
+     * Pauses the queue because the device is out of storage. Reuses the user-pause mechanism, so the banner
+     * keeps this message (the worker's `finally` does not reset a paused queue) and the user resumes after
+     * freeing up space instead of every remaining file failing against a full disk.
+     */
+    private fun pauseForLowStorage(fileStore: FileStore) {
+        Log.w(TAG_INDEXING, "Storage is full, pausing indexing")
+        IndexingQueue.setPausedPref(context, true)
+        IndexingCancellationState.pause()
+        val remaining = fileStore.getPendingFiles().size
+        IndexingProgressState.setPaused("Paused: storage full ($remaining pending). Free up space, then resume.")
+    }
+
     /** Gives up on [uri]: forgets its resume checkpoint, marks it FAILED and drops its partial vectors. */
     private suspend fun markFailedAndPurge(fileStore: FileStore, uri: String) {
         IndexingResumeManager.clearResumeChunk(context, uri)
@@ -162,6 +176,13 @@ class IndexingWorker(
 
             // Elevate to Foreground Service with ongoing notification so Android keeps indexing alive in background
             val initialPending = fileStore.getPendingFiles()
+
+            // Do not start on a (nearly) full disk: it would fail partway through the first file
+            if (initialPending.isNotEmpty() && !StorageCheck.hasEnoughSpace(context.filesDir.usableSpace)) {
+                pauseForLowStorage(fileStore)
+                return@withContext Result.success()
+            }
+
             if (initialPending.isNotEmpty()) {
                 try {
                     setForeground(getForegroundInfo())
@@ -319,6 +340,11 @@ class IndexingWorker(
                                     val resumeChunk = revertToPending(fileStore, file)
                                     Log.i(TAG_INDEXING, "Indexing interrupted for ${file.displayName} (${result.errorMessage}), reverted to PENDING at chunk $resumeChunk")
                                 }
+                            } else if (StorageCheck.isOutOfSpaceMessage(result.errorMessage)) {
+                                // Not the file's fault: keep it queued at its checkpoint and wait for free space
+                                revertToPending(fileStore, file)
+                                pauseForLowStorage(fileStore)
+                                return@withContext Result.success()
                             } else {
                                 Log.e(TAG_INDEXING, "Indexing failed for ${file.displayName}: ${result.errorMessage}")
                                 markFailedAndPurge(fileStore, file.uri)
@@ -346,6 +372,11 @@ class IndexingWorker(
                             Log.i(TAG_INDEXING, "Worker interrupted while indexing ${file.displayName}, reverted to PENDING at chunk $resumeChunk")
                             IndexingProgressState.reset()
                             return@withContext Result.retry()
+                        }
+                        if (StorageCheck.isOutOfSpaceMessage(e.message)) {
+                            revertToPending(fileStore, file)
+                            pauseForLowStorage(fileStore)
+                            return@withContext Result.success()
                         }
                         markFailedAndPurge(fileStore, file.uri)
                     }

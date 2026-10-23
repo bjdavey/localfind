@@ -84,7 +84,7 @@
 - [x] SocDetector: recreate dispatch-library symlinks when the target path changed (compare `Os.readlink`), not only when dangling
 - [x] Set the compile cache dir on the GPU/CPU embedder paths and pin `activationDataType` explicitly
 - [x] SAF persisted-URI limit: no per-file grant inside an imported folder (the tree grant covers it), warn near the limit
-- [ ] Storage checks: free-space check before model staging and indexing; pause with "Storage full" on `SQLiteFullException` / I/O errors
+- [x] Storage checks: free-space check before model staging and indexing; pause with "Storage full" on `SQLiteFullException` / I/O errors
 - [ ] AI pack: switch `fast-follow` to `install-time` so the model is present at first launch (check file-path access and Play size limits first)
 - [ ] Use the NPU model file for GPU/CPU fallback on NPU devices (remove the separate fallback-model branch)
 - [ ] Embedding-space id stored per file; mark files "needs re-index" when it differs from the current one
