@@ -32,10 +32,10 @@ enum class ThemeMode(val title: String) {
  * - [CPU]: Always uses CPU (XNNPack) to keep the device cool, save power, and avoid UI frame contention.
  */
 enum class HardwareAccelerator(val title: String) {
-    NPU("NPU (Neural Processing Unit)"),
+    NPU("NPU (Best)"),
     SMART("Smart (Auto)"),
     GPU("GPU (Faster)"),
-    CPU("CPU (Smoother UI)")
+    CPU("CPU")
 }
 
 /** Default hardware accelerator for vision indexing (NPU on supported devices, falling back to Smart). */

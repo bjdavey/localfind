@@ -62,10 +62,10 @@
 - [x] Show original file path in file details view
 - [x] Multi select
 - [x] Smart Mode in Advanced Settings: dynamic GPU/CPU switching based on screen and battery saver state
-
-## Milestone 6: First publish
 - [x] Hardware NPU acceleration support
 - [x] Dynamic SoC-specific NPU runtime & model delivery: Play AI Pack, Play Feature Delivery & NPU default
+
+## Milestone 6: Pre-publish hardening (by AI Agents)
 - [x] Refactor: 
     1. Remove dead code, 
     2. Merge duplicated logic 
@@ -74,12 +74,6 @@
     5. Folder/package structure: try to isolate services in core folder that can be easily ported into different platforms later
     6. Review design decisions & update docs
     7. Design fixes from the review: shared embedder handle with read/write lock (no use of a closed model), global crash guard replaced by a per-file retry limit, data-transport backend discovery removed from the manifest, file-availability checks moved off the main thread. (`Searcher` keeps its multi-type filter branch: it has a unit test and a category could span several types.)
-- Grouping matches by file
-- What else?
-- Final E2E test with edge cases
-- Publish
-
-## Milestone 7: Pre-publish hardening
 - [x] Remove `POST_NOTIFICATIONS` permission (notification controls are then unavailable on Android 13+; update PRD / ARCHITECTURE)
 - [x] SocDetector: recreate dispatch-library symlinks when the target path changed (compare `Os.readlink`), not only when dangling
 - [x] Set the compile cache dir on the GPU/CPU embedder paths. (Pinning `activationDataType` to FLOAT32 was tried and reverted: it broke the NPU text graph on SM8650; unset = engine default)
@@ -92,9 +86,14 @@
 - [x] ~~Use `NpuCompatibilityChecker`~~ skipped (needs the `litert` dependency and is documented for `CompiledModel`, not the MediaPipe path); fixed the `SocDetector` bugs directly: `"unknown"` handling and `sun` vs `sunfish` board match
 - [x] ~~Load only the needed encoders~~ spike result: `UniversalEmbedderOptions` (MediaPipe 1.1.1) has no per-modality switch (only delegates, `maxInputLength`, `visionTokensPerImage`), so nothing to do now; see Backlog
 - [x] Decide: LiteRT 2.3.0 Maven NPU packages vs current Feature Delivery modules + fetch scripts. Decision: keep Feature Delivery (it already uses the Maven dispatch libraries); documented in ARCHITECTURE §3.1
+- [x] Grouping matches by file (one card per file with its best hit; "N more matches" expands the rest)
+
+## Milestone 7: First publish
+- What else?
+- Final E2E test with edge cases
+- Publish
 
 ## Bugs / Issues
-- [ ] UI Fix: advanced settings item subtitle overflow
 - [x] Fix bundle script for emulator and make sure model is loaded
 - [ ] Privacy: `allowBackup="true"` with empty `data_extraction_rules.xml` lets cloud backup / device transfer include the vector DB (text snippets), shared copies and the file list; share import accepts `file://` URIs (can copy LocalFind's own private files)
 - [ ] Search waits for the in-flight indexing chunk because inference is synchronized (slow queries while indexing)
@@ -131,7 +130,6 @@
 - Allow other media files format: `.webp`, `.heic`, `.opus`/`.ogg`, `.aac`/`.flac`, `.mov`/`.webm`/`.mkv`
 - Support code files import
 - Top bar should hide on scrolling
-
 - Stable file id + fingerprint (dedupe, detect changed files); startup cleanup between `FileStore` and the vector store
 - Move `uri` / `name` out of every chunk into `FileStore` (`fileId` and `type` must stay for pre-filtering)
 - Prompt a re-index when indexing settings change
