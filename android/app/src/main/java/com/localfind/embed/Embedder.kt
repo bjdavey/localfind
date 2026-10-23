@@ -195,7 +195,7 @@ class Embedder(
         isNpuTextEnabled = npuTextSuccess
         isGpuVisionEnabled = gpuVisionSuccess
         embeddingSpaceId = EmbeddingSpace.id(
-            activationDataType = ACTIVATION_DATA_TYPE.name,
+            activationDataType = ACTIVATION_PRECISION,
             modelBytes = model.length(),
             textOnNpu = npuTextSuccess,
             visionOnNpu = npuVisionSuccess
@@ -287,8 +287,13 @@ class Embedder(
     companion object {
         private const val TAG = "Embedder"
 
-        /** Activation precision; part of the [EmbeddingSpace] id because it changes the vectors. */
-        private val ACTIVATION_DATA_TYPE = UniversalEmbedderOptions.ActivationDataType.FLOAT32
+        /**
+         * Activation precision label for the [EmbeddingSpace] id. Deliberately NOT set on the options: when unset,
+         * UniversalEmbedder 1.1.1 passes null and the engine uses the precision the model was built for. Forcing
+         * FLOAT32 (the value Google's docs name as default) made the NPU text graph fail on a Galaxy S24 Ultra
+         * (SM8650) and fall back to CPU text. If a precision is ever pinned, change this label with it.
+         */
+        private const val ACTIVATION_PRECISION = "ENGINE_DEFAULT"
 
         /**
          * Options shared by every accelerator path, so they cannot drift apart:
@@ -296,8 +301,7 @@ class Embedder(
          * - The vision token budget.
          * - A compiled-model cache dir, so GPU / NPU graphs are not recompiled on every model load
          *   (matters most when Smart mode swaps the embedder).
-         * - FLOAT32 activations, pinned explicitly (it is the library default). The precision changes the
-         *   vectors, so it must not change silently with a library update.
+         * - No activation type: see [ACTIVATION_PRECISION] (pinning FLOAT32 broke the NPU text graph).
          */
         private fun commonOptions(context: Context, baseOptions: BaseOptions) =
             UniversalEmbedderOptions.builder()
@@ -305,7 +309,6 @@ class Embedder(
                 .setL2Normalize(true)
                 .setVisionTokensPerImage(DEFAULT_VISION_TOKENS_PER_IMAGE)
                 .setCacheDir(context.cacheDir.absolutePath)
-                .setActivationDataType(ACTIVATION_DATA_TYPE)
 
         /**
          * Ensures that the on-device model file exists in [context.filesDir].

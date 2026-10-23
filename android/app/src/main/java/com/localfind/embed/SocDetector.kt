@@ -187,6 +187,11 @@ object SocDetector {
     fun stageAiPackModel(context: Context): File? {
         val target = File(context.filesDir, MODEL_FILE_NAME)
         return try {
+            // No pack asset (development builds) -> null, BEFORE looking at filesDir. Otherwise an unrelated model
+            // already in filesDir (e.g. the generic CPU/GPU one) would be returned as "the pack model" and win
+            // over the device's NPU-compiled model, which then fails to run on the NPU.
+            context.assets.open(AI_PACK_MODEL_RELATIVE_PATH).close()
+
             // openFd needs an uncompressed asset; if the pack asset is compressed, the size is unknown (-1).
             val assetSize = try {
                 context.assets.openFd(AI_PACK_MODEL_RELATIVE_PATH).use { it.length }
