@@ -557,7 +557,7 @@ foreach ($Target in $TargetDevices) {
 
     } catch {
         $ErrMsg = $_.Exception.Message
-        Write-Host "Deployment error on $DeviceId: $ErrMsg" -ForegroundColor Red
+        Write-Host "Deployment error on ${DeviceId}: $ErrMsg" -ForegroundColor Red
         $Results += [PSCustomObject]@{ DeviceId = $DeviceId; Success = $false; Message = $ErrMsg }
     }
 }
