@@ -37,7 +37,8 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import com.localfind.core.model.SearchResult
-import com.localfind.ui.gallery.badgeColor
+import com.localfind.core.model.FileTypes
+import com.localfind.ui.gallery.FileTypeIcon
 
 /**
  * Scrollable list displaying ranked [SearchResult] cards.
@@ -208,24 +209,12 @@ fun SearchResultCard(
                 }
 
                 // Sub-header: Type Badge + Location Offset
-                val typeBadgeColor = category.badgeColor
-
                 Row(
                     horizontalArrangement = Arrangement.spacedBy(8.dp),
                     verticalAlignment = Alignment.CenterVertically
                 ) {
-                    Surface(
-                        shape = RoundedCornerShape(4.dp),
-                        color = typeBadgeColor.copy(alpha = 0.2f)
-                    ) {
-                        Text(
-                            text = result.fileType.uppercase(),
-                            style = MaterialTheme.typography.labelSmall,
-                            fontWeight = FontWeight.Bold,
-                            color = typeBadgeColor,
-                            modifier = Modifier.padding(horizontal = 6.dp, vertical = 1.dp)
-                        )
-                    }
+                    // Shared icon-only file-type indicator (same as gallery and details)
+                    FileTypeIcon(category, isGif = FileTypes.isGifNameOrMime(result.fileName, null), size = 16.dp)
 
                     Text(
                         text = SearchResultFormatter.formatLocation(result.fileType, result.location),

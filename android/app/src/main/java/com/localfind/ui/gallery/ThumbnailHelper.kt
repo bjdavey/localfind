@@ -14,7 +14,6 @@ import android.graphics.pdf.PdfRenderer
 import android.media.MediaMetadataRetriever
 import android.net.Uri
 import android.util.LruCache
-import androidx.compose.ui.graphics.Color as ComposeColor
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -31,11 +30,6 @@ import com.localfind.core.model.ImportedFile
 import com.localfind.index.Indexer
 import com.localfind.core.model.SearchResult
 import com.localfind.core.format.SearchResultFormatter
-import com.localfind.ui.theme.BadgeAudio
-import com.localfind.ui.theme.BadgeImage
-import com.localfind.ui.theme.BadgePdf
-import com.localfind.ui.theme.BadgeText
-import com.localfind.ui.theme.BadgeVideo
 import com.localfind.ui.viewer.PdfViewerHelper
 import java.io.BufferedReader
 import java.io.InputStreamReader
@@ -53,18 +47,6 @@ val GalleryCategory.iconResId: Int
         GalleryCategory.PDFS -> R.drawable.ic_picture_as_pdf
         GalleryCategory.TEXT -> R.drawable.ic_description
         GalleryCategory.AUDIO -> R.drawable.ic_audiotrack
-    }
-
-/**
- * Accent color of the modality badge shown on gallery tiles and search result cards.
- */
-val GalleryCategory.badgeColor: ComposeColor
-    get() = when (this) {
-        GalleryCategory.PHOTOS, GalleryCategory.ALL -> BadgeImage
-        GalleryCategory.VIDEOS -> BadgeVideo
-        GalleryCategory.PDFS -> BadgePdf
-        GalleryCategory.TEXT -> BadgeText
-        GalleryCategory.AUDIO -> BadgeAudio
     }
 
 /**

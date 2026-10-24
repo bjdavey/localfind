@@ -78,21 +78,8 @@ internal fun FileDetailsDialog(
                 verticalAlignment = Alignment.CenterVertically,
                 horizontalArrangement = Arrangement.spacedBy(12.dp)
             ) {
-                val iconRes = category.iconResId
-                Surface(
-                    shape = RoundedCornerShape(10.dp),
-                    color = MaterialTheme.colorScheme.primaryContainer,
-                    modifier = Modifier.size(40.dp)
-                ) {
-                    Box(contentAlignment = Alignment.Center) {
-                        Icon(
-                            painter = painterResource(iconRes),
-                            contentDescription = null,
-                            tint = MaterialTheme.colorScheme.primary,
-                            modifier = Modifier.size(22.dp)
-                        )
-                    }
-                }
+                // Same icon-only, uncolored file-type indicator as gallery and search
+                FileTypeIcon(category, isGif = FileTypes.isGifNameOrMime(file.displayName, file.mimeType), size = 24.dp)
                 Text(
                     text = file.displayName,
                     maxLines = 2,

@@ -80,6 +80,9 @@ fun MediaGalleryTile(
     val category = remember(file.displayName, file.mimeType) {
         LibraryFilters.categorizeFile(file.displayName, file.mimeType)
     }
+    val isGif = remember(file.displayName, file.mimeType) {
+        FileTypes.isGifNameOrMime(file.displayName, file.mimeType)
+    }
     val isPdf = remember(file.displayName, file.mimeType) {
         FileTypes.isPdfNameOrMime(file.displayName, file.mimeType)
     }
@@ -291,8 +294,6 @@ fun MediaGalleryTile(
             // -----------------------------------------------------------------
             // 3. TOP-LEFT & TOP-RIGHT BADGES (Modality Badge + Menu)
             // -----------------------------------------------------------------
-            val badgeColor = category.badgeColor
-            val badgeIconRes = category.iconResId
 
             // Duration text specifically for video and audio (e.g. "02:45"), null for other file types
             val durationText = if (category == GalleryCategory.VIDEOS || category == GalleryCategory.AUDIO) {
@@ -329,23 +330,19 @@ fun MediaGalleryTile(
                         }
                     }
                 } else if (category != GalleryCategory.PHOTOS) {
-                    // Modality Badge (Duration for video/audio, icon-only for others; omitted for photos)
+                    // Modality badge: neutral scrim + white icon (same icon set as search/details),
+                    // with the duration next to it for video/audio.
                     Surface(
                         shape = RoundedCornerShape(8.dp),
-                        color = badgeColor.copy(alpha = 0.90f)
+                        color = Color.Black.copy(alpha = 0.55f)
                     ) {
-                        if (durationText != null) {
-                            Row(
-                                verticalAlignment = Alignment.CenterVertically,
-                                horizontalArrangement = Arrangement.spacedBy(3.dp),
-                                modifier = Modifier.padding(horizontal = 6.dp, vertical = 3.dp)
-                            ) {
-                                Icon(
-                                    painter = painterResource(badgeIconRes),
-                                    contentDescription = null,
-                                    tint = Color.White,
-                                    modifier = Modifier.size(12.dp)
-                                )
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(3.dp),
+                            modifier = Modifier.padding(horizontal = 6.dp, vertical = 4.dp)
+                        ) {
+                            FileTypeIcon(category, size = 13.dp, tint = Color.White)
+                            if (durationText != null) {
                                 Text(
                                     text = durationText,
                                     style = MaterialTheme.typography.labelSmall,
@@ -353,34 +350,11 @@ fun MediaGalleryTile(
                                     color = Color.White
                                 )
                             }
-                        } else {
-                            Box(
-                                contentAlignment = Alignment.Center,
-                                modifier = Modifier.padding(horizontal = 6.dp, vertical = 4.dp)
-                            ) {
-                                Icon(
-                                    painter = painterResource(badgeIconRes),
-                                    contentDescription = null,
-                                    tint = Color.White,
-                                    modifier = Modifier.size(13.dp)
-                                )
-                            }
                         }
                     }
-                } else if (FileTypes.isGifNameOrMime(file.displayName, file.mimeType)) {
-                    // Modality Badge for GIF images
-                    Surface(
-                        shape = RoundedCornerShape(8.dp),
-                        color = Color.Black.copy(alpha = 0.65f)
-                    ) {
-                        Text(
-                            text = "GIF",
-                            style = MaterialTheme.typography.labelSmall,
-                            fontWeight = FontWeight.Bold,
-                            color = Color.White,
-                            modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
-                        )
-                    }
+                } else if (isGif) {
+                    // Modality badge for GIF images (original text "GIF" badge on dark background)
+                    GifBadge(shape = RoundedCornerShape(8.dp))
                 }
 
                 Spacer(modifier = Modifier.weight(1f))
