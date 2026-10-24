@@ -92,7 +92,7 @@ class Indexer(
     fun isAudioFile(file: ImportedFile): Boolean =
         FileTypes.isAudioNameOrMime(file.displayName, file.mimeType)
 
-    /** Determines whether an imported file is a supported video file (.mp4). */
+    /** Determines whether an imported file is a supported video file (.mp4, .mkv, .webm). */
     fun isVideoFile(file: ImportedFile): Boolean =
         FileTypes.isVideoNameOrMime(file.displayName, file.mimeType)
 

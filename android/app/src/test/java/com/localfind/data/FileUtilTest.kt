@@ -89,6 +89,10 @@ class FileUtilTest {
         // Video (Builtin viewer: MediaPlayerScreen)
         assertTrue(FileImporter.isSupported("clip.mp4", "video/mp4"))
         assertTrue(FileImporter.isSupported("clip.mp4", null))
+        assertTrue(FileImporter.isSupported("movie.mkv", "video/x-matroska"))
+        assertTrue(FileImporter.isSupported("movie.mkv", null))
+        assertTrue(FileImporter.isSupported("video.webm", "video/webm"))
+        assertTrue(FileImporter.isSupported("video.webm", null))
     }
 
     @Test
@@ -110,7 +114,7 @@ class FileUtilTest {
         assertFalse(FileImporter.isSupported("slides.pptx", "application/vnd.openxmlformats-officedocument.presentationml.presentation"))
 
         // Non-supported media formats
-        assertFalse(FileImporter.isSupported("movie.mkv", "video/x-matroska"))
+
         assertFalse(FileImporter.isSupported("movie.avi", "video/x-msvideo"))
         assertFalse(FileImporter.isSupported("image.webp", "image/webp"))
         assertFalse(FileImporter.isSupported("image.bmp", "image/bmp"))
@@ -129,6 +133,8 @@ class FileUtilTest {
         assertTrue(mimeList.contains("image/png"))
         assertTrue(mimeList.contains("image/gif"))
         assertTrue(mimeList.contains("video/mp4"))
+        assertTrue(mimeList.contains("video/x-matroska"))
+        assertTrue(mimeList.contains("video/webm"))
         assertTrue(mimeList.contains("text/plain"))
         assertTrue(mimeList.contains("text/markdown"))
         assertTrue(mimeList.contains("audio/mpeg"))

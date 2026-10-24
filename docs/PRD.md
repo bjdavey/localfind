@@ -16,7 +16,7 @@ Everything runs **100% offline on the device**.
 | PDF | `.pdf` (text-based only, no OCR) | Matching page |
 | Image | `.jpg`, `.jpeg`, `.png`, `.gif` | The image |
 | Audio | `.mp3`, `.m4a`, `.wav` | Matching time |
-| Video | `.mp4` | Matching time |
+| Video | `.mp4`, `.mkv`, `.webm` | Matching time |
 
 ### Features
 

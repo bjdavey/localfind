@@ -36,7 +36,10 @@ object FileTypes {
         "audio/wav",
         "audio/x-wav",
         "audio/*",
-        "video/mp4"
+        "video/mp4",
+        "video/x-matroska",
+        "video/webm",
+        "video/mkv"
     )
 
     /**
@@ -67,9 +70,19 @@ object FileTypes {
         return name.endsWith(".pdf") || mime == "application/pdf"
     }
 
-    /** Checks whether a file name or MIME type corresponds to a supported video format (.mp4). */
-    fun isVideoNameOrMime(displayName: String, mimeType: String?): Boolean =
-        displayName.lowercase().endsWith(".mp4") || mimeType?.lowercase() == "video/mp4"
+    /** Checks whether a file name or MIME type corresponds to a supported video format (.mp4, .mkv, .webm). */
+    fun isVideoNameOrMime(displayName: String, mimeType: String?): Boolean {
+        val name = displayName.lowercase()
+        val mime = mimeType?.lowercase() ?: ""
+        return name.endsWith(".mp4") ||
+            name.endsWith(".mkv") ||
+            name.endsWith(".webm") ||
+            mime == "video/mp4" ||
+            mime == "video/x-matroska" ||
+            mime == "video/webm" ||
+            mime == "video/mkv"
+    }
+
 
     /** Checks whether a file name or MIME type corresponds to a supported audio format. */
     fun isAudioNameOrMime(displayName: String, mimeType: String?): Boolean {
@@ -119,6 +132,8 @@ object FileTypes {
         val ext = displayName.substringAfterLast('.', "").lowercase()
         when (ext) {
             "mp4" -> return "video/mp4"
+            "mkv" -> return "video/x-matroska"
+            "webm" -> return "video/webm"
             "jpg", "jpeg" -> return "image/jpeg"
             "png" -> return "image/png"
             "gif" -> return "image/gif"

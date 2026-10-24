@@ -31,12 +31,22 @@ class FileOpenerTest {
             "video/mp4",
             FileTypes.resolveMimeTypeFromExtension("BBC The New Wild.mp4", "application/octet-stream")
         )
+        assertEquals(
+            "video/x-matroska",
+            FileTypes.resolveMimeTypeFromExtension("movie.mkv", "*/*")
+        )
+        assertEquals(
+            "video/webm",
+            FileTypes.resolveMimeTypeFromExtension("clip.webm", "application/octet-stream")
+        )
     }
 
     @Test
     fun resolveMimeTypeFromExtension_commonExtensions_resolvesCorrectMime() {
         // Videos
         assertEquals("video/mp4", FileTypes.resolveMimeTypeFromExtension("nature.mp4"))
+        assertEquals("video/x-matroska", FileTypes.resolveMimeTypeFromExtension("movie.mkv"))
+        assertEquals("video/webm", FileTypes.resolveMimeTypeFromExtension("clip.webm"))
 
         // Images
         assertEquals("image/jpeg", FileTypes.resolveMimeTypeFromExtension("sunset.jpg"))

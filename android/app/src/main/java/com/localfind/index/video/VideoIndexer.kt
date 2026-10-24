@@ -30,7 +30,7 @@ import kotlinx.coroutines.runBlocking
 import java.io.ByteArrayOutputStream
 
 /**
- * Video (`.mp4`) indexing pipeline and hardware keyframe / thermal pacing utilities for [Indexer].
+ * Video (`.mp4`, `.mkv`, `.webm`) indexing pipeline and hardware keyframe / thermal pacing utilities for [Indexer].
  *
  * Optimizations (PRD §2, ARCHITECTURE.md §5):
  * 1. Vision-Only by default: Video audio track is skipped by default ([com.localfind.core.settings.AppSettings.videoIncludeAudio] = false),
