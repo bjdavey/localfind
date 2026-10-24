@@ -14,6 +14,7 @@ import android.graphics.pdf.PdfRenderer
 import android.media.MediaMetadataRetriever
 import android.net.Uri
 import android.util.LruCache
+import android.util.Size
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -229,19 +230,30 @@ object ThumbnailHelper {
     }
 
     /**
-     * Extracts a representative keyframe and duration from a video file using [MediaMetadataRetriever].
+     * Extracts a video preview frame plus duration badge.
+     * - Gallery tiles (`timeOffsetMs == null`): first try native [ContentResolver.loadThumbnail]
+     *   (provider/OS-cached, small decode). Not every SAF provider supports it, so on failure
+     *   we fall through to the same [MediaMetadataRetriever] path used by search results.
+     * - Search results (`timeOffsetMs != null`): frame at matched `timeOffsetMs + 2s`.
      *
-     * @param context Application context.
-     * @param uri Video file URI.
-     * @param timeOffsetMs Base timestamp in milliseconds (e.g. search result match chunk, or null for gallery tile).
-     *                     Adds a 2-second offset ([PreviewMath.VIDEO_THUMBNAIL_OFFSET_MS]) so thumbnails don't start from
-     *                     the first second (avoiding black/blank fade-ins) for both search results and gallery tiles.
+     * The retriever is still opened for the duration badge; only the costly frame decode is skipped
+     * when the native thumbnail succeeds.
      */
     private fun loadVideoPreview(
         context: Context,
         uri: Uri,
         timeOffsetMs: Long? = null
     ): FilePreviewData {
+        val nativeThumbnail = if (timeOffsetMs == null) {
+            try {
+                context.contentResolver.loadThumbnail(uri, Size(THUMBNAIL_MAX_DIM, THUMBNAIL_MAX_DIM), null)
+            } catch (_: Exception) {
+                null // Provider has no thumbnail support: use the retriever fallback below
+            }
+        } else {
+            null
+        }
+
         val retriever = MediaMetadataRetriever()
         try {
             retriever.setDataSource(context, uri)
@@ -250,15 +262,19 @@ object ThumbnailHelper {
                 ?.toLongOrNull() ?: 0L
             val badge = if (durationMs > 0L) SearchResultFormatter.formatTimeMs(durationMs) else "VIDEO"
 
-            // Compute target seek time with the 2-second offset, avoiding the first second and clamping within duration
+            // Native thumbnail is already <= THUMBNAIL_MAX_DIM, so no re-scaling needed
+            if (nativeThumbnail != null) {
+                return FilePreviewData(bitmap = nativeThumbnail, badgeText = badge)
+            }
+
+            // 2-second offset avoids black/blank fade-ins; clamped within duration
             val targetTimeMs = PreviewMath.computeVideoThumbnailTargetTimeMs(
                 baseTimeMs = timeOffsetMs ?: 0L,
                 durationMs = durationMs
             )
             val targetTimeUs = targetTimeMs * 1000L
 
-            // Try extracting a hardware-downscaled frame at target time using closest keyframe (OPTION_CLOSEST_SYNC),
-            // fallback to software frameAtTime if hardware downscaling is unavailable
+            // Hardware-downscaled closest keyframe, falling back to software full-size frames
             val rawFrame = retriever.getScaledFrameAtTime(
                 targetTimeUs,
                 MediaMetadataRetriever.OPTION_CLOSEST_SYNC,
@@ -269,13 +285,12 @@ object ThumbnailHelper {
                 MediaMetadataRetriever.OPTION_CLOSEST_SYNC
             ) ?: retriever.frameAtTime
 
-            val scaledFrame = rawFrame?.let { scaleDownBitmap(it, THUMBNAIL_MAX_DIM) }
             return FilePreviewData(
-                bitmap = scaledFrame,
+                bitmap = rawFrame?.let { scaleDownBitmap(it, THUMBNAIL_MAX_DIM) },
                 badgeText = badge
             )
         } catch (_: Exception) {
-            return FilePreviewData(badgeText = "VIDEO")
+            return FilePreviewData(bitmap = nativeThumbnail, badgeText = "VIDEO")
         } finally {
             try {
                 retriever.release()
