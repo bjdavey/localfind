@@ -239,8 +239,10 @@ if ($SkipDeploy) {
         exit 1
     }
 
+    # The CPU/GPU runs need the universal model: the chipset NPU model cannot run text/vision on GPU/CPU
     $DeployParams = @{
         DeviceId = $SelectedDevice.Serial
+        WithUniversalModel = $true
     }
     if ($Release) { $DeployParams["Release"] = $true }
     if ($SkipBuild) { $DeployParams["SkipBuild"] = $true }

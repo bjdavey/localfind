@@ -17,6 +17,7 @@ ALL_DEVICES=false
 RELEASE=false
 SKIP_BUILD=false
 SKIP_MODEL_PUSH=false
+WITH_UNIVERSAL_MODEL=false
 
 print_usage() {
     echo "Usage: ./deploy-bundle.sh [OPTIONS]"
@@ -26,6 +27,7 @@ print_usage() {
     echo "  -r, --release           Build and install release bundle"
     echo "  -s, --skip-build        Skip Gradle build step (unless cached AAB ABI mismatches)"
     echo "  --skip-model-push       Skip model check/download/push step"
+    echo "  --with-universal-model  On NPU devices also stage the universal model (enables Smart/GPU/CPU)"
     echo "  -h, --help              Show this help message"
 }
 
@@ -49,6 +51,10 @@ while [[ $# -gt 0 ]]; do
             ;;
         --skip-model-push)
             SKIP_MODEL_PUSH=true
+            shift
+            ;;
+        --with-universal-model)
+            WITH_UNIVERSAL_MODEL=true
             shift
             ;;
         -h|--help)
@@ -270,6 +276,13 @@ for CURRENT_DEVICE_ID in "${TARGET_DEVICES[@]}"; do
     if [[ -n "$DEVICE_GROUP" ]]; then
         echo "      Matched Device Group: '$DEVICE_GROUP' (NPU split APKs will be installed)"
         echo "      Target NPU Model:     '$MODEL_NAME'"
+        # Like Play (the AI Pack ships only the NPU model to this group), only the NPU model is staged. It cannot
+        # run on GPU/CPU (NPU-only DISPATCH_OP), so the app then disables Smart/GPU/CPU and always uses NPU.
+        if [[ "$WITH_UNIVERSAL_MODEL" == true ]]; then
+            echo "      Universal model is staged too (--with-universal-model): Smart/GPU/CPU will be available."
+        else
+            echo "      Only the NPU model is staged: the app will offer NPU only. Add --with-universal-model to also enable Smart/GPU/CPU."
+        fi
     else
         echo "      No specific NPU Device Group matched (Device will receive base APK with CPU/GPU fallback)"
         echo "      Target Base Model:    '$MODEL_NAME'"
@@ -364,68 +377,76 @@ for CURRENT_DEVICE_ID in "${TARGET_DEVICES[@]}"; do
 
     # 7. Model Staging Check and Push
     if [[ "$DEVICE_FAILED" != true && "$SKIP_MODEL_PUSH" != true ]]; then
-        echo "[7/8] Ensuring LiteRT-LM model ($MODEL_NAME) is present on device..."
-        DEVICE_CHECK=$(adb -s "$CURRENT_DEVICE_ID" shell "if [ -f /data/local/tmp/$MODEL_NAME ] && [ -s /data/local/tmp/$MODEL_NAME ]; then echo EXISTS; fi" 2>/dev/null | tr -d '\r\n' || true)
+        # Only the chipset model by default, like Play delivers it (the app then offers NPU only).
+        # --with-universal-model also stages the universal model so Smart/GPU/CPU can be used and benchmarked.
+        MODELS_TO_STAGE=("$MODEL_NAME")
+        if [[ "$WITH_UNIVERSAL_MODEL" == true && "$MODEL_NAME" != "embeddinggemma-2-740m.litertlm" ]]; then
+            MODELS_TO_STAGE+=("embeddinggemma-2-740m.litertlm")
+        fi
+        for MODEL_NAME in "${MODELS_TO_STAGE[@]}"; do
+            echo "[7/8] Ensuring LiteRT-LM model ($MODEL_NAME) is present on device..."
+            DEVICE_CHECK=$(adb -s "$CURRENT_DEVICE_ID" shell "if [ -f /data/local/tmp/$MODEL_NAME ] && [ -s /data/local/tmp/$MODEL_NAME ]; then echo EXISTS; fi" 2>/dev/null | tr -d '\r\n' || true)
 
-        if [[ "$DEVICE_CHECK" == "EXISTS" ]]; then
-            echo "      Model '$MODEL_NAME' is already present on device (/data/local/tmp)."
-        else
-            REPO_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
-            LOCAL_MODELS_DIR="$REPO_ROOT/.local/models"
-            mkdir -p "$LOCAL_MODELS_DIR"
-            CACHED_MODEL_FILE="$LOCAL_MODELS_DIR/$MODEL_NAME"
+            if [[ "$DEVICE_CHECK" == "EXISTS" ]]; then
+                echo "      Model '$MODEL_NAME' is already present on device (/data/local/tmp)."
+            else
+                REPO_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
+                LOCAL_MODELS_DIR="$REPO_ROOT/.local/models"
+                mkdir -p "$LOCAL_MODELS_DIR"
+                CACHED_MODEL_FILE="$LOCAL_MODELS_DIR/$MODEL_NAME"
 
-            if [[ ! -s "$CACHED_MODEL_FILE" ]]; then
-                echo "      Model not found in local cache. Downloading '$MODEL_NAME' from Hugging Face..."
-                HF_URL="https://huggingface.co/litert-community/embeddinggemma-2-740m-litert-lm/resolve/main/$MODEL_NAME"
-                DOWNLOAD_OK=false
+                if [[ ! -s "$CACHED_MODEL_FILE" ]]; then
+                    echo "      Model not found in local cache. Downloading '$MODEL_NAME' from Hugging Face..."
+                    HF_URL="https://huggingface.co/litert-community/embeddinggemma-2-740m-litert-lm/resolve/main/$MODEL_NAME"
+                    DOWNLOAD_OK=false
 
-                if command -v curl &>/dev/null; then
-                    echo "      Downloading via curl: $HF_URL"
-                    if curl -L --fail --progress-bar -o "$CACHED_MODEL_FILE" "$HF_URL"; then
-                        DOWNLOAD_OK=true
-                    else
-                        rm -f "$CACHED_MODEL_FILE"
-                    fi
-                elif command -v wget &>/dev/null; then
-                    echo "      Downloading via wget: $HF_URL"
-                    if wget -O "$CACHED_MODEL_FILE" "$HF_URL"; then
-                        DOWNLOAD_OK=true
-                    else
-                        rm -f "$CACHED_MODEL_FILE"
-                    fi
-                fi
-
-                if [[ "$DOWNLOAD_OK" != true && "$MODEL_NAME" != "embeddinggemma-2-740m.litertlm" ]]; then
-                    echo "      Attempting fallback to universal model 'embeddinggemma-2-740m.litertlm'..."
-                    FALLBACK_MODEL="embeddinggemma-2-740m.litertlm"
-                    CACHED_FALLBACK="$LOCAL_MODELS_DIR/$FALLBACK_MODEL"
-                    if [[ ! -s "$CACHED_FALLBACK" ]]; then
-                        FALLBACK_URL="https://huggingface.co/litert-community/embeddinggemma-2-740m-litert-lm/resolve/main/$FALLBACK_MODEL"
-                        if command -v curl &>/dev/null; then
-                            curl -L --fail --progress-bar -o "$CACHED_FALLBACK" "$FALLBACK_URL" || rm -f "$CACHED_FALLBACK"
-                        elif command -v wget &>/dev/null; then
-                            wget -O "$CACHED_FALLBACK" "$FALLBACK_URL" || rm -f "$CACHED_FALLBACK"
+                    if command -v curl &>/dev/null; then
+                        echo "      Downloading via curl: $HF_URL"
+                        if curl -L --fail --progress-bar -o "$CACHED_MODEL_FILE" "$HF_URL"; then
+                            DOWNLOAD_OK=true
+                        else
+                            rm -f "$CACHED_MODEL_FILE"
+                        fi
+                    elif command -v wget &>/dev/null; then
+                        echo "      Downloading via wget: $HF_URL"
+                        if wget -O "$CACHED_MODEL_FILE" "$HF_URL"; then
+                            DOWNLOAD_OK=true
+                        else
+                            rm -f "$CACHED_MODEL_FILE"
                         fi
                     fi
-                    if [[ -s "$CACHED_FALLBACK" ]]; then
-                        MODEL_NAME="$FALLBACK_MODEL"
-                        CACHED_MODEL_FILE="$CACHED_FALLBACK"
+
+                    if [[ "$DOWNLOAD_OK" != true && "$MODEL_NAME" != "embeddinggemma-2-740m.litertlm" ]]; then
+                        echo "      Attempting fallback to universal model 'embeddinggemma-2-740m.litertlm'..."
+                        FALLBACK_MODEL="embeddinggemma-2-740m.litertlm"
+                        CACHED_FALLBACK="$LOCAL_MODELS_DIR/$FALLBACK_MODEL"
+                        if [[ ! -s "$CACHED_FALLBACK" ]]; then
+                            FALLBACK_URL="https://huggingface.co/litert-community/embeddinggemma-2-740m-litert-lm/resolve/main/$FALLBACK_MODEL"
+                            if command -v curl &>/dev/null; then
+                                curl -L --fail --progress-bar -o "$CACHED_FALLBACK" "$FALLBACK_URL" || rm -f "$CACHED_FALLBACK"
+                            elif command -v wget &>/dev/null; then
+                                wget -O "$CACHED_FALLBACK" "$FALLBACK_URL" || rm -f "$CACHED_FALLBACK"
+                            fi
+                        fi
+                        if [[ -s "$CACHED_FALLBACK" ]]; then
+                            MODEL_NAME="$FALLBACK_MODEL"
+                            CACHED_MODEL_FILE="$CACHED_FALLBACK"
+                        fi
                     fi
                 fi
-            fi
 
-            if [[ -s "$CACHED_MODEL_FILE" ]]; then
-                echo "      Pushing '$MODEL_NAME' to device (/data/local/tmp/)..."
-                if adb -s "$CURRENT_DEVICE_ID" push "$CACHED_MODEL_FILE" "/data/local/tmp/$MODEL_NAME"; then
-                    echo "      Model successfully pushed to /data/local/tmp/$MODEL_NAME"
+                if [[ -s "$CACHED_MODEL_FILE" ]]; then
+                    echo "      Pushing '$MODEL_NAME' to device (/data/local/tmp/)..."
+                    if adb -s "$CURRENT_DEVICE_ID" push "$CACHED_MODEL_FILE" "/data/local/tmp/$MODEL_NAME"; then
+                        echo "      Model successfully pushed to /data/local/tmp/$MODEL_NAME"
+                    else
+                        echo "Warning: adb push failed." >&2
+                    fi
                 else
-                    echo "Warning: adb push failed." >&2
+                    echo "Warning: Model file could not be obtained. The app will search for existing local files or Play AI Pack on startup." >&2
                 fi
-            else
-                echo "Warning: Model file could not be obtained. The app will search for existing local files or Play AI Pack on startup." >&2
             fi
-        fi
+        done
     elif [[ "$SKIP_MODEL_PUSH" == true ]]; then
         echo "[7/8] Skipping model staging (--skip-model-push specified)..."
     fi

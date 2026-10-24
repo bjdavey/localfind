@@ -30,6 +30,7 @@ Instructions for AI assistants working on this repository. Read this before ever
    - Run unit tests: `.\gradlew test` (or targeted: `.\gradlew testDebugUnitTest --tests com.localfind...`)
    - Verify build: `.\gradlew assembleDebug`
    - Test on emulator to verify end-to-end.
+   - On real NPU phones install only with `android\deploy-bundle.ps1 -DeviceId <serial>`. Never `adb install app-debug.apk`: it drops the NPU runtime split APKs. For instrumented tests install only the test APK on top.
 4. **Complete:** Mark `[x]` in [TODO.md](TODO.md) and stop.
 
 ## 5. Ask Before Acting

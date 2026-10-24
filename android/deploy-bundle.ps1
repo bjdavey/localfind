@@ -30,12 +30,17 @@
 .PARAMETER SkipModelPush
     Skip checking, downloading, and pushing the LiteRT-LM model to the device.
 
+.PARAMETER WithUniversalModel
+    On NPU devices, also stage the universal model (embeddinggemma-2-740m.litertlm) next to the chipset NPU model,
+    so Smart/GPU/CPU modes can be used and benchmarked. By default only the NPU model is staged, like Play delivers it.
+
 .EXAMPLE
     .\deploy-bundle.ps1
     .\deploy-bundle.ps1 -DeviceId "emulator-5554"
     .\deploy-bundle.ps1 -All
     .\deploy-bundle.ps1 -Release
     .\deploy-bundle.ps1 -SkipModelPush
+    .\deploy-bundle.ps1 -WithUniversalModel
 #>
 
 param(
@@ -43,7 +48,8 @@ param(
     [switch]$All,
     [switch]$Release,
     [switch]$SkipBuild,
-    [switch]$SkipModelPush
+    [switch]$SkipModelPush,
+    [switch]$WithUniversalModel
 )
 
 $ErrorActionPreference = "Stop"
@@ -311,6 +317,13 @@ foreach ($Target in $TargetDevices) {
         if ($DeviceGroup) {
             Write-Host "      Matched Device Group: '$DeviceGroup' (NPU split APKs will be installed)" -ForegroundColor Green
             Write-Host "      Target NPU Model:     '$ModelName'" -ForegroundColor Green
+            # Like Play (the AI Pack ships only the NPU model to this group), only the NPU model is staged. It cannot
+            # run on GPU/CPU (NPU-only DISPATCH_OP), so the app then disables Smart/GPU/CPU and always uses NPU.
+            if ($WithUniversalModel) {
+                Write-Host "      Universal model is staged too (-WithUniversalModel): Smart/GPU/CPU will be available." -ForegroundColor DarkCyan
+            } else {
+                Write-Host "      Only the NPU model is staged: the app will offer NPU only. Add -WithUniversalModel to also enable Smart/GPU/CPU." -ForegroundColor DarkCyan
+            }
         } else {
             Write-Host "      No specific NPU Device Group matched (Device will receive base APK with CPU/GPU fallback)" -ForegroundColor Yellow
             Write-Host "      Target Base Model:    '$ModelName'" -ForegroundColor Yellow
@@ -450,79 +463,87 @@ foreach ($Target in $TargetDevices) {
 
         # 7. Model Staging Check and Push
         if (-not $SkipModelPush) {
-            Write-Host "[7/8] Ensuring LiteRT-LM model ($ModelName) is present on device..." -ForegroundColor Yellow
-
-            $DeviceCheckOutput = @(adb -s $DeviceId shell "if [ -f /data/local/tmp/$ModelName ] && [ -s /data/local/tmp/$ModelName ]; then echo EXISTS; fi")
-            if ($LASTEXITCODE -ne 0) {
-                throw "Could not check for the model on device '$DeviceId'."
+            # Only the chipset model by default, like Play delivers it (the app then offers NPU only).
+            # -WithUniversalModel also stages the universal model so Smart/GPU/CPU can be used and benchmarked.
+            $ModelsToStage = @($ModelName)
+            if ($WithUniversalModel -and $ModelName -ne "embeddinggemma-2-740m.litertlm") {
+                $ModelsToStage += "embeddinggemma-2-740m.litertlm"
             }
-            $DeviceCheck = ($DeviceCheckOutput -join "`n").Trim()
+            foreach ($ModelName in $ModelsToStage) {
+                Write-Host "[7/8] Ensuring LiteRT-LM model ($ModelName) is present on device..." -ForegroundColor Yellow
 
-            if ($DeviceCheck -eq "EXISTS") {
-                Write-Host "      Model '$ModelName' is already present on device (/data/local/tmp)." -ForegroundColor Green
-            } else {
-                $RepoRoot = Split-Path -Parent $ScriptDir
-                $LocalModelsDir = Join-Path $RepoRoot ".local\models"
-                if (-not (Test-Path $LocalModelsDir)) {
-                    New-Item -ItemType Directory -Path $LocalModelsDir | Out-Null
+                $DeviceCheckOutput = @(adb -s $DeviceId shell "if [ -f /data/local/tmp/$ModelName ] && [ -s /data/local/tmp/$ModelName ]; then echo EXISTS; fi")
+                if ($LASTEXITCODE -ne 0) {
+                    throw "Could not check for the model on device '$DeviceId'."
                 }
-                $CachedModelFile = Join-Path $LocalModelsDir $ModelName
+                $DeviceCheck = ($DeviceCheckOutput -join "`n").Trim()
 
-                if (-not (Test-Path $CachedModelFile) -or (Get-Item $CachedModelFile).Length -eq 0) {
-                    Write-Host "      Model not found in local cache. Downloading '$ModelName' from Hugging Face..." -ForegroundColor Yellow
-                    $HfUrl = "https://huggingface.co/litert-community/embeddinggemma-2-740m-litert-lm/resolve/main/$ModelName"
-                    $DownloadOk = $false
-
-                    if (Get-Command curl.exe -ErrorAction SilentlyContinue) {
-                        Write-Host "      Downloading via curl: $HfUrl" -ForegroundColor DarkCyan
-                        & curl.exe -L --fail --progress-bar -o "$CachedModelFile" "$HfUrl"
-                        if ($LASTEXITCODE -eq 0 -and (Test-Path $CachedModelFile) -and (Get-Item $CachedModelFile).Length -gt 0) {
-                            $DownloadOk = $true
-                        } else {
-                            if (Test-Path $CachedModelFile) { Remove-Item $CachedModelFile -Force }
-                        }
-                    }
-
-                    if (-not $DownloadOk) {
-                        try {
-                            Write-Host "      Downloading via Invoke-WebRequest: $HfUrl" -ForegroundColor DarkCyan
-                            Invoke-WebRequest -Uri $HfUrl -OutFile $CachedModelFile -UseBasicParsing
-                            if ((Test-Path $CachedModelFile) -and (Get-Item $CachedModelFile).Length -gt 0) {
-                                $DownloadOk = $true
-                            }
-                        } catch {
-                            if (Test-Path $CachedModelFile) { Remove-Item $CachedModelFile -Force }
-                            Write-Warning "Could not download $ModelName ($HfUrl): $_"
-                        }
-                    }
-
-                    if (-not $DownloadOk -and $ModelName -ne "embeddinggemma-2-740m.litertlm") {
-                        Write-Host "      Attempting fallback to universal model 'embeddinggemma-2-740m.litertlm'..." -ForegroundColor Yellow
-                        $FallbackModel = "embeddinggemma-2-740m.litertlm"
-                        $CachedFallback = Join-Path $LocalModelsDir $FallbackModel
-                        if (-not (Test-Path $CachedFallback) -or (Get-Item $CachedFallback).Length -eq 0) {
-                            $FallbackUrl = "https://huggingface.co/litert-community/embeddinggemma-2-740m-litert-lm/resolve/main/$FallbackModel"
-                            if (Get-Command curl.exe -ErrorAction SilentlyContinue) {
-                                & curl.exe -L --fail --progress-bar -o "$CachedFallback" "$FallbackUrl"
-                            }
-                        }
-                        if ((Test-Path $CachedFallback) -and (Get-Item $CachedFallback).Length -gt 0) {
-                            $ModelName = $FallbackModel
-                            $CachedModelFile = $CachedFallback
-                        }
-                    }
-                }
-
-                if ((Test-Path $CachedModelFile) -and (Get-Item $CachedModelFile).Length -gt 0) {
-                    Write-Host "      Pushing '$ModelName' to device (/data/local/tmp/)..." -ForegroundColor Yellow
-                    adb -s $DeviceId push "$CachedModelFile" "/data/local/tmp/$ModelName"
-                    if ($LASTEXITCODE -eq 0) {
-                        Write-Host "      Model successfully pushed to /data/local/tmp/$ModelName" -ForegroundColor Green
-                    } else {
-                        Write-Warning "adb push failed with exit code $LASTEXITCODE"
-                    }
+                if ($DeviceCheck -eq "EXISTS") {
+                    Write-Host "      Model '$ModelName' is already present on device (/data/local/tmp)." -ForegroundColor Green
                 } else {
-                    Write-Warning "Model file could not be obtained. The app will search for existing local files or Play AI Pack on startup."
+                    $RepoRoot = Split-Path -Parent $ScriptDir
+                    $LocalModelsDir = Join-Path $RepoRoot ".local\models"
+                    if (-not (Test-Path $LocalModelsDir)) {
+                        New-Item -ItemType Directory -Path $LocalModelsDir | Out-Null
+                    }
+                    $CachedModelFile = Join-Path $LocalModelsDir $ModelName
+
+                    if (-not (Test-Path $CachedModelFile) -or (Get-Item $CachedModelFile).Length -eq 0) {
+                        Write-Host "      Model not found in local cache. Downloading '$ModelName' from Hugging Face..." -ForegroundColor Yellow
+                        $HfUrl = "https://huggingface.co/litert-community/embeddinggemma-2-740m-litert-lm/resolve/main/$ModelName"
+                        $DownloadOk = $false
+
+                        if (Get-Command curl.exe -ErrorAction SilentlyContinue) {
+                            Write-Host "      Downloading via curl: $HfUrl" -ForegroundColor DarkCyan
+                            & curl.exe -L --fail --progress-bar -o "$CachedModelFile" "$HfUrl"
+                            if ($LASTEXITCODE -eq 0 -and (Test-Path $CachedModelFile) -and (Get-Item $CachedModelFile).Length -gt 0) {
+                                $DownloadOk = $true
+                            } else {
+                                if (Test-Path $CachedModelFile) { Remove-Item $CachedModelFile -Force }
+                            }
+                        }
+
+                        if (-not $DownloadOk) {
+                            try {
+                                Write-Host "      Downloading via Invoke-WebRequest: $HfUrl" -ForegroundColor DarkCyan
+                                Invoke-WebRequest -Uri $HfUrl -OutFile $CachedModelFile -UseBasicParsing
+                                if ((Test-Path $CachedModelFile) -and (Get-Item $CachedModelFile).Length -gt 0) {
+                                    $DownloadOk = $true
+                                }
+                            } catch {
+                                if (Test-Path $CachedModelFile) { Remove-Item $CachedModelFile -Force }
+                                Write-Warning "Could not download $ModelName ($HfUrl): $_"
+                            }
+                        }
+
+                        if (-not $DownloadOk -and $ModelName -ne "embeddinggemma-2-740m.litertlm") {
+                            Write-Host "      Attempting fallback to universal model 'embeddinggemma-2-740m.litertlm'..." -ForegroundColor Yellow
+                            $FallbackModel = "embeddinggemma-2-740m.litertlm"
+                            $CachedFallback = Join-Path $LocalModelsDir $FallbackModel
+                            if (-not (Test-Path $CachedFallback) -or (Get-Item $CachedFallback).Length -eq 0) {
+                                $FallbackUrl = "https://huggingface.co/litert-community/embeddinggemma-2-740m-litert-lm/resolve/main/$FallbackModel"
+                                if (Get-Command curl.exe -ErrorAction SilentlyContinue) {
+                                    & curl.exe -L --fail --progress-bar -o "$CachedFallback" "$FallbackUrl"
+                                }
+                            }
+                            if ((Test-Path $CachedFallback) -and (Get-Item $CachedFallback).Length -gt 0) {
+                                $ModelName = $FallbackModel
+                                $CachedModelFile = $CachedFallback
+                            }
+                        }
+                    }
+
+                    if ((Test-Path $CachedModelFile) -and (Get-Item $CachedModelFile).Length -gt 0) {
+                        Write-Host "      Pushing '$ModelName' to device (/data/local/tmp/)..." -ForegroundColor Yellow
+                        adb -s $DeviceId push "$CachedModelFile" "/data/local/tmp/$ModelName"
+                        if ($LASTEXITCODE -eq 0) {
+                            Write-Host "      Model successfully pushed to /data/local/tmp/$ModelName" -ForegroundColor Green
+                        } else {
+                            Write-Warning "adb push failed with exit code $LASTEXITCODE"
+                        }
+                    } else {
+                        Write-Warning "Model file could not be obtained. The app will search for existing local files or Play AI Pack on startup."
+                    }
                 }
             }
         } else {
