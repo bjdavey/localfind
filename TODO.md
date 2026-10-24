@@ -89,6 +89,7 @@
 - [x] Grouping matches by file (one card per file with its best hit; "N more matches" expands the rest)
 - [x] Split `SocDetector`: model file resolution/staging (`stageAiPackModel`, `ensureModelFile`, ...) moved to `ModelFiles`; the two temp-file copy blocks merged into one `copyAtomically`. `SocDetector` keeps chip detection + NPU runtime. (Follow-ups: the AI-pack model sharing `MODEL_FILE_NAME` and model location resolved in 3 places are done in the NPU/GPU/CPU rework; ADB staging paths in release builds remain, see Bugs / Issues)
 - [x] Support MKV and WebM video formats (.mkv, .webm)
+- [x] NPU load failure behaves like real Smart: in-memory "NPU unavailable" flag in `EngineManager` (cleared by a Settings change, Retry Loading or restart) makes the NPU choice run as Smart, so the fallback follows screen/Battery Saver; the load order never falls back to the GPU unless Smart picks it; Settings shows "NPU could not be loaded, using Smart". Also declared `android.hardware.npu` in the manifest (Android 17 / targetSdk 37 denies NPU access otherwise)
 
 ## Milestone 7: First publish
 - [x] Final E2E test with edge cases

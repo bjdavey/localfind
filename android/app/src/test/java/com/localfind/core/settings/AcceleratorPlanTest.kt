@@ -14,18 +14,23 @@ class AcceleratorPlanTest {
         loadOrder(caps, { screenOn }, { powerSave })
 
     @Test
-    fun bothModels_choiceFirstThenRemainingAsFallbacks() {
+    fun bothModels_gpuIsNeverAFallbackUnlessChosenOrSmartPicksIt() {
         val caps = Capabilities(npu = true, cpuGpu = true)
-        assertEquals(listOf(npu, gpu, cpu), npu.order(caps))
-        assertEquals(listOf(gpu, npu, cpu), gpu.order(caps))
-        assertEquals(listOf(cpu, npu, gpu), cpu.order(caps))
+        // Failed NPU degrades to Smart: screen on -> CPU only, screen off -> GPU then CPU
+        assertEquals(listOf(npu, cpu), npu.order(caps, screenOn = true))
+        assertEquals(listOf(npu, gpu, cpu), npu.order(caps, screenOn = false))
+        // Battery Saver keeps Smart off the GPU even with the screen off
+        assertEquals(listOf(npu, cpu), npu.order(caps, screenOn = false, powerSave = true))
+        // Explicit choices never fall back to the NPU or (for CPU) the GPU
+        assertEquals(listOf(gpu, cpu), gpu.order(caps))
+        assertEquals(listOf(cpu), cpu.order(caps))
     }
 
     @Test
     fun smartKeepsItsScreenRule() {
         val caps = Capabilities(npu = true, cpuGpu = true)
-        assertEquals(listOf(gpu, npu, cpu), HardwareAccelerator.SMART.order(caps, screenOn = false))
-        assertEquals(listOf(cpu, npu, gpu), HardwareAccelerator.SMART.order(caps, screenOn = true))
+        assertEquals(listOf(gpu, cpu), HardwareAccelerator.SMART.order(caps, screenOn = false))
+        assertEquals(listOf(cpu), HardwareAccelerator.SMART.order(caps, screenOn = true))
     }
 
     @Test
@@ -41,7 +46,7 @@ class AcceleratorPlanTest {
     fun universalModelOnly_npuChoiceFallsBackToSmart() {
         // Emulators and SoCs without an NPU model: NPU is never attempted
         val caps = Capabilities(npu = false, cpuGpu = true)
-        assertEquals(listOf(cpu, gpu), npu.order(caps, screenOn = true))
+        assertEquals(listOf(cpu), npu.order(caps, screenOn = true))
         assertEquals(listOf(gpu, cpu), npu.order(caps, screenOn = false))
     }
 

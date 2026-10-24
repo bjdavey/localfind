@@ -84,8 +84,10 @@ fun SettingsScreen(
     val caps = EngineManager.capabilities.collectAsState().value ?: Capabilities(npu = true, cpuGpu = true)
     // The option in effect, mirroring HardwareAccelerator.resolve: NPU without NPU support falls back to Smart,
     // and with only an NPU model installed every choice runs on NPU.
+    // An NPU that failed to load also runs as Smart until Retry Loading, a Settings change or an app restart.
+    val npuUnavailable = EngineManager.npuUnavailable.collectAsState().value
     val activeAcceleratorOption = when {
-        settings.accelerator == HardwareAccelerator.NPU && !caps.npu -> HardwareAccelerator.SMART
+        settings.accelerator == HardwareAccelerator.NPU && (!caps.npu || npuUnavailable) -> HardwareAccelerator.SMART
         settings.accelerator != HardwareAccelerator.NPU && !caps.cpuGpu && caps.npu -> HardwareAccelerator.NPU
         else -> settings.accelerator
     }
@@ -262,7 +264,11 @@ fun SettingsScreen(
                         subtitle = activeAcceleratorOption.title,
                         description = when (activeAcceleratorOption) {
                             HardwareAccelerator.NPU -> "NPU (${detectedSoc.marketingName}): Dedicated AI tensor cores for maximum indexing speed and consistent vectors."
-                            HardwareAccelerator.SMART -> "Smart: Uses GPU when screen is off, switches to CPU when screen is on or Battery Saver is on."
+                            HardwareAccelerator.SMART -> if (npuUnavailable) {
+                                "NPU could not be loaded, using Smart: GPU when screen is off, CPU when screen is on or Battery Saver is on. Change this setting or restart the app to try the NPU again."
+                            } else {
+                                "Smart: Uses GPU when screen is off, switches to CPU when screen is on or Battery Saver is on."
+                            }
                             HardwareAccelerator.GPU -> "GPU: Always uses mobile GPU compute shaders for maximum indexing speed."
                             HardwareAccelerator.CPU -> "CPU: Always uses CPU (XNNPack) to eliminate UI lag and reduce heat."
                         },

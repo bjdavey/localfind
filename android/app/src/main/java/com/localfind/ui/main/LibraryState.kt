@@ -64,7 +64,7 @@ class LibraryState(
     /**
      * Retries loading the model and resumes background indexing if files are pending.
      */
-    fun retryLoadModel() = loadModelAndResume { EngineManager.ensureModelLoaded(context) }
+    fun retryLoadModel() = loadModelAndResume { EngineManager.ensureModelLoaded(context, retryNpu = true) }
 
     /**
      * Downloads the universal GPU/CPU model from Play (when the NPU model cannot run), loads it, and resumes

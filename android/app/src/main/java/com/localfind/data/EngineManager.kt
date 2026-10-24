@@ -67,6 +67,15 @@ object EngineManager {
     @Volatile
     private var loadedFor: Pair<HardwareAccelerator, HardwareAccelerator>? = null
 
+    /**
+     * True after an NPU load failed and another accelerator took over. While set, the user's NPU choice is treated
+     * as [HardwareAccelerator.SMART] (so the fallback follows screen / Battery Saver instead of being frozen, and
+     * never lands on the GPU unless Smart picks it). The user's saved setting is not changed. Cleared by a Settings
+     * change and "Retry Loading" (the NPU is tried again), or by restarting the app.
+     */
+    private val _npuUnavailable = MutableStateFlow(false)
+    val npuUnavailable: StateFlow<Boolean> = _npuUnavailable.asStateFlow()
+
     /** Installed models from the last [ModelFiles.locate]; null until the first load. */
     @Volatile
     private var models: ModelFiles.Models? = null
@@ -120,8 +129,9 @@ object EngineManager {
      *
      * Emits state to [modelStatus] for live UI observation.
      */
-    suspend fun ensureModelLoaded(context: Context): ModelStatus = withContext(Dispatchers.IO) {
+    suspend fun ensureModelLoaded(context: Context, retryNpu: Boolean = false): ModelStatus = withContext(Dispatchers.IO) {
         _modelStatus.value = ModelStatus.Loading
+        if (retryNpu) _npuUnavailable.value = false
         val app = context.applicationContext
         // The mutex serializes concurrent model-load requests from coroutines, and getEmbedder takes the write
         // lock as well, so two ~485MB native Embedder instances are never created at once.
@@ -216,7 +226,12 @@ object EngineManager {
         accelerator: HardwareAccelerator? = null
     ): EmbeddingModel {
         if (accelerator == null && embedder != null) return sharedEmbedder
-        val configured = accelerator ?: SettingsStore(context).load().accelerator
+        val requested = accelerator ?: SettingsStore(context).load().accelerator
+        val configured = if (_npuUnavailable.value && requested == HardwareAccelerator.NPU) {
+            HardwareAccelerator.SMART
+        } else {
+            requested
+        }
         val found = models ?: refreshModels(context.applicationContext)
         // Capabilities are cached with the models: called for every indexing chunk, so no file checks here
         val caps = _capabilities.value ?: capabilitiesOf(context, found)
@@ -248,6 +263,13 @@ object EngineManager {
         val loaded = Embedder.open(context.applicationContext, found, order)
         embedder = loaded
         loadedFor = plan
+        if (plan?.first == HardwareAccelerator.NPU && loaded.effectiveAccelerator != HardwareAccelerator.NPU) {
+            // The NPU failed: from now on this is Smart. Record what is loaded as Smart's plan so it is not reloaded
+            // right away; it only reloads when Smart's pick changes (screen / Battery Saver).
+            _npuUnavailable.value = true
+            loadedFor = HardwareAccelerator.SMART to loaded.effectiveAccelerator
+            Log.w(TAG, "NPU unavailable, using Smart (${loaded.effectiveAccelerator} loaded).")
+        }
         Log.i(TAG, "Initialized singleton Embedder: plan=$plan, loaded=${loaded.effectiveAccelerator} (${loaded.model.name}).")
         _embeddingSpaceId.value = loaded.embeddingSpaceId
         _modelStatus.value = ModelStatus.Loaded(loaded.model.length())
@@ -258,6 +280,7 @@ object EngineManager {
      * Waits for in-flight inference to finish.
      */
     fun updateAccelerator(context: Context, accelerator: HardwareAccelerator) {
+        _npuUnavailable.value = false // A Settings change tries the NPU again
         try {
             getEmbedder(context, accelerator)
         } catch (e: Exception) {
