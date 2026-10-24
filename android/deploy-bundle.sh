@@ -491,36 +491,9 @@ for CURRENT_DEVICE_ID in "${TARGET_DEVICES[@]}"; do
         echo "[7/8] Skipping model staging (--skip-model-push specified)..."
     fi
 
-    # Force CPU preference on emulators to avoid routing into unavailable native delegates
     if [[ "$DEVICE_FAILED" != true ]]; then
+        # Stop any running instance so startup logs are clean
         adb -s "$CURRENT_DEVICE_ID" shell am force-stop com.localfind || true
-
-        if [[ "$IS_EMULATOR_TARGET" == true && "$RELEASE" != true ]]; then
-            PREFS_DIR="shared_prefs"
-            PREFS_PATH="$PREFS_DIR/localfind_settings.xml"
-            PREFS_TEMP="$(mktemp)"
-            PREFS_EXISTS=$(adb -s "$CURRENT_DEVICE_ID" shell "run-as com.localfind sh -c 'if [ -f $PREFS_PATH ]; then echo YES; fi'" 2>/dev/null | tr -d '\r\n' || true)
-            if [[ "$PREFS_EXISTS" == "YES" ]]; then
-                adb -s "$CURRENT_DEVICE_ID" exec-out run-as com.localfind cat "$PREFS_PATH" > "$PREFS_TEMP" || true
-            fi
-            if [[ ! -s "$PREFS_TEMP" ]] || ! grep -q "<map" "$PREFS_TEMP"; then
-                cat > "$PREFS_TEMP" <<'EOF'
-<?xml version="1.0" encoding="utf-8" standalone="yes" ?>
-<map>
-    <string name="hardware_accelerator">CPU</string>
-</map>
-EOF
-            elif grep -q 'name="hardware_accelerator"' "$PREFS_TEMP"; then
-                sed -i.bak 's|<string name="hardware_accelerator">[^<]*</string>|<string name="hardware_accelerator">CPU</string>|g' "$PREFS_TEMP"
-                rm -f "${PREFS_TEMP}.bak"
-            else
-                sed -i.bak 's|<map/>|<map></map>|g; s|</map>|    <string name="hardware_accelerator">CPU</string>\n</map>|' "$PREFS_TEMP"
-                rm -f "${PREFS_TEMP}.bak"
-            fi
-            adb -s "$CURRENT_DEVICE_ID" push "$PREFS_TEMP" "/data/local/tmp/localfind_settings.xml" >/dev/null || true
-            adb -s "$CURRENT_DEVICE_ID" shell "run-as com.localfind mkdir -p $PREFS_DIR && run-as com.localfind cp /data/local/tmp/localfind_settings.xml $PREFS_PATH && rm -f /data/local/tmp/localfind_settings.xml" || true
-            rm -f "$PREFS_TEMP"
-        fi
 
         # 8. Launch App and Verify Model Load
         echo "[8/8] Launching com.localfind and verifying model is loaded..."

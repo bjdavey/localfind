@@ -584,44 +584,8 @@ foreach ($Target in $TargetDevices) {
             Write-Host "[7/8] Skipping model staging (-SkipModelPush specified)..." -ForegroundColor DarkCyan
         }
 
-        # Stop any running instance so startup logs and preferences are cleanly applied
+        # Stop any running instance so startup logs are clean
         adb -s $DeviceId shell am force-stop com.localfind
-
-        # Force CPU preference on emulators to avoid routing into unavailable native delegates
-        if ($IsEmulatorTarget -and -not $Release) {
-            $PrefsTemp = Join-Path $env:TEMP "localfind_settings_$DeviceId.xml"
-            $PrefsDir = "shared_prefs"
-            $PrefsPath = "$PrefsDir/localfind_settings.xml"
-            Remove-Item $PrefsTemp -Force -ErrorAction SilentlyContinue
-            $PrefsExists = "$(adb -s $DeviceId shell "run-as com.localfind sh -c 'if [ -f $PrefsPath ]; then echo YES; fi'" 2>$null)".Trim()
-            if ($PrefsExists -eq "YES") {
-                adb -s $DeviceId exec-out run-as com.localfind cat $PrefsPath > $PrefsTemp
-            }
-            if (-not (Test-Path $PrefsTemp) -or (Get-Item $PrefsTemp).Length -eq 0) {
-                @'
-<?xml version="1.0" encoding="utf-8" standalone="yes" ?>
-<map />
-'@ | Set-Content -Path $PrefsTemp -Encoding utf8
-            }
-            try {
-                [xml]$PrefsXml = Get-Content -Raw -Path $PrefsTemp
-                $Accelerator = $PrefsXml.map.string | Where-Object { $_.name -eq "hardware_accelerator" }
-                if ($null -eq $Accelerator) {
-                    $Accelerator = $PrefsXml.CreateElement("string")
-                    $Accelerator.SetAttribute("name", "hardware_accelerator")
-                    [void]$PrefsXml.DocumentElement.AppendChild($Accelerator)
-                }
-                $Accelerator.InnerText = "CPU"
-                $PrefsXml.Save($PrefsTemp)
-                adb -s $DeviceId push $PrefsTemp "/data/local/tmp/localfind_settings.xml" | Out-Null
-                adb -s $DeviceId shell "run-as com.localfind mkdir -p $PrefsDir && run-as com.localfind cp /data/local/tmp/localfind_settings.xml $PrefsPath && rm -f /data/local/tmp/localfind_settings.xml"
-                if ($LASTEXITCODE -ne 0) {
-                    throw "Could not apply the emulator CPU accelerator preference."
-                }
-            } finally {
-                Remove-Item $PrefsTemp -Force -ErrorAction SilentlyContinue
-            }
-        }
 
         # 8. Launch App and Verify Model Load
         Write-Host "[8/8] Launching com.localfind and verifying model is loaded..." -ForegroundColor Cyan
