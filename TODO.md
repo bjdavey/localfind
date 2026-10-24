@@ -90,12 +90,16 @@
 - [x] Split `SocDetector`: model file resolution/staging (`stageAiPackModel`, `ensureModelFile`, ...) moved to `ModelFiles`; the two temp-file copy blocks merged into one `copyAtomically`. `SocDetector` keeps chip detection + NPU runtime. (Follow-ups, not done: AI-pack model shares `MODEL_FILE_NAME` with the generic model; model location is resolved in 3 places; ADB staging paths are also checked in release builds)
 
 ## Milestone 7: First publish
-- What else?
 - Final E2E test with edge cases
+- Real remote devices with NPU benchmarks
+- Icons
+- Screenshots
+- Landing page with features requests form
+- What else?
 - Publish
 
 ## Bugs / Issues
-- [ ] E2E: files with a space or non-ASCII character in the name that were imported by share (copied to `shared_imports/`) show "File Not Found" when opened, although the copy exists. Cause: `FileAvailability.isLocalFileAvailable` strips `file://` but does not percent-decode the path `FileAvailability.kt:21`
+- [x] E2E: files with a space or non-ASCII character in the name that were imported by share (copied to `shared_imports/`) show "File Not Found" when opened, although the copy exists. Cause: `FileAvailability.isLocalFileAvailable` strips `file://` but does not percent-decode the path `FileAvailability.kt:21`
 - [ ] E2E: share import silently ignores `file://` and ungranted URIs (no message to the user)
 - [ ] E2E: after killing the app while paused, the banner shows "Paused (1 pending)" but loses the file name and progress bar
 - [ ] E2E: empty / whitespace-only text files are marked Ready with an "(Empty document)" tile instead of being flagged
@@ -129,6 +133,7 @@
 ## Backlog
 
 ### Core
+- Support other languages
 - Code Refactor: Performance (measure first), Security & config (see Bugs / Issues)
 - Import from URL without saving the file (streaming keyframe indexing)
 - Export / Backup index and "Clear Database" reset

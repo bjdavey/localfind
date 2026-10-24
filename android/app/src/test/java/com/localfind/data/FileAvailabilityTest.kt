@@ -43,6 +43,17 @@ class FileAvailabilityTest {
         assertFalse(FileAvailability.isLocalFileAvailable("   "))
     }
 
+    // Shared imports with spaces / non-ASCII names are stored as percent-encoded file:// URIs.
+    @Test
+    fun isLocalFileAvailable_percentEncodedUri_returnsTrue() {
+        val file = tempFolder.newFile("my résumé+1.pdf")
+        val encoded = "file://" + file.parentFile!!.absolutePath + "/my%20r%C3%A9sum%C3%A9+1.pdf"
+
+        assertTrue(FileAvailability.isLocalFileAvailable(encoded))
+        // A raw path containing '%' must not be decoded.
+        assertFalse(FileAvailability.isLocalFileAvailable(file.parentFile!!.absolutePath + "/my%20r%C3%A9sum%C3%A9+1.pdf"))
+    }
+
     @Test
     fun isLocalFileAvailable_nonExistentPath_returnsFalse() {
         assertFalse(FileAvailability.isLocalFileAvailable("/path/to/non_existent_file.mp4"))

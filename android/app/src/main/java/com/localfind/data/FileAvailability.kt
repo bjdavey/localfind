@@ -3,6 +3,7 @@ package com.localfind.data
 import android.content.Context
 import androidx.core.net.toUri
 import java.io.File
+import java.net.URLDecoder
 
 /**
  * Utility for verifying whether a file's underlying storage source is still present
@@ -18,7 +19,18 @@ object FileAvailability {
      */
     fun isLocalFileAvailable(path: String?): Boolean {
         if (path.isNullOrBlank()) return false
-        val cleanPath = path.removePrefix("file://")
+        // Only file:// URIs are percent-encoded (e.g. "my%20file.pdf"); raw paths may legitimately
+        // contain '%', so they are left untouched. '+' is escaped first because URLDecoder
+        // would otherwise turn it into a space (it is a literal '+' in URI paths).
+        val cleanPath = if (path.startsWith("file://")) {
+            try {
+                URLDecoder.decode(path.removePrefix("file://").replace("+", "%2B"), "UTF-8")
+            } catch (_: IllegalArgumentException) {
+                path.removePrefix("file://") // malformed escape: use as-is
+            }
+        } else {
+            path
+        }
         val file = File(cleanPath)
         return file.exists() && file.canRead()
     }
