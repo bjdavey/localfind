@@ -12,6 +12,11 @@
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_DATA_SYNC" />
 
+    <!-- Android 17 (targetSdk 37+): apps that use the NPU (LiteRT NPU delegate) must declare this feature, otherwise
+         the Tensor NPU service denies every inference ("NPU config not found ... target SDK 37 or higher").
+         required=false keeps the app installable on devices without an NPU (they use GPU/CPU). -->
+    <uses-feature android:name="android.hardware.npu" android:required="false" />
+
     <application
         android:allowBackup="true"
         android:largeHeap="true"
