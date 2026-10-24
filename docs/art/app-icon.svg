@@ -1,0 +1,11 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 108 108" width="256" height="256">
+  <!-- Master app icon (transparent). Ring + handle read as a magnifier; the solid lens carries the
+       white sparkle. Blue is the app's PrimaryLight (#1A73E8). Android drawables and the Play
+       Store PNG are derived from this; keep them in sync. -->
+  <g fill="none" stroke="#1A73E8" stroke-width="7" stroke-linecap="round">
+    <circle cx="44" cy="44" r="30"/>
+    <path d="M67 67L90 90" stroke-width="10"/>
+  </g>
+  <circle cx="44" cy="44" r="21" fill="#1A73E8"/>
+  <path fill="#FFFFFF" d="M44 29Q44 44 59 44Q44 44 44 59Q44 44 29 44Q44 44 44 29Z"/>
+</svg>

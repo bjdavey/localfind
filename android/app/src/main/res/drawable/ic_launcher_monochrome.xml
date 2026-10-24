@@ -1,0 +1,32 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Themed icon (Android 13+): single-colour version of the foreground. The launcher tints the
+     opaque pixels, so the sparkle is cut out of the lens (even-odd) instead of drawn white. -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="108dp"
+    android:height="108dp"
+    android:viewportWidth="108"
+    android:viewportHeight="108">
+    <group
+        android:pivotX="0"
+        android:pivotY="0"
+        android:scaleX="0.6"
+        android:scaleY="0.6"
+        android:translateX="22.4"
+        android:translateY="22.4">
+        <path
+            android:fillColor="#00000000"
+            android:pathData="M14,44a30,30 0 1,0 60,0a30,30 0 1,0 -60,0"
+            android:strokeColor="#000000"
+            android:strokeWidth="7" />
+        <path
+            android:fillColor="#00000000"
+            android:pathData="M67,67L90,90"
+            android:strokeColor="#000000"
+            android:strokeLineCap="round"
+            android:strokeWidth="10" />
+        <path
+            android:fillColor="#000000"
+            android:fillType="evenOdd"
+            android:pathData="M23,44a21,21 0 1,0 42,0a21,21 0 1,0 -42,0zM44,29Q44,44 59,44Q44,44 44,59Q44,44 29,44Q44,44 44,29z" />
+    </group>
+</vector>
