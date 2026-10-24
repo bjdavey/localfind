@@ -34,7 +34,6 @@ import androidx.core.os.bundleOf
 import androidx.fragment.compose.AndroidFragment
 import androidx.pdf.ExperimentalPdfApi
 import com.localfind.R
-import com.localfind.data.FileOpener
 
 /**
  * Parameters used to open and navigate within the PDF viewer.
@@ -61,7 +60,7 @@ data class PdfViewerParams(
  * - Dual search controls: in-document text search ([LocalFindPdfViewerFragment.isTextSearchActive])
  *   and LocalFind AI semantic search ([onSearchInFile]).
  * - Resilient fallback to [FallbackPdfRendererView] for de-Googled ROMs or older emulators.
- * - External PDF reader launch support via [FileOpener.openInExternalApp].
+ * - File details button ([onShowDetails]), which also hosts the external-app open action.
  */
 @OptIn(ExperimentalMaterial3Api::class, ExperimentalPdfApi::class)
 @Composable
@@ -69,6 +68,7 @@ fun PdfViewerScreen(
     params: PdfViewerParams,
     onClose: () -> Unit,
     onSearchInFile: () -> Unit,
+    onShowDetails: () -> Unit,
     backHandlerEnabled: Boolean = true,
     modifier: Modifier = Modifier
 ) {
@@ -160,13 +160,11 @@ fun PdfViewerScreen(
                         )
                     }
 
-                    // 3. Open in external PDF reader app
-                    IconButton(onClick = {
-                        FileOpener.openInExternalApp(context, params.uri, params.fileName)
-                    }) {
+                    // 3. File details (external open lives inside the details dialog)
+                    IconButton(onClick = onShowDetails) {
                         Icon(
-                            painter = painterResource(R.drawable.ic_open_in_new),
-                            contentDescription = "Open in external PDF reader"
+                            painter = painterResource(R.drawable.ic_info),
+                            contentDescription = "File details"
                         )
                     }
                 }

@@ -325,18 +325,20 @@ internal fun FileDetailsDialog(
 
                 // Secondary actions: Search in File (or Search by image for photos) and Move to Folder
                 val isPhoto = category == GalleryCategory.PHOTOS
-                val searchActionLabel = if (isPhoto) "Search by image" else "Search in file"
-                val searchActionShortLabel = "Search"
+                val searchActionLabel = if (isPhoto) "Search similar" else "Search in file"
+                // "Search inside" makes clear the search is scoped to this file; photos search by image similarity
+                val searchActionShortLabel = if (isPhoto) "Search similar" else "Search inside"
                 val searchActionIcon = if (isPhoto) R.drawable.ic_image else R.drawable.ic_search
 
                 if (file.indexingStatus == IndexingStatus.INDEXED) {
-                    Row(
+                    // Stacked full-width (not side by side) so the longer search label is never truncated
+                    Column(
                         modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                        verticalArrangement = Arrangement.spacedBy(8.dp)
                     ) {
                         FilledTonalButton(
                             onClick = onSearchInFile,
-                            modifier = Modifier.weight(1f)
+                            modifier = Modifier.fillMaxWidth()
                         ) {
                             Icon(
                                 painter = painterResource(searchActionIcon),
@@ -348,7 +350,7 @@ internal fun FileDetailsDialog(
                         }
                         FilledTonalButton(
                             onClick = onMoveToFolder,
-                            modifier = Modifier.weight(1f)
+                            modifier = Modifier.fillMaxWidth()
                         ) {
                             Icon(
                                 painter = painterResource(R.drawable.ic_drive_file_move),
@@ -356,7 +358,7 @@ internal fun FileDetailsDialog(
                                 modifier = Modifier.size(18.dp)
                             )
                             Spacer(modifier = Modifier.width(6.dp))
-                            Text("Move", maxLines = 1)
+                            Text("Move to folder", maxLines = 1)
                         }
                     }
                 } else {

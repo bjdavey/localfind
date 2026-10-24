@@ -235,6 +235,7 @@ fun ViewerOverlayHost(
     viewerState: ViewerState,
     importedFiles: List<ImportedFile>,
     onSearchInFile: (ImportedFile) -> Unit,
+    onShowDetails: (ImportedFile) -> Unit,
     onSearchSimilarImage: (uri: String, fileName: String) -> Unit
 ) {
     val context = LocalContext.current
@@ -248,6 +249,11 @@ fun ViewerOverlayHost(
             ViewerOrientationHelper.applyOrientation(activity, false)
         }
     }
+
+    // Library entry for the open file, so the details dialog shows real status/folder info when available
+    fun detailsFile(uri: String, name: String, mime: String) =
+        importedFiles.firstOrNull { it.uri == uri }
+            ?: ImportedFile(uri = uri, displayName = name, size = 0L, mimeType = mime, addedAt = 0L)
 
     // 1. Image Viewer: Gallery app style popup transition
     AnimatedVisibility(
@@ -265,6 +271,7 @@ fun ViewerOverlayHost(
             ImageViewerScreen(
                 params = params,
                 onClose = { viewerState.activeImageViewer = null },
+                onShowDetails = { onShowDetails(detailsFile(params.uri, params.fileName, "image/*")) },
                 onSearchSimilar = { uri, name ->
                     viewerState.activeImageViewer = null
                     onSearchSimilarImage(uri, name)
@@ -285,6 +292,7 @@ fun ViewerOverlayHost(
                 params = params,
                 onClose = { viewerState.activeMediaPlayer = null },
                 backHandlerEnabled = viewerState.activeMediaPlayer != null,
+                onShowDetails = { onShowDetails(detailsFile(params.uri, params.fileName, "video/*")) },
                 onSearchInFile = {
                     val matchedFile = importedFiles.firstOrNull { it.uri == params.uri }
                         ?: ImportedFile(
@@ -317,6 +325,7 @@ fun ViewerOverlayHost(
                 params = params,
                 onClose = { viewerState.activePdfViewer = null },
                 backHandlerEnabled = viewerState.activePdfViewer != null,
+                onShowDetails = { onShowDetails(detailsFile(params.uri, params.fileName, "application/pdf")) },
                 onSearchInFile = {
                     val matchedFile = importedFiles.firstOrNull { it.uri == params.uri }
                         ?: ImportedFile(
@@ -349,6 +358,7 @@ fun ViewerOverlayHost(
                 params = params,
                 onClose = { viewerState.activeTextViewer = null },
                 backHandlerEnabled = viewerState.activeTextViewer != null,
+                onShowDetails = { onShowDetails(detailsFile(params.uri, params.fileName, "text/plain")) },
                 onSearchInFile = {
                     val matchedFile = importedFiles.firstOrNull { it.uri == params.uri }
                         ?: ImportedFile(

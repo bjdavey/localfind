@@ -39,7 +39,6 @@ import androidx.media3.common.MediaItem
 import androidx.media3.exoplayer.ExoPlayer
 import androidx.media3.ui.PlayerView
 import com.localfind.R
-import com.localfind.data.FileOpener
 import com.localfind.index.Indexer
 import com.localfind.core.format.SearchResultFormatter
 
@@ -71,6 +70,7 @@ fun MediaPlayerScreen(
     params: MediaPlayerParams,
     onClose: () -> Unit,
     onSearchInFile: () -> Unit,
+    onShowDetails: () -> Unit,
     backHandlerEnabled: Boolean = true,
     modifier: Modifier = Modifier
 ) {
@@ -153,11 +153,11 @@ fun MediaPlayerScreen(
                     }
                     IconButton(onClick = {
                         player.pause()
-                        FileOpener.openInExternalApp(context, params.uri, params.fileName)
+                        onShowDetails()
                     }) {
                         Icon(
-                            painter = painterResource(R.drawable.ic_open_in_new),
-                            contentDescription = "Open in external player or gallery",
+                            painter = painterResource(R.drawable.ic_info),
+                            contentDescription = "File details",
                             tint = Color.White
                         )
                     }

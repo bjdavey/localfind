@@ -53,7 +53,6 @@ import coil.compose.AsyncImagePainter
 import coil.request.ImageRequest
 import com.localfind.index.Indexer
 import com.localfind.R
-import com.localfind.data.FileOpener
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.withContext
@@ -87,6 +86,7 @@ fun ImageViewerScreen(
     params: ImageViewerParams,
     onClose: () -> Unit,
     onSearchSimilar: (uri: String, fileName: String) -> Unit,
+    onShowDetails: () -> Unit,
     backHandlerEnabled: Boolean = true,
     modifier: Modifier = Modifier
 ) {
@@ -216,12 +216,10 @@ fun ImageViewerScreen(
                             tint = Color.White
                         )
                     }
-                    IconButton(onClick = {
-                        FileOpener.openInExternalApp(context, params.uri, params.fileName)
-                    }) {
+                    IconButton(onClick = onShowDetails) {
                         Icon(
-                            painter = painterResource(R.drawable.ic_open_in_new),
-                            contentDescription = "Open in phone gallery or app",
+                            painter = painterResource(R.drawable.ic_info),
+                            contentDescription = "File details",
                             tint = Color.White
                         )
                     }

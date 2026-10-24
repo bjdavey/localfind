@@ -44,6 +44,7 @@ import androidx.work.WorkManager
 import com.localfind.core.settings.AppSettings
 import com.localfind.data.EngineManager
 import com.localfind.data.FileAvailability
+import com.localfind.data.FileOpener
 import com.localfind.data.FileStore
 import com.localfind.core.model.Folder
 import com.localfind.core.model.ImportedFile
@@ -59,7 +60,9 @@ import com.localfind.ui.main.ConfirmRemoveFileDialog
 import com.localfind.ui.main.MissingFileDialog
 import com.localfind.ui.main.rememberLibraryState
 import com.localfind.ui.main.rememberSearchState
+import com.localfind.ui.gallery.FileDetailsDialog
 import com.localfind.ui.gallery.GalleryScreen
+import com.localfind.ui.gallery.MoveFileDialog
 import com.localfind.ui.search.SearchScreen
 import com.localfind.ui.settings.SettingsScreen
 import com.localfind.ui.theme.LocalFindTheme
@@ -200,6 +203,9 @@ fun MainScreen(
 
     var filePendingDeletion by remember { mutableStateOf<ImportedFile?>(null) }
     var missingFileToDelete by remember { mutableStateOf<ImportedFile?>(null) }
+    // File shown in the details dialog opened from a builtin viewer's toolbar, and a file being moved from it
+    var viewerDetailsFile by remember { mutableStateOf<ImportedFile?>(null) }
+    var viewerFileToMove by remember { mutableStateOf<ImportedFile?>(null) }
     var isSettingsOpen by remember { mutableStateOf(false) }
 
     // Hoisted scroll states to guarantee scroll position is never lost when opening/closing files or search
@@ -297,8 +303,52 @@ fun MainScreen(
         )
     }
 
-    // Layered Composition Architecture:
-    // 1. BASE SCREEN: GalleryScreen is always composed at the base of the Box. Its grid state
+    // File details opened from inside a viewer (replaces the old "open original file" toolbar button;
+    // opening in an external app is now an action inside this dialog)
+    viewerDetailsFile?.let { file ->
+        FileDetailsDialog(
+            file = file,
+            isQueuePaused = indexingProgress.isPaused,
+            onDismiss = { viewerDetailsFile = null },
+            onOpenExternal = {
+                viewerDetailsFile = null
+                FileOpener.openInExternalApp(context, file.uri, file.displayName, file.mimeType)
+            },
+            onSearchInFile = {
+                viewerDetailsFile = null
+                search.startSearchInFile(file)
+            },
+            onMoveToFolder = {
+                viewerDetailsFile = null
+                viewerFileToMove = file
+            },
+            onDelete = {
+                viewerDetailsFile = null
+                filePendingDeletion = file
+            },
+            onRetry = {
+                viewerDetailsFile = null
+                library.retryFile(file)
+            },
+            onCancelSync = {
+                viewerDetailsFile = null
+                library.cancelFile(file)
+            }
+        )
+    }
+    viewerFileToMove?.let { file ->
+        MoveFileDialog(
+            file = file,
+            folders = folders,
+            onMove = { targetFolderId ->
+                viewerFileToMove = null
+                library.moveFileToFolder(file, targetFolderId)
+            },
+            onDismiss = { viewerFileToMove = null }
+        )
+    }
+
+    // Layered Composition Architecture:    // 1. BASE SCREEN: GalleryScreen is always composed at the base of the Box. Its grid state
     //    and cached tiles are never destroyed, guaranteeing zero scroll reset and zero reload flicker.
     // 2. SEARCH & SETTINGS: Smooth slide/fade overlay screens on top of the gallery.
     // 3. BUILTIN VIEWERS: Hosted via ViewerOverlayHost with scale + fade / slide + fade animations.
@@ -457,6 +507,7 @@ fun MainScreen(
             viewerState = viewerState,
             importedFiles = importedFiles,
             onSearchInFile = { file -> search.startSearchInFile(file) },
+            onShowDetails = { viewerDetailsFile = it },
             onSearchSimilarImage = { uriStr, name ->
                 scope.launch {
                     // Content provider access is IPC, so check the original off the main thread
