@@ -275,6 +275,22 @@ for CURRENT_DEVICE_ID in "${TARGET_DEVICES[@]}"; do
         echo "      Target Base Model:    '$MODEL_NAME'"
     fi
 
+    # The Qualcomm HTP runtime libraries are git-ignored; without them the NPU split APKs are empty and
+    # the app silently falls back to CPU/GPU. The fetch script is idempotent (no download when present).
+    if [[ "$DEVICE_GROUP" == Qualcomm_* ]]; then
+        if ! bash "$SCRIPT_DIR/litert_npu_runtime_libraries/fetch_qualcomm_library.sh"; then
+            DEVICE_FAILED=true
+            DEVICE_ERR="fetch_qualcomm_library.sh failed"
+        fi
+    fi
+
+    if [[ "$DEVICE_GROUP" == Mediatek_* ]]; then
+        if ! bash "$SCRIPT_DIR/litert_npu_runtime_libraries/fetch_mediatek_library.sh"; then
+            DEVICE_FAILED=true
+            DEVICE_ERR="fetch_mediatek_library.sh failed"
+        fi
+    fi
+
     # 4. Build App Bundle
     NEEDS_BUILD=false
     if [[ "$LAST_BUILT_ABI" == "$DEVICE_ABI" && -f "$AAB_PATH" ]] && aab_contains_abi "$AAB_PATH" "$DEVICE_ABI"; then
@@ -293,7 +309,7 @@ for CURRENT_DEVICE_ID in "${TARGET_DEVICES[@]}"; do
         NEEDS_BUILD=true
     fi
 
-    if [[ "$NEEDS_BUILD" == true ]]; then
+    if [[ "$NEEDS_BUILD" == true && "$DEVICE_FAILED" != true ]]; then
         echo "[4/8] Building Android App Bundle (:$BUILD_TYPE, targetAbi=$DEVICE_ABI)..."
         if ! ./gradlew ":app:bundle$BUILD_TYPE" "-PtargetAbi=$DEVICE_ABI"; then
             DEVICE_FAILED=true

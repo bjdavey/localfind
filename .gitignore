@@ -35,3 +35,6 @@ local.properties
 .DS_Store
 Thumbs.db
 .agents
+
+# Qualcomm/MediaTek NPU runtime libraries fetched by android/litert_npu_runtime_libraries/fetch_*_library.sh
+android/litert_npu_runtime_libraries/**/src/main/jni/

@@ -316,6 +316,37 @@ foreach ($Target in $TargetDevices) {
             Write-Host "      Target Base Model:    '$ModelName'" -ForegroundColor Yellow
         }
 
+        # The Qualcomm HTP runtime libraries are git-ignored; without them the NPU split APKs are empty and
+        # the app silently falls back to CPU/GPU. Fetch them (once) before building the bundle.
+        if ($DeviceGroup -match "^Qualcomm_SM(\d+)") {
+            $HtpVersion = @{ "8550" = "73"; "8650" = "75"; "8750" = "79"; "8850" = "81" }[$Matches[1]]
+            $HtpStub = Join-Path $ScriptDir "litert_npu_runtime_libraries\qualcomm_runtime_v$HtpVersion\src\main\jni\arm64-v8a\libQnnHtpV${HtpVersion}Stub.so"
+            if (-not (Test-Path $HtpStub)) {
+                Write-Host "      Qualcomm NPU runtime libraries missing; running fetch_qualcomm_library.sh (~2.4 GB download)..." -ForegroundColor Yellow
+                # Use Git for Windows' bash: plain 'bash' may resolve to the WSL launcher in System32.
+                $GitBash = Join-Path (Split-Path (Split-Path (Get-Command git).Source)) "bin\bash.exe"
+                if (-not (Test-Path $GitBash)) { $GitBash = "bash" }
+                & $GitBash (Join-Path $ScriptDir "litert_npu_runtime_libraries/fetch_qualcomm_library.sh")
+                if ($LASTEXITCODE -ne 0) {
+                    throw "fetch_qualcomm_library.sh failed with exit code $LASTEXITCODE"
+                }
+            }
+        }
+
+        # Same for the MediaTek NeuroPilot adapter libraries (the fetch script is idempotent).
+        if ($DeviceGroup -match "^Mediatek_") {
+            $MtkLib = Join-Path $ScriptDir "litert_npu_runtime_libraries\mediatek_runtime_v8\src\main\jni\arm64-v8a\libneuronusdk_adapter.mtk.so"
+            if (-not (Test-Path $MtkLib)) {
+                Write-Host "      MediaTek NPU runtime libraries missing; running fetch_mediatek_library.sh..." -ForegroundColor Yellow
+                $GitBash = Join-Path (Split-Path (Split-Path (Get-Command git).Source)) "bin\bash.exe"
+                if (-not (Test-Path $GitBash)) { $GitBash = "bash" }
+                & $GitBash (Join-Path $ScriptDir "litert_npu_runtime_libraries/fetch_mediatek_library.sh")
+                if ($LASTEXITCODE -ne 0) {
+                    throw "fetch_mediatek_library.sh failed with exit code $LASTEXITCODE"
+                }
+            }
+        }
+
         # 4. Build App Bundle
         $NeedsBuild = $false
         if ($LastBuiltAbi -eq $DeviceAbi -and (Test-Path $AabPath) -and (Test-AabContainsAbi -BundleFile $AabPath -Abi $DeviceAbi)) {
@@ -355,7 +386,34 @@ foreach ($Target in $TargetDevices) {
             Write-Host "[5/8] Reusing split APKs generated earlier in this session for ABI '$DeviceAbi'..." -ForegroundColor DarkCyan
         } else {
             Write-Host "[5/8] Generating split APKs via bundletool..." -ForegroundColor Yellow
-            & java -jar "$BundletoolJar" build-apks --bundle="$AabPath" --output="$ApksPath" --overwrite
+            $BuildApksArgs = @(
+                "-jar", "$BundletoolJar",
+                "build-apks",
+                "--bundle=$AabPath",
+                "--output=$ApksPath",
+                "--overwrite"
+            )
+
+            # For debug builds, sign with the standard Android debug keystore so instrumentation tests
+            # and debuggers (which share ~/.android/debug.keystore) match the installed package signature.
+            $CandidateKeystores = @(
+                "$env:ANDROID_USER_HOME\.android\debug.keystore",
+                "E:\packages\.android\debug.keystore",
+                "$env:USERPROFILE\.android\debug.keystore",
+                "$env:HOME\.android\debug.keystore"
+            )
+            $DebugKeystore = $CandidateKeystores | Where-Object { -not [string]::IsNullOrWhiteSpace($_) -and (Test-Path $_) } | Select-Object -First 1
+            if (-not $Release -and $DebugKeystore) {
+                Write-Host "      Signing split APKs with debug keystore: $DebugKeystore" -ForegroundColor DarkCyan
+                $BuildApksArgs += @(
+                    "--ks=$DebugKeystore",
+                    "--ks-pass=pass:android",
+                    "--ks-key-alias=androiddebugkey",
+                    "--key-pass=pass:android"
+                )
+            }
+
+            & java $BuildApksArgs
             if ($LASTEXITCODE -ne 0) {
                 throw "bundletool build-apks failed"
             }

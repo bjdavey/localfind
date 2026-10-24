@@ -92,7 +92,7 @@
 
 ## Milestone 7: First publish
 - [x] Final E2E test with edge cases
-- Real remote devices with NPU benchmarks
+- [ ] Real remote devices with CPU/GPU/NPU benchmarks (automated test and deployment runner script)
 - App Icon
 - Screenshots
 - Landing page with features requests form

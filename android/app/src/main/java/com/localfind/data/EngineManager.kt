@@ -7,6 +7,7 @@ import kotlin.concurrent.read
 import java.util.concurrent.locks.ReentrantReadWriteLock
 import com.localfind.embed.EmbeddingModel
 import com.localfind.core.settings.AppSettings
+import com.localfind.core.settings.DEFAULT_HARDWARE_ACCELERATOR
 import com.localfind.core.settings.HardwareAccelerator
 import com.localfind.core.model.ModelStatus
 import android.content.Context
@@ -92,7 +93,9 @@ object EngineManager {
     suspend fun ensureModelLoaded(context: Context): ModelStatus = withContext(Dispatchers.IO) {
         _modelStatus.value = ModelStatus.Loading
 
-        val modelFile = ModelFiles.ensureModelFile(context)
+        // Pre-check with the default (NPU) accelerator so a chipset-specific model staged alone (e.g. by
+        // deploy-bundle.ps1 on a Snapdragon device) is found; without it only the universal name is checked.
+        val modelFile = ModelFiles.ensureModelFile(context, DEFAULT_HARDWARE_ACCELERATOR)
         if (!modelFile.exists() || modelFile.length() == 0L) {
             val instructions = "To install the model on this emulator or device:\n" +
                     "1. Connect with ADB\n" +
