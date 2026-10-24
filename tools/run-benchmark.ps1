@@ -102,10 +102,22 @@ foreach ($line in $AdbRaw) {
         $hw = (adb -s $serial shell getprop ro.hardware 2>$null).Trim()
         $isEmulator = ($qemu -eq "1") -or ($hw -match "goldfish|ranchu") -or ($serial -match "^emulator-")
 
+        # Platform = SoC manufacturer + model (e.g. "Qualcomm SM8550"). ro.soc.* exists on Android 12+;
+        # older devices fall back to the board platform / hardware name.
+        $socMaker = (adb -s $serial shell getprop ro.soc.manufacturer 2>$null).Trim()
+        $socModel = (adb -s $serial shell getprop ro.soc.model 2>$null).Trim()
+        if ([string]::IsNullOrWhiteSpace($socModel)) {
+            $socModel = (adb -s $serial shell getprop ro.board.platform 2>$null).Trim()
+        }
+        if ([string]::IsNullOrWhiteSpace($socModel)) { $socModel = $hw }
+        $platform = ("$socMaker $socModel").Trim()
+        if ([string]::IsNullOrWhiteSpace($platform)) { $platform = "Unknown" }
+
         $AvailableDevices += [PSCustomObject]@{
             Serial     = $serial
             Model      = if ($model) { $model } else { "Unknown Device" }
             Abi        = $abi
+            Platform   = $platform
             IsEmulator = $isEmulator
             Type       = if ($isEmulator) { "Emulator" } else { "Physical" }
         }
@@ -129,6 +141,7 @@ if (-not [string]::IsNullOrWhiteSpace($DeviceId)) {
             Serial     = $DeviceId
             Model      = "Custom Device"
             Abi        = "arm64-v8a"
+            Platform   = "Unknown"
             IsEmulator = ($DeviceId -match "^emulator-")
             Type       = if ($DeviceId -match "^emulator-") { "Emulator" } else { "Physical" }
         }
@@ -141,7 +154,7 @@ if (-not [string]::IsNullOrWhiteSpace($DeviceId)) {
     for ($i = 0; $i -lt $AvailableDevices.Count; $i++) {
         $dev = $AvailableDevices[$i]
         $idx = $i + 1
-        Write-Host "  [$idx] $($dev.Serial) - $($dev.Model) ($($dev.Abi), $($dev.Type))" -ForegroundColor White
+        Write-Host "  [$idx] $($dev.Serial) - $($dev.Model) [$($dev.Platform)] ($($dev.Abi), $($dev.Type))" -ForegroundColor White
     }
 
     $Choice = Read-Host "Select device [1-$($AvailableDevices.Count)] (default: 1)"
@@ -160,6 +173,7 @@ if (-not [string]::IsNullOrWhiteSpace($DeviceId)) {
 }
 
 Write-Host "      Target Device: $($SelectedDevice.Serial) - $($SelectedDevice.Model) ($($SelectedDevice.Abi))" -ForegroundColor Green
+Write-Host "      Platform:      $($SelectedDevice.Platform)" -ForegroundColor Green
 
 # -----------------------------------------------------------------------------
 # 2. Test Video Path Selection
@@ -416,7 +430,7 @@ if (-not [string]::IsNullOrWhiteSpace($ExtractedMarkdown)) {
     # Parse key data points for the cumulative summary table
     $RunTimestamp = if ($ExtractedMarkdown -match '\|\s*\*\*Timestamp\*\*\s*\|\s*([^\|]+)\|') { $matches[1].Trim() } else { (Get-Date -Format "yyyy-MM-dd HH:mm:ss") }
     $RunDevice = if ($ExtractedMarkdown -match '\|\s*\*\*Target Device\*\*\s*\|\s*([^\|]+)\|') { $matches[1].Trim() } else { $SelectedDevice.Model }
-    $RunSoC = if ($ExtractedMarkdown -match '\|\s*\*\*Chipset \(SoC\)\*\*\s*\|\s*([^\|]+)\|') { $matches[1].Trim() } else { "Unknown" }
+    $RunSoC = if ($ExtractedMarkdown -match '\|\s*\*\*Chipset \(SoC\)\*\*\s*\|\s*([^\|]+)\|') { $matches[1].Trim() } else { $SelectedDevice.Platform }
     $RunVideo = $SelectedVideo.Name
     $RunSize = "$SelectedVideoSizeMb MB"
 
@@ -444,6 +458,9 @@ Cumulative benchmark results across devices, chipsets, and video files.
 "@
         [System.IO.File]::WriteAllText($SummaryPath, $HeaderContent, [System.Text.Encoding]::UTF8)
     }
+
+    # Append the raw platform (e.g. "Qualcomm SM8550") unless the report's SoC cell already equals it
+    if ($RunSoC -ne $SelectedDevice.Platform) { $RunSoC = "$RunSoC [$($SelectedDevice.Platform)]" }
 
     $SummaryRow = "| $RunTimestamp | $RunDevice | $RunSoC | `$RunVideo` | $RunSize | $CpuCell | $GpuCell | $NpuCell | $SpeedupCell | [$OutputFileName](./$OutputFileName) |`r`n"
     [System.IO.File]::AppendAllText($SummaryPath, $SummaryRow, [System.Text.Encoding]::UTF8)
