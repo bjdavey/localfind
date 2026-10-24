@@ -169,6 +169,11 @@ fun SettingsScreen(
                 .padding(vertical = 8.dp)
         ) {
             // =================================================================
+            // NPU CARD: only when the NPU is confirmed working (model loaded on it)
+            // =================================================================
+            if (EngineManager.npuActive.collectAsState().value) NpuSupportCard()
+
+            // =================================================================
             // SECTION 1: APPEARANCE (FIRST THING IN SETTINGS)
             // =================================================================
             SettingsCategoryHeader("APPEARANCE")

@@ -34,9 +34,13 @@ import com.localfind.core.model.Folder
 
 /**
  * Welcoming Empty Gallery State when no files have been imported yet.
+ *
+ * @param hasAiHardware true when the phone's dedicated AI chip is confirmed working; shows a friendly
+ *   badge (no technical terms such as NPU) so the user knows searching and analyzing will be fast.
  */
 @Composable
 internal fun EmptyGalleryState(
+    hasAiHardware: Boolean,
     onImportFiles: () -> Unit,
     onImportFolder: () -> Unit,
     onCreateFolder: () -> Unit,
@@ -100,6 +104,30 @@ internal fun EmptyGalleryState(
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                     textAlign = TextAlign.Center
                 )
+                if (hasAiHardware) {
+                    Surface(
+                        shape = RoundedCornerShape(16.dp),
+                        color = MaterialTheme.colorScheme.primaryContainer,
+                        contentColor = MaterialTheme.colorScheme.onPrimaryContainer
+                    ) {
+                        Row(
+                            modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(6.dp)
+                        ) {
+                            Icon(
+                                painter = painterResource(R.drawable.ic_auto_awesome),
+                                contentDescription = null,
+                                modifier = Modifier.size(16.dp)
+                            )
+                            Text(
+                                text = "Your phone has built-in AI power for faster search and file analyzing and better battery life.",
+                                style = MaterialTheme.typography.labelMedium,
+                                textAlign = TextAlign.Center
+                            )
+                        }
+                    }
+                }
                 Spacer(modifier = Modifier.height(4.dp))
                 Column(
                     modifier = Modifier.fillMaxWidth(),

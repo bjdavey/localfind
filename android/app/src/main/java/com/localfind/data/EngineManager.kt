@@ -76,6 +76,13 @@ object EngineManager {
     private val _npuUnavailable = MutableStateFlow(false)
     val npuUnavailable: StateFlow<Boolean> = _npuUnavailable.asStateFlow()
 
+    /**
+     * True only while the loaded embedder really runs on the NPU (model loaded and warmup embedding verified), not
+     * merely when the chip supports it. Lets the UI tell the user their phone has dedicated AI hardware.
+     */
+    private val _npuActive = MutableStateFlow(false)
+    val npuActive: StateFlow<Boolean> = _npuActive.asStateFlow()
+
     /** Installed models from the last [ModelFiles.locate]; null until the first load. */
     @Volatile
     private var models: ModelFiles.Models? = null
@@ -260,9 +267,11 @@ object EngineManager {
         }
         embedder = null
         loadedFor = null
+        _npuActive.value = false
         val loaded = Embedder.open(context.applicationContext, found, order)
         embedder = loaded
         loadedFor = plan
+        _npuActive.value = loaded.effectiveAccelerator == HardwareAccelerator.NPU
         if (plan?.first == HardwareAccelerator.NPU && loaded.effectiveAccelerator != HardwareAccelerator.NPU) {
             // The NPU failed: from now on this is Smart. Record what is loaded as Smart's plan so it is not reloaded
             // right away; it only reloads when Smart's pick changes (screen / Battery Saver).

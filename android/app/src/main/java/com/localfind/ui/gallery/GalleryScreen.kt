@@ -30,6 +30,7 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -39,6 +40,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
+import com.localfind.data.EngineManager
 import com.localfind.data.FileOpener
 import com.localfind.core.model.Folder
 import com.localfind.core.model.ImportedFile
@@ -394,7 +396,9 @@ fun GalleryScreen(
             val isCurrentFolderEmpty = currentSubfolders.isEmpty() && currentFolderFiles.isEmpty()
 
             if (isRootEmpty) {
+                val npuActive by EngineManager.npuActive.collectAsState()
                 EmptyGalleryState(
+                    hasAiHardware = npuActive,
                     onImportFiles = onImportFiles,
                     onImportFolder = onImportFolder,
                     onCreateFolder = { showCreateFolderDialog = true },
