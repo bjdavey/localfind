@@ -371,19 +371,6 @@ fun SearchScreen(
             }
 
             hasSearched && searchResults.isNotEmpty() -> {
-                val matchWord = if (searchResults.size == 1) "match" else "matches"
-                val headerText = if (queryImageUri != null) {
-                    "Showing ${searchResults.size} $matchWord"
-                } else {
-                    "Showing ${searchResults.size} ranked $matchWord"
-                }
-                Text(
-                    text = headerText,
-                    style = MaterialTheme.typography.labelLarge,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    modifier = Modifier.padding(horizontal = 18.dp, vertical = 4.dp)
-                )
-
                 SearchResultsList(
                     results = searchResults,
                     onResultClick = onResultClick,

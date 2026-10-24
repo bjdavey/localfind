@@ -118,8 +118,9 @@ class Searcher(
         // Query the SQLite vector store for nearest neighbors.
         // Applies modality/file-type filter before nearest-neighbor retrieval ("search after filter"),
         // preventing irrelevant modalities from consuming the top-K budget.
-        // If excludeFileUri is set, request topK + 1 candidates so excluding the query file doesn't reduce top-K count.
-        val fetchLimit = if (excludeFileUri != null) topK + 1 else topK
+        // topK caps both the number of files and the hits per file, so fetch a larger chunk pool to fill them.
+        // One extra candidate when excludeFileUri is set keeps the exclusion from shrinking the pool.
+        val fetchLimit = ResultRanking.candidateCount(topK) + if (excludeFileUri != null) 1 else 0
         val records = if (fileTypes.isNullOrEmpty()) {
             embeddingStore.search(queryEmbedding, fetchLimit, metadataFilter)
         } else if (fileTypes.size == 1) {

@@ -148,7 +148,7 @@ All variables are persisted locally using native Android `SharedPreferences` (`S
 | Area | Variable | Default | Description |
 | :--- | :--- | :--- | :--- |
 | Search | Similarity Threshold | `0.30` | Minimum cosine similarity score required for matches |
-| Search | Top-K | `10` | Maximum nearest-neighbor results retrieved |
+| Search | Top-K | `10` | Maximum different files shown, and maximum grouped matches per file |
 | Indexing | Text Chunk Size | `500` chars | Passage character length for text, Markdown, and PDF |
 | Indexing | Text Chunk Overlap | `100` chars | Sliding overlap characters between consecutive passages |
 | Indexing | Audio Window Duration | `10` s | Duration of each fixed audio chunk |

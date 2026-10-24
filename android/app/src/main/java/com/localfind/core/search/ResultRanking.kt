@@ -37,12 +37,25 @@ object ResultRanking {
 
     /**
      * Keeps results at or above [threshold], removes duplicate chunk ids (so UI list keys stay unique),
-     * orders them by descending score and returns the best [topK].
+     * orders them by descending score and applies [topK] twice: at most [topK] different files,
+     * and at most [topK] hits per file (the ones the UI shows grouped under that file).
      */
     fun rank(results: List<SearchResult>, threshold: Float, topK: Int): List<SearchResult> =
-        results
-            .filter { it.score >= threshold }
-            .distinctBy { it.chunkId }
-            .sortedByDescending { it.score }
+        FileGrouping.groupByFile(
+            results
+                .filter { it.score >= threshold }
+                .distinctBy { it.chunkId }
+        )
             .take(topK)
+            .flatMap { listOf(it.best) + it.others.take(topK - 1) }
+            .sortedByDescending { it.score }
+
+    /**
+     * Number of raw chunks to fetch from the vector store so that [topK] files with up to [topK]
+     * hits each can be filled (a plain top-K of chunks could be all from a few files). Capped to
+     * keep the query cheap at large [topK].
+     */
+    fun candidateCount(topK: Int): Int = minOf(topK * topK, MAX_CANDIDATES)
+
+    private const val MAX_CANDIDATES = 300
 }

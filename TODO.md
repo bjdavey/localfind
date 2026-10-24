@@ -95,6 +95,10 @@
 - Publish
 
 ## Bugs / Issues
+- [ ] E2E: files with a space or non-ASCII character in the name that were imported by share (copied to `shared_imports/`) show "File Not Found" when opened, although the copy exists. Cause: `FileAvailability.isLocalFileAvailable` strips `file://` but does not percent-decode the path `FileAvailability.kt:21`
+- [ ] E2E: share import silently ignores `file://` and ungranted URIs (no message to the user)
+- [ ] E2E: after killing the app while paused, the banner shows "Paused (1 pending)" but loses the file name and progress bar
+- [ ] E2E: empty / whitespace-only text files are marked Ready with an "(Empty document)" tile instead of being flagged
 - [x] Fix bundle script for emulator and make sure model is loaded
 - [ ] Privacy: `allowBackup="true"` with empty `data_extraction_rules.xml` lets cloud backup / device transfer include the vector DB (text snippets), shared copies and the file list; share import accepts `file://` URIs (can copy LocalFind's own private files)
 - [ ] Search waits for the in-flight indexing chunk because inference is synchronized (slow queries while indexing)

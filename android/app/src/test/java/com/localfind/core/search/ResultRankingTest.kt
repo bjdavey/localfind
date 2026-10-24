@@ -53,4 +53,19 @@ class ResultRankingTest {
         )
         assertEquals(listOf("b", "d"), ranked.map { it.chunkId })
     }
+
+    @Test
+    fun rank_capsDifferentFilesAndHitsPerFile() {
+        fun hit(id: String, uri: String, score: Float) = SearchResult(id, uri, "f", "text", "", 0L, score)
+        val ranked = ResultRanking.rank(
+            listOf(
+                hit("a1", "A", 0.9f), hit("a2", "A", 0.8f), hit("a3", "A", 0.7f),
+                hit("b1", "B", 0.6f), hit("c1", "C", 0.5f)
+            ),
+            threshold = 0f,
+            topK = 2
+        )
+        // Two files (A, B); file A keeps only its 2 best hits
+        assertEquals(listOf("a1", "a2", "b1"), ranked.map { it.chunkId })
+    }
 }
