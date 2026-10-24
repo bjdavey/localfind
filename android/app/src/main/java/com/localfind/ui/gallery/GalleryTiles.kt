@@ -277,13 +277,12 @@ fun MediaGalleryTile(
                 }
             } else if (isFailed) {
                 TileStatusOverlay {
-                    // Failed: muted ring with a warning icon, offering Retry only
-                    StatusRing(R.drawable.ic_warning)
+                    // Failed: only a red "Try again" pill (no status icon), matching the error banner
                     StatusActionButton(
                         text = "Try again",
                         iconRes = R.drawable.ic_refresh,
-                        contentColor = Color.White,
-                        backgroundColor = MaterialTheme.colorScheme.primary.copy(alpha = 0.85f),
+                        contentColor = MaterialTheme.colorScheme.onError,
+                        backgroundColor = MaterialTheme.colorScheme.error,
                         onClick = onRetryIndex
                     )
                 }
