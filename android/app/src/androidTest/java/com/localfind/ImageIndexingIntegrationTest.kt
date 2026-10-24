@@ -75,7 +75,7 @@ class ImageIndexingIntegrationTest {
         )
 
         // 3. Index both images using on-device Embedder and SqliteVectorStore
-        Embedder(context).use { embedder ->
+        openEmbedder(context).use { embedder ->
             EmbeddingStore.create(context).use { store ->
                 val indexer = Indexer(context, embedder, store)
 

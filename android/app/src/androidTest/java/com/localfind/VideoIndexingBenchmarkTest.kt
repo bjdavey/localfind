@@ -1,6 +1,7 @@
 package com.localfind
 
 import com.localfind.core.indexing.ImageSizing
+import com.localfind.core.settings.HardwareAccelerator
 import com.localfind.index.image.ImageIndexer
 import android.content.Context
 import android.graphics.Bitmap
@@ -131,7 +132,7 @@ class VideoIndexingBenchmarkTest {
         var frameMs = 0L
         var inferMs = 0L
 
-        Embedder(context).use { embedder ->
+        openEmbedder(context).use { embedder ->
             for (window in windows) {
                 val f0 = System.currentTimeMillis()
                 val frameTimes = VideoChunker.frameTimes(window, count = 2)
@@ -187,7 +188,7 @@ class VideoIndexingBenchmarkTest {
         var previousSignature: IntArray? = null
         var lastEmbedding: FloatArray? = null
 
-        Embedder(context).use { embedder ->
+        openEmbedder(context).use { embedder ->
             for (window in windows) {
                 // Adaptive Thermal Mitigation using Android 11/12+ APIs
                 val delayMs = computeThermalMitigationDelay(powerManager)
@@ -300,7 +301,7 @@ class VideoIndexingBenchmarkTest {
         // Simultaneously begin processing video windows
         var frameMs = 0L
         var inferMs = 0L
-        Embedder(context).use { embedder ->
+        openEmbedder(context).use { embedder ->
             for (window in windows) {
                 val f0 = System.currentTimeMillis()
                 val frameTimes = VideoChunker.frameTimes(window, count = 2)
@@ -348,7 +349,7 @@ class VideoIndexingBenchmarkTest {
         val totalStart = System.currentTimeMillis()
         var inferMs = 0L
 
-        Embedder(context).use { embedder ->
+        openEmbedder(context).use { embedder ->
             for (window in windows) {
                 val frameTimes = VideoChunker.frameTimes(window, count = 2)
                 val frames = frameTimes.map { timeMs ->
@@ -415,7 +416,7 @@ class VideoIndexingBenchmarkTest {
         EmbeddingStore.create(context).use { store ->
             store.deleteByMetadata(mapOf("fileId" to importedFile.uri))
 
-            Embedder(context).use { embedder ->
+            openEmbedder(context).use { embedder ->
                 val records = mutableListOf<com.google.mediapipe.tasks.retrieval.model.RetrievalRecord>()
 
                 for (window in windows) {
@@ -585,7 +586,7 @@ class VideoIndexingBenchmarkTest {
             EmbeddingStore.create(context).use { store ->
                 store.deleteByMetadata(mapOf("fileId" to importedFile.uri))
 
-                Embedder(context).use { embedder ->
+                openEmbedder(context).use { embedder ->
                     val records = mutableListOf<com.google.mediapipe.tasks.retrieval.model.RetrievalRecord>()
 
                     for (window in windows) {
@@ -729,7 +730,7 @@ class VideoIndexingBenchmarkTest {
         EmbeddingStore.create(context).use { store ->
             store.deleteByMetadata(mapOf("fileId" to shortSecondsVideoImportedFile.uri))
 
-            Embedder(context).use { embedder ->
+            openEmbedder(context).use { embedder ->
                 val indexer = Indexer(context, embedder, store, settings)
 
                 val t0 = System.currentTimeMillis()
@@ -780,7 +781,7 @@ class VideoIndexingBenchmarkTest {
         EmbeddingStore.create(context).use { store ->
             store.deleteByMetadata(mapOf("fileId" to shortSecondsVideoImportedFile.uri))
 
-            Embedder(context).use { embedder ->
+            openEmbedder(context).use { embedder ->
                 val indexer = Indexer(context, embedder, store, settings)
 
                 val t0 = System.currentTimeMillis()
@@ -827,8 +828,8 @@ class VideoIndexingBenchmarkTest {
         Log.i(tag, "Step 1: Attempting to initialize Embedder with default GPU vision acceleration...")
         val gpuEmbedder: Embedder
         try {
-            gpuEmbedder = Embedder(context)
-            assertTrue("Embedder should have GPU vision acceleration active", gpuEmbedder.isGpuVisionEnabled)
+            gpuEmbedder = openEmbedder(context)
+            assertTrue("Embedder should have GPU vision acceleration active", (gpuEmbedder.effectiveAccelerator == HardwareAccelerator.GPU))
             Log.i(tag, "Step 1 SUCCESS: Embedder initialized with GPU vision active!")
         } catch (t: Throwable) {
             Log.e(tag, "Step 1 FAILED: Cannot initialize GPU embedder: ${t.javaClass.name}: ${t.message}", t)

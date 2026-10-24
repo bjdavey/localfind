@@ -38,7 +38,7 @@ import java.io.File
  * 2. Test 2 (NPU): Qualcomm Hexagon HTP v75 NPU with embeddinggemma-2-740m_Qualcomm_SM8650.litertlm
  *
  * Rigorous NPU Verification:
- * - Asserts [Embedder.isNpuVisionEnabled] == true.
+ * - Asserts [(Embedder.effectiveAccelerator == HardwareAccelerator.NPU)] == true.
  * - Confirms NO fallback to CPU (XNNPack) or GPU occurred.
  * - Verifies access to Qualcomm Compute DSP device node (/dev/cdsprpc-smd).
  * - Reports side-by-side execution duration, chunk latency, and thermal headroom.
@@ -110,12 +110,8 @@ class GpuVsNpuBenchmarkTest {
         powerManager = context.getSystemService(Context.POWER_SERVICE) as PowerManager
 
         // Ensure both GPU and NPU models are present in internal storage
-        val gpuModel = Embedder.ensureModelFile(context, MODEL_FILE_NAME)
-        assumeTrue("GPU model file ($MODEL_FILE_NAME) must exist", gpuModel.exists() && gpuModel.length() > 0L)
-
-        val npuModelName = ModelFiles.resolveModelName(context, HardwareAccelerator.NPU)
-        val npuModel = Embedder.ensureModelFile(context, npuModelName)
-        assumeTrue("NPU model file ($npuModelName) must exist", npuModel.exists() && npuModel.length() > 0L)
+        assumeTrue("GPU model file ($MODEL_FILE_NAME) must exist", modelFor(context, HardwareAccelerator.GPU) != null)
+        assumeTrue("NPU model file must exist", modelFor(context, HardwareAccelerator.NPU) != null)
 
         // Locate Planet-Earth.mp4
         val candidates = listOf(
@@ -145,11 +141,11 @@ class GpuVsNpuBenchmarkTest {
         Log.i(TAG, ">>> TEST 0: VERIFY NPU PRIMITIVES (Text, Single Image Bitmap, Multi-Part) <<<")
         Log.i(TAG, "================================================================================")
 
-        val npuModelName = ModelFiles.resolveModelName(context, HardwareAccelerator.NPU)
-        Embedder(context, HardwareAccelerator.NPU, npuModelName).use { embedder ->
-            Log.i(TAG, "Embedder initialized: isNpuVision=${embedder.isNpuVisionEnabled}, isNpuText=${embedder.isNpuTextEnabled}, isGpu=${embedder.isGpuVisionEnabled}")
-            assertTrue("NPU vision must be active", embedder.isNpuVisionEnabled)
-            assertTrue("NPU text must be active for fast PDF/text indexing", embedder.isNpuTextEnabled)
+        val npuModelName = (modelFor(context, HardwareAccelerator.NPU)?.name ?: "(not installed)")
+        openEmbedderOn(context, HardwareAccelerator.NPU).use { embedder ->
+            Log.i(TAG, "Embedder initialized: isNpuVision=${(embedder.effectiveAccelerator == HardwareAccelerator.NPU)}, isNpuText=${(embedder.effectiveAccelerator == HardwareAccelerator.NPU)}, isGpu=${(embedder.effectiveAccelerator == HardwareAccelerator.GPU)}")
+            assertTrue("NPU vision must be active", (embedder.effectiveAccelerator == HardwareAccelerator.NPU))
+            assertTrue("NPU text must be active for fast PDF/text indexing", (embedder.effectiveAccelerator == HardwareAccelerator.NPU))
 
             // 1. Text embedding test
             val t0 = System.currentTimeMillis()
@@ -194,7 +190,7 @@ class GpuVsNpuBenchmarkTest {
      *
      * Validates that:
      * 1. Embedder initializes with Delegate.NPU on Qualcomm Hexagon.
-     * 2. [Embedder.isNpuVisionEnabled] is strictly true (asserts failure if it fell back to CPU/GPU).
+     * 2. [(Embedder.effectiveAccelerator == HardwareAccelerator.NPU)] is strictly true (asserts failure if it fell back to CPU/GPU).
      * 3. Qualcomm Compute DSP FastRPC node (/dev/cdsprpc-smd) exists and is accessible.
      */
     @Test
@@ -207,7 +203,7 @@ class GpuVsNpuBenchmarkTest {
         val cdsprpc = File("/dev/cdsprpc-smd")
         Log.i(TAG, "Checking Qualcomm cDSP FastRPC node (/dev/cdsprpc-smd): exists=${cdsprpc.exists()}, canRead=${cdsprpc.canRead()}")
 
-        val npuModelName = ModelFiles.resolveModelName(context, HardwareAccelerator.NPU)
+        val npuModelName = (modelFor(context, HardwareAccelerator.NPU)?.name ?: "(not installed)")
         val run = runVideoIndexBenchmark(
             modeLabel = "NPU",
             accelerator = HardwareAccelerator.NPU,
@@ -257,9 +253,9 @@ class GpuVsNpuBenchmarkTest {
         var isGpuActive = false
 
         EmbeddingStore.create(context).use { store ->
-            Embedder(context, accelerator, modelFileName).use { embedder ->
-                isNpuActive = embedder.isNpuVisionEnabled
-                isGpuActive = embedder.isGpuVisionEnabled
+            openEmbedderOn(context, accelerator).use { embedder ->
+                isNpuActive = (embedder.effectiveAccelerator == HardwareAccelerator.NPU)
+                isGpuActive = (embedder.effectiveAccelerator == HardwareAccelerator.GPU)
 
                 Log.i(TAG, "[$modeLabel] Embedder state: isNpuVisionEnabled=$isNpuActive, isGpuVisionEnabled=$isGpuActive, accelerator=${embedder.effectiveAccelerator}")
 

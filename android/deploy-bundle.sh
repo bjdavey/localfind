@@ -18,6 +18,7 @@ RELEASE=false
 SKIP_BUILD=false
 SKIP_MODEL_PUSH=false
 WITH_UNIVERSAL_MODEL=false
+WITH_RECOVERY_PACK=false
 
 print_usage() {
     echo "Usage: ./deploy-bundle.sh [OPTIONS]"
@@ -28,6 +29,8 @@ print_usage() {
     echo "  -s, --skip-build        Skip Gradle build step (unless cached AAB ABI mismatches)"
     echo "  --skip-model-push       Skip model check/download/push step"
     echo "  --with-universal-model  On NPU devices also stage the universal model (enables Smart/GPU/CPU)"
+    echo "  --with-recovery-pack    Test the 'Download compatible model' flow without Play (bundletool --local-testing;"
+    echo "                          uninstalls the app first, wiping its data)"
     echo "  -h, --help              Show this help message"
 }
 
@@ -55,6 +58,10 @@ while [[ $# -gt 0 ]]; do
             ;;
         --with-universal-model)
             WITH_UNIVERSAL_MODEL=true
+            shift
+            ;;
+        --with-recovery-pack)
+            WITH_RECOVERY_PACK=true
             shift
             ;;
         -h|--help)
@@ -306,6 +313,25 @@ for CURRENT_DEVICE_ID in "${TARGET_DEVICES[@]}"; do
 
     # 4. Build App Bundle
     NEEDS_BUILD=false
+
+    # The on-demand recovery pack (:ai_pack:universal_model) only holds the universal model when testing the
+    # "Download compatible model" flow (--with-recovery-pack); otherwise its copy is removed to keep bundles small.
+    RECOVERY_ASSET="$SCRIPT_DIR/ai_pack/universal_model/src/main/assets/model/embeddinggemma-2-740m.litertlm"
+    RECOVERY_PACK_CHANGED=false
+    if [[ "$WITH_RECOVERY_PACK" == true ]]; then
+        UNIVERSAL_SOURCE="$SCRIPT_DIR/../.local/models/embeddinggemma-2-740m.litertlm"
+        if [[ ! -s "$UNIVERSAL_SOURCE" ]]; then
+            DEVICE_FAILED=true
+            DEVICE_ERR="--with-recovery-pack needs the universal model at $UNIVERSAL_SOURCE"
+        elif [[ ! -f "$RECOVERY_ASSET" || $(stat -c %s "$RECOVERY_ASSET") != $(stat -c %s "$UNIVERSAL_SOURCE") ]]; then
+            echo "[4/8] Copying the universal model into the on-demand recovery pack..."
+            cp "$UNIVERSAL_SOURCE" "$RECOVERY_ASSET"
+            RECOVERY_PACK_CHANGED=true
+        fi
+    elif [[ -f "$RECOVERY_ASSET" ]]; then
+        rm -f "$RECOVERY_ASSET"
+        RECOVERY_PACK_CHANGED=true
+    fi
     if [[ "$LAST_BUILT_ABI" == "$DEVICE_ABI" && -f "$AAB_PATH" ]] && aab_contains_abi "$AAB_PATH" "$DEVICE_ABI"; then
         echo "[4/8] Reusing AAB built earlier in this session for ABI '$DEVICE_ABI'..."
     elif [[ "$SKIP_BUILD" == true ]]; then
@@ -319,6 +345,10 @@ for CURRENT_DEVICE_ID in "${TARGET_DEVICES[@]}"; do
             echo "[4/8] Skipping build step (reusing existing '$DEVICE_ABI' AAB at $AAB_PATH)..."
         fi
     else
+        NEEDS_BUILD=true
+    fi
+    # A changed recovery pack makes an existing AAB stale, even with --skip-build
+    if [[ "$RECOVERY_PACK_CHANGED" == true ]]; then
         NEEDS_BUILD=true
     fi
 
@@ -343,7 +373,12 @@ for CURRENT_DEVICE_ID in "${TARGET_DEVICES[@]}"; do
             echo "[5/8] Reusing split APKs generated earlier in this session for ABI '$DEVICE_ABI'..."
         else
             echo "[5/8] Generating split APKs via bundletool..."
-            if ! java -jar "$BUNDLETOOL_JAR" build-apks --bundle="$AAB_PATH" --output="$APKS_PATH" --overwrite; then
+            BUILD_APKS_CMD=(java -jar "$BUNDLETOOL_JAR" build-apks --bundle="$AAB_PATH" --output="$APKS_PATH" --overwrite)
+            # Local testing serves on-demand packs from device storage instead of Play, so fetch() works offline
+            if [[ "$WITH_RECOVERY_PACK" == true ]]; then
+                BUILD_APKS_CMD+=(--local-testing)
+            fi
+            if ! "${BUILD_APKS_CMD[@]}"; then
                 DEVICE_FAILED=true
                 DEVICE_ERR="bundletool build-apks failed"
             else
@@ -354,6 +389,11 @@ for CURRENT_DEVICE_ID in "${TARGET_DEVICES[@]}"; do
 
     # 6. Install onto device
     if [[ "$DEVICE_FAILED" != true ]]; then
+        if [[ "$WITH_RECOVERY_PACK" == true ]]; then
+            # bundletool local testing does not support updates: the previous install must be removed first
+            echo "[6/8] --with-recovery-pack: uninstalling com.localfind first (local testing cannot update; app data is wiped)..."
+            adb -s "$CURRENT_DEVICE_ID" uninstall com.localfind >/dev/null 2>&1 || true
+        fi
         echo "[6/8] Installing matching APK splits to device $CURRENT_DEVICE_ID..."
         INSTALL_CMD=(java -jar "$BUNDLETOOL_JAR" install-apks --apks="$APKS_PATH" --device-id="$CURRENT_DEVICE_ID" --allow-downgrade)
         if [[ -n "$DEVICE_GROUP" ]]; then

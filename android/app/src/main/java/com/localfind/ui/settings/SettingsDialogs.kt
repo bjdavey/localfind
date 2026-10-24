@@ -18,6 +18,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import com.localfind.core.settings.AppSettings
+import com.localfind.core.settings.Capabilities
 import com.localfind.core.settings.HardwareAccelerator
 import com.localfind.core.settings.ThemeMode
 import com.localfind.embed.SocInfo
@@ -79,14 +80,15 @@ internal fun ThemeModeDialog(
 }
 
 /**
- * Radio list for choosing the vision hardware accelerator. NPU is disabled (and explained) when the
- * device has no usable NPU runtime; [activeOption] is the choice currently in effect.
+ * Radio list for choosing the vision hardware accelerator. Modes the installed models cannot run ([caps]) are
+ * disabled and explained: NPU without NPU runtime or NPU model, Smart/GPU/CPU without the universal model (the
+ * NPU model cannot run on GPU/CPU). [activeOption] is the choice in effect.
  */
 @Composable
 internal fun AcceleratorDialog(
     settings: AppSettings,
     activeOption: HardwareAccelerator,
-    isNpuReady: Boolean,
+    caps: Capabilities,
     soc: SocInfo,
     onSettingsChange: (AppSettings) -> Unit,
     onDismiss: () -> Unit
@@ -97,7 +99,7 @@ internal fun AcceleratorDialog(
         text = {
             Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
                 HardwareAccelerator.values().forEach { mode ->
-                    val isModeEnabled = mode != HardwareAccelerator.NPU || isNpuReady
+                    val isModeEnabled = if (mode == HardwareAccelerator.NPU) caps.npu else caps.cpuGpu
                     Row(
                         modifier = Modifier
                             .fillMaxWidth()
@@ -125,15 +127,16 @@ internal fun AcceleratorDialog(
                                 }
                             )
                             Text(
-                                text = when (mode) {
-                                    HardwareAccelerator.NPU -> if (isNpuReady) {
+                                text = when {
+                                    mode == HardwareAccelerator.NPU && caps.npu ->
                                         "NPU (${soc.marketingName}): Default. Dedicated AI tensor cores for maximum indexing speed and consistent vectors."
-                                    } else {
+                                    mode == HardwareAccelerator.NPU ->
                                         "NPU (${soc.marketingName}): Not supported on this device. Automatically falls back to Smart (Auto)."
-                                    }
-                                    HardwareAccelerator.SMART -> "Auto: Uses GPU when screen is off, CPU when screen is on or Battery Saver is on."
-                                    HardwareAccelerator.GPU -> "Always use mobile GPU compute shaders for maximum indexing speed."
-                                    HardwareAccelerator.CPU -> "Always use CPU (XNNPack) to keep phone cool and eliminate UI lag."
+                                    !caps.cpuGpu ->
+                                        "Not available: this device's model is compiled for the NPU only."
+                                    mode == HardwareAccelerator.SMART -> "Auto: Uses GPU when screen is off, CPU when screen is on or Battery Saver is on."
+                                    mode == HardwareAccelerator.GPU -> "Always use mobile GPU compute shaders for maximum indexing speed."
+                                    else -> "Always use CPU (XNNPack) to keep phone cool and eliminate UI lag."
                                 },
                                 style = MaterialTheme.typography.bodySmall,
                                 color = if (isModeEnabled) {

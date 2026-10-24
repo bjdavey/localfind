@@ -40,6 +40,27 @@ class HardwareAcceleratorTest {
     }
 
     @Test
+    fun npuOnlyModelForcesNpuForEveryChoice() {
+        // Only an NPU-compiled model is installed (e.g. the Play AI Pack on a Snapdragon 8 Gen 2/3):
+        // Smart/GPU/CPU cannot run it, so all of them resolve to NPU.
+        HardwareAccelerator.values().forEach { choice ->
+            assertEquals(
+                HardwareAccelerator.NPU,
+                choice.resolve({ true }, { true }, { false }, cpuGpuModelAvailable = { false })
+            )
+        }
+    }
+
+    @Test
+    fun npuOnlyModelWithoutNpuRuntimeKeepsTheChoice() {
+        // Nothing can run the model then; keep the normal policy so the load fails with its own error.
+        assertEquals(
+            HardwareAccelerator.CPU,
+            HardwareAccelerator.CPU.resolve({ false }, { true }, { false }, cpuGpuModelAvailable = { false })
+        )
+    }
+
+    @Test
     fun deviceStateIsOnlyQueriedWhenTheChoiceNeedsIt() {
         var queried = false
         val probe = { queried = true; false }

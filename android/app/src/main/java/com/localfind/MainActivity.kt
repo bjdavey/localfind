@@ -382,6 +382,7 @@ fun MainScreen(
             onDeleteMultipleFiles = { files -> library.removeFiles(files) },
             gridState = galleryGridState,
             onRetryLoadModel = { library.retryLoadModel() },
+            onDownloadCompatibleModel = { library.downloadCompatibleModel() },
             onOpenSearch = {
                 if (!isSearchOpen && !isSettingsOpen && !viewerState.isAnyViewerOpen) {
                     activeSearchFile = null

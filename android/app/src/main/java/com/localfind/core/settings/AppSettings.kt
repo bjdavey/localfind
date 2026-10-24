@@ -52,12 +52,19 @@ val DEFAULT_HARDWARE_ACCELERATOR = HardwareAccelerator.NPU
  * - If [HardwareAccelerator.NPU] is chosen on an unsupported device, falls back to [HardwareAccelerator.SMART].
  * - If [HardwareAccelerator.GPU] or [HardwareAccelerator.CPU] is explicitly chosen, returns that choice.
  * - If [HardwareAccelerator.SMART], uses GPU only when the screen is off and Battery Saver is disabled.
+ * - If the installed model is NPU-only (no [cpuGpuModelAvailable]) and the NPU can run it, every choice
+ *   resolves to [HardwareAccelerator.NPU]: an NPU-compiled model's encoders are a single `DISPATCH_OP` that
+ *   the GPU/CPU delegates cannot execute, so Smart/GPU/CPU would fail at the first embedding.
  */
 fun HardwareAccelerator.resolve(
     npuAvailable: () -> Boolean,
     screenOn: () -> Boolean,
-    powerSaveMode: () -> Boolean
+    powerSaveMode: () -> Boolean,
+    cpuGpuModelAvailable: () -> Boolean = { true }
 ): HardwareAccelerator {
+    if (this != HardwareAccelerator.NPU && !cpuGpuModelAvailable() && npuAvailable()) {
+        return HardwareAccelerator.NPU
+    }
     if (this == HardwareAccelerator.NPU) {
         return if (npuAvailable()) {
             HardwareAccelerator.NPU

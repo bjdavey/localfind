@@ -62,8 +62,10 @@ android {
         noCompress += "litertlm"
     }
 
-    // Google Play AI Pack for SoC-targeted .litertlm delivery (install-time)
+    // Google Play AI Packs: SoC-targeted .litertlm delivered with the app (install-time), plus the universal
+    // CPU/GPU model fetched on demand when the NPU model cannot run (RecoveryModel)
     assetPacks.add(":ai_pack:embedding_model")
+    assetPacks.add(":ai_pack:universal_model")
 
     // Play Feature Delivery modules for SoC-targeted NPU native runtime libraries (ARM64 only)
     if (targetAbi == null || targetAbi == "arm64-v8a") {
@@ -113,6 +115,8 @@ dependencies {
     implementation(libs.androidx.work.runtime.ktx)
     implementation(libs.androidx.pdf.viewer.fragment)
     implementation(libs.androidx.fragment.compose)
+    // Play AI Pack on-demand delivery: fetches the universal CPU/GPU model when the NPU model cannot run (Play downloads it; the app makes no network calls)
+    implementation(libs.play.ai.delivery)
 
     testImplementation(libs.junit)
     androidTestImplementation(platform(libs.androidx.compose.bom))

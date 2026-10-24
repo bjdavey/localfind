@@ -3,7 +3,6 @@ package com.localfind.embed
 import android.content.Context
 import android.util.Log
 import com.localfind.core.model.MODEL_FILE_NAME
-import com.localfind.core.settings.HardwareAccelerator
 import com.localfind.core.storage.StorageCheck
 import java.io.File
 import java.io.FileNotFoundException
@@ -11,21 +10,23 @@ import java.io.IOException
 import java.io.InputStream
 
 /**
- * Resolves and stages the on-device LiteRT-LM model file in `context.filesDir`
- * (LiteRT-LM needs a real file path, not an asset).
+ * Finds and stages the on-device LiteRT-LM model files (LiteRT-LM needs a real file path, not an asset).
+ * [locate] is the ONLY place that inspects storage for models; everything else works from its [Models] result.
  *
- * Supported model naming convention from Hugging Face:
- * https://huggingface.co/litert-community/embeddinggemma-2-740m-litert-lm/tree/main
+ * Model kinds (naming convention from Hugging Face,
+ * https://huggingface.co/litert-community/embeddinggemma-2-740m-litert-lm/tree/main):
+ * - Universal: `embeddinggemma-2-740m.litertlm`, runs on GPU and CPU on every device.
+ * - Chipset-specific NPU: `embeddinggemma-2-740m_<Vendor>_<Model>.litertlm` (name from [SocDetector.detectSoc]).
+ *   Runs ONLY on the NPU: its text/vision encoders are an NPU-only `DISPATCH_OP` (audio is plain CPU code).
  *
- * - Default Base Model: `embeddinggemma-2-740m.litertlm` (universal CPU/GPU fallback across all devices)
- * - Chipset-specific NPU models: `embeddinggemma-2-740m_<Vendor>_<Model>.litertlm`
- *   (the expected name comes from [SocDetector.detectSoc])
+ * Files in `filesDir` are always stored under the name of their kind, so the name tells what a file is.
  *
  * Delivery channels:
- * 1. Production (Google Play AI Pack `install-time`): Installed with the app as the asset
- *    `model/embeddinggemma-2-740m.litertlm` (device-targeted via `#group_<Vendor>_<Model>`) and copied once
- *    into `context.filesDir`.
- * 2. Development (ADB): Staged from `/data/local/tmp` or `/sdcard/Download` into `context.filesDir`.
+ * 1. Production, install-time Play AI Pack (:ai_pack:embedding_model): device-targeted, so NPU device groups get
+ *    their NPU model and `group_other` the universal one. Copied once into `filesDir` ([stageAiPackModel]).
+ * 2. Production, on-demand Play AI Pack (:ai_pack:universal_model): the universal model, downloaded only when
+ *    the user asks for it after the NPU failed ([RecoveryModel]); used in place from Play's storage.
+ * 3. Development (ADB / deploy-bundle scripts): copied from `/data/local/tmp`, `/sdcard/Download` or `/sdcard`.
  */
 object ModelFiles {
     private const val TAG = "ModelFiles"
@@ -41,6 +42,36 @@ object ModelFiles {
     )
 
     /**
+     * The model files available on this device.
+     * @property npu the chipset-specific NPU model, or null (none for this SoC, or not installed).
+     * @property universal the universal GPU/CPU model, or null (not installed / not downloaded).
+     */
+    data class Models(val npu: File?, val universal: File?)
+
+    /**
+     * Finds every model the app can load, staging it into `filesDir` first when needed (copies of ~500MB, so
+     * call off the main thread). Not cached here: [com.localfind.data.EngineManager] calls it on startup, on
+     * "Retry Loading" and after a download, and Play requires on-demand pack locations to be checked every launch.
+     */
+    fun locate(context: Context): Models {
+        stageAiPackModel(context)
+        val npuName = SocDetector.detectSoc().expectedNpuModelName
+        return Models(
+            npu = npuName?.let { stagedFile(context, it) },
+            universal = stagedFile(context, MODEL_FILE_NAME) ?: RecoveryModel.location(context)
+        )
+    }
+
+    /** [name] in `filesDir`, copied there from a staging directory if needed; null when it is nowhere. */
+    private fun stagedFile(context: Context, name: String): File? {
+        val target = File(context.filesDir, name)
+        if (target.isUsable()) return target
+        return if (copyFromStagingIfPresent(name, target)) target else null
+    }
+
+    private fun File.isUsable() = exists() && length() > 0L
+
+    /**
      * Makes the model of the install-time Play AI Pack available as a real file in `context.filesDir`.
      *
      * An install-time pack is installed together with the app (so the model exists at first launch, offline),
@@ -49,15 +80,17 @@ object ModelFiles {
      * model behind). The copy is repeated when its size differs from the packed asset (e.g. after an app update
      * that ships a new model). Costs one extra copy of the model on disk.
      *
+     * The pack asset always has the universal file name, whatever it holds. Its targeting groups are exactly the
+     * SoCs with an [SocInfo.expectedNpuModelName] (`device_targeting_configuration.xml`), so on those devices it is
+     * the NPU model and is stored under that chipset name; elsewhere it is the universal model.
+     *
      * @return the staged model file, or null when the app has no pack asset (development builds that stage the
      * model over ADB) or there is not enough free storage for the copy.
      */
-    fun stageAiPackModel(context: Context): File? {
-        val target = File(context.filesDir, MODEL_FILE_NAME)
+    private fun stageAiPackModel(context: Context): File? {
+        val target = File(context.filesDir, SocDetector.detectSoc().expectedNpuModelName ?: MODEL_FILE_NAME)
         return try {
-            // No pack asset (development builds) -> null, BEFORE looking at filesDir. Otherwise an unrelated model
-            // already in filesDir (e.g. the generic CPU/GPU one) would be returned as "the pack model" and win
-            // over the device's NPU-compiled model, which then fails to run on the NPU.
+            // No pack asset (development builds) -> FileNotFoundException -> null, before touching filesDir
             context.assets.open(AI_PACK_MODEL_RELATIVE_PATH).close()
 
             // openFd needs an uncompressed asset; if the pack asset is compressed, the size is unknown (-1).
@@ -66,10 +99,9 @@ object ModelFiles {
             } catch (_: IOException) {
                 -1L
             }
-            if (target.exists() && target.length() > 0L && (assetSize < 0L || target.length() == assetSize)) {
+            if (target.isUsable() && (assetSize < 0L || target.length() == assetSize)) {
                 return target
             }
-            // Fails with FileNotFoundException when the pack asset does not exist
             context.assets.open(AI_PACK_MODEL_RELATIVE_PATH).use { input ->
                 val needed = maxOf(assetSize, 0L)
                 if (!StorageCheck.hasEnoughSpace(context.filesDir.usableSpace, neededBytes = needed)) {
@@ -85,98 +117,6 @@ object ModelFiles {
         } catch (e: IOException) {
             Log.e(TAG, "Error copying the packed model", e)
             null
-        }
-    }
-
-    /**
-     * Resolves the expected model file name for the given accelerator without scanning internal storage.
-     *
-     * Directly checks if the device's target NPU model file exists in `filesDir` or candidate staging paths.
-     * If not found or if accelerator is not NPU, falls back to the default [MODEL_FILE_NAME].
-     */
-    fun resolveModelName(context: Context, accelerator: HardwareAccelerator? = null): String {
-        if (accelerator == HardwareAccelerator.NPU) {
-            val expectedName = SocDetector.detectSoc().expectedNpuModelName
-            if (expectedName != null) {
-                if (File(context.filesDir, expectedName).exists() || hasStagedFile(expectedName)) {
-                    return expectedName
-                }
-            }
-        }
-        return MODEL_FILE_NAME
-    }
-
-    /**
-     * Returns a [File] handle to the active model in [context.filesDir] (staged from the Play AI Pack or ADB)
-     * based on the current accelerator.
-     */
-    fun getActiveModelFile(context: Context, accelerator: HardwareAccelerator? = null): File {
-        val resolvedName = resolveModelName(context, accelerator)
-        val file = File(context.filesDir, resolvedName)
-        return if (file.exists() && file.length() > 0L) {
-            file
-        } else {
-            File(context.filesDir, MODEL_FILE_NAME)
-        }
-    }
-
-    /**
-     * Ensures that the required model file is available on disk.
-     *
-     * Resolution priority:
-     * 1. Model of the install-time Google Play AI Pack, copied into [context.filesDir] ([stageAiPackModel]).
-     * 2. Existing model file in [context.filesDir].
-     * 3. Candidate ADB staging locations (`/data/local/tmp`, `/sdcard/Download`, `/sdcard`), copied atomically.
-     *
-     * @param context Application context.
-     * @param accelerator Current hardware accelerator preference.
-     * @param modelName Optional explicit model file name override.
-     * @return [File] pointing to the ready-to-load `.litertlm` model on disk.
-     */
-    fun ensureModelFile(
-        context: Context,
-        accelerator: HardwareAccelerator? = null,
-        modelName: String? = null
-    ): File {
-        if (modelName == null) {
-            stageAiPackModel(context)?.let { aiPackFile ->
-                Log.i(TAG, "Using Play AI Pack model at ${aiPackFile.absolutePath}")
-                return aiPackFile
-            }
-        }
-
-        val targetName = modelName ?: resolveModelName(context, accelerator)
-        val target = File(context.filesDir, targetName)
-        if (target.exists() && target.length() > 0L) {
-            return target
-        }
-
-        // Check exact staging locations for the target model
-        val staged = copyFromStagingIfPresent(targetName, target)
-        if (staged) {
-            return target
-        }
-
-        // If NPU-specific model was requested but not found, fallback to checking default MODEL_FILE_NAME
-        if (targetName != MODEL_FILE_NAME) {
-            val fallbackTarget = File(context.filesDir, MODEL_FILE_NAME)
-            if (fallbackTarget.exists() && fallbackTarget.length() > 0L) {
-                Log.w(TAG, "Preferred model $targetName not found. Falling back to default $MODEL_FILE_NAME.")
-                return fallbackTarget
-            }
-            if (copyFromStagingIfPresent(MODEL_FILE_NAME, fallbackTarget)) {
-                Log.w(TAG, "Staged default model $MODEL_FILE_NAME as fallback for $targetName.")
-                return fallbackTarget
-            }
-        }
-
-        return target
-    }
-
-    private fun hasStagedFile(fileName: String): Boolean {
-        return STAGING_DIRECTORIES.any { dir ->
-            val file = File(dir, fileName)
-            file.exists() && file.length() > 0L
         }
     }
 
@@ -219,4 +159,3 @@ object ModelFiles {
         }
     }
 }
-

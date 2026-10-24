@@ -7,14 +7,18 @@ import kotlin.concurrent.read
 import java.util.concurrent.locks.ReentrantReadWriteLock
 import com.localfind.embed.EmbeddingModel
 import com.localfind.core.settings.AppSettings
-import com.localfind.core.settings.DEFAULT_HARDWARE_ACCELERATOR
+import com.localfind.core.settings.Capabilities
 import com.localfind.core.settings.HardwareAccelerator
+import com.localfind.core.model.MODEL_FILE_NAME
 import com.localfind.core.model.ModelStatus
 import android.content.Context
 import android.util.Log
 import com.localfind.embed.Embedder
-import com.localfind.embed.resolveEffective
 import com.localfind.embed.ModelFiles
+import com.localfind.embed.RecoveryModel
+import com.localfind.embed.SocDetector
+import com.localfind.embed.capabilitiesOf
+import com.localfind.embed.loadOrder
 import com.localfind.index.Indexer
 import com.localfind.search.Searcher
 import kotlinx.coroutines.Dispatchers
@@ -32,11 +36,15 @@ import kotlinx.coroutines.withContext
  * - Single Model Instance: The EmbeddingGemma 2 740M multimodal model consumes ~485MB of RAM.
  *   Loading multiple instances simultaneously risks Out Of Memory (OOM) crashes on low-to-mid range devices.
  *   [EngineManager] ensures only a single instance is instantiated and kept warm in memory.
+ * - One decision point: the installed models are located once ([ModelFiles.locate], refreshed on startup,
+ *   "Retry Loading" and after a download) into [capabilities]; which accelerator to load, and the fallbacks,
+ *   come from the pure plan `HardwareAccelerator.loadOrder`; [Embedder] only executes one attempt.
  * - Thread Safety: MediaPipe / LiteRT native C++ inference and SQLite operations are safely synchronized
  *   across UI threads, background Coroutines, and WorkManager tasks.
  * - Non-Blocking Search vs Background Indexing: Inference calls in [Embedder] and SQLite operations
  *   in [EmbeddingStore] synchronize individually so UI searches and background indexing coordinate cooperatively.
- * - 100% Offline: Operates strictly with on-device model assets and local SQLite databases.
+ * - 100% Offline: Operates strictly with on-device model assets and local SQLite databases. The only download,
+ *   the universal model when the NPU model cannot run, is done by Play on the user's request ([RecoveryModel]).
  */
 object EngineManager {
     private const val TAG = "EngineManager"
@@ -50,6 +58,22 @@ object EngineManager {
     private val embedderLock = ReentrantReadWriteLock()
     @Volatile
     private var embedder: Embedder? = null
+
+    /**
+     * The (setting, planned first accelerator) the current [embedder] was loaded for. Compared instead of the
+     * accelerator that actually loaded, so a fallback (e.g. Smart planned GPU, GPU failed, CPU loaded) is not
+     * retried on every indexing chunk; a new plan (setting change, Smart screen switch) reloads.
+     */
+    @Volatile
+    private var loadedFor: Pair<HardwareAccelerator, HardwareAccelerator>? = null
+
+    /** Installed models from the last [ModelFiles.locate]; null until the first load. */
+    @Volatile
+    private var models: ModelFiles.Models? = null
+
+    /** What this device can run with its installed models, for the planner and Settings; null until located. */
+    private val _capabilities = MutableStateFlow<Capabilities?>(null)
+    val capabilities: StateFlow<Capabilities?> = _capabilities.asStateFlow()
 
     /** Runs [block] on the current [Embedder] under the read lock. */
     private fun <T> withEmbedder(block: (Embedder) -> T): T = embedderLock.read {
@@ -81,53 +105,91 @@ object EngineManager {
     private val _embeddingSpaceId = MutableStateFlow<String?>(null)
     val embeddingSpaceId: StateFlow<String?> = _embeddingSpaceId.asStateFlow()
 
+    /** Locates the installed models (staging them if needed) and updates [capabilities]. */
+    private fun refreshModels(context: Context): ModelFiles.Models =
+        ModelFiles.locate(context).also {
+            models = it
+            _capabilities.value = capabilitiesOf(context, it)
+            Log.i(TAG, "Models: npu=${it.npu?.name}, universal=${it.universal?.name}, capabilities=${_capabilities.value}")
+        }
+
     /**
-     * Verifies that the model is loaded in internal storage and initializes [Embedder].
-     *
-     * The [Embedder] uses the accelerator chosen in Settings (NPU by default on supported devices,
-     * otherwise Smart/GPU/CPU) for vision and text, and falls back to CPU when a delegate is unavailable.
-     * Audio always runs on CPU (XNNPack).
+     * Locates the installed models and loads the embedder for the accelerator chosen in Settings (NPU by default
+     * on supported devices), falling back along its load order. Also used by "Retry Loading" and after the
+     * universal model was downloaded, so it re-locates the models and reloads when the plan changed.
      *
      * Emits state to [modelStatus] for live UI observation.
      */
     suspend fun ensureModelLoaded(context: Context): ModelStatus = withContext(Dispatchers.IO) {
         _modelStatus.value = ModelStatus.Loading
-
-        // Pre-check with the default (NPU) accelerator so a chipset-specific model staged alone (e.g. by
-        // deploy-bundle.ps1 on a Snapdragon device) is found; without it only the universal name is checked.
-        val modelFile = ModelFiles.ensureModelFile(context, DEFAULT_HARDWARE_ACCELERATOR)
-        if (!modelFile.exists() || modelFile.length() == 0L) {
-            val instructions = "To install the model on this emulator or device:\n" +
-                    "1. Connect with ADB\n" +
-                    "2. Run: adb push .local/models/${modelFile.name} /data/local/tmp/\n" +
-                    "3. Tap 'Retry Loading'"
-            val err = ModelStatus.Error(
-                message = "Model file not found in internal storage (${modelFile.absolutePath})",
-                instructions = instructions
-            )
-            _modelStatus.value = err
-            Log.w(TAG, "Embedding model not found at ${modelFile.absolutePath}")
-            return@withContext err
-        }
-
-        try {
-            // The mutex serializes concurrent model-load requests from coroutines, and getEmbedder
-            // synchronizes on the engine as well, so two ~485MB native Embedder instances are never created at once.
-            engineMutex.withLock {
-                getEmbedder(context.applicationContext)
+        val app = context.applicationContext
+        // The mutex serializes concurrent model-load requests from coroutines, and getEmbedder takes the write
+        // lock as well, so two ~485MB native Embedder instances are never created at once.
+        engineMutex.withLock {
+            val found = refreshModels(app)
+            if (found.npu == null && found.universal == null) {
+                val expected = SocDetector.detectSoc().expectedNpuModelName ?: MODEL_FILE_NAME
+                val err = ModelStatus.Error(
+                    message = "Embedding model not found in internal storage",
+                    instructions = "To install the model on this emulator or device:\n" +
+                            "1. Connect with ADB\n" +
+                            "2. Run: adb push .local/models/$expected /data/local/tmp/\n" +
+                            "3. Tap 'Retry Loading'",
+                    canDownloadCompatibleModel = true
+                )
+                Log.w(TAG, "Embedding model not found (expected $expected)")
+                _modelStatus.value = err
+                return@withContext err
             }
-            val loaded = ModelStatus.Loaded(modelFile.length())
-            _modelStatus.value = loaded
-            Log.i(TAG, "Embedding model successfully loaded.")
-            loaded
+            try {
+                getEmbedder(app, SettingsStore(app).load().accelerator)
+                // Set explicitly: getEmbedder returns early (without a status) when the plan is already loaded
+                val loaded = ModelStatus.Loaded(embedder?.model?.length() ?: 0L)
+                _modelStatus.value = loaded
+                Log.i(TAG, "Embedding model successfully loaded.")
+                loaded
+            } catch (e: Exception) {
+                Log.e(TAG, "Failed to initialize Embedder", e)
+                loadError(e, found).also { _modelStatus.value = it }
+            }
+        }
+    }
+
+    /** The [ModelStatus.Error] for a failed load; offers the Play download when no universal model is installed. */
+    private fun loadError(e: Exception, found: ModelFiles.Models?): ModelStatus.Error {
+        val noUniversal = found?.universal == null
+        return ModelStatus.Error(
+            message = "Failed to load model: ${e.message ?: e.javaClass.simpleName}",
+            instructions = if (noUniversal) {
+                "This device's NPU model could not be loaded. Download the compatible GPU/CPU model " +
+                        "(${RecoveryModel.DOWNLOAD_SIZE_MB} MB) from Google Play, or tap 'Retry Loading'."
+            } else {
+                "Check that the model file is not corrupted and compatible with the device architecture."
+            },
+            canDownloadCompatibleModel = noUniversal
+        )
+    }
+
+    /**
+     * Downloads the universal GPU/CPU model from Play (on-demand AI pack) and loads it. Reports progress through
+     * [modelStatus] ([ModelStatus.Downloading]); a failed download ends as an [ModelStatus.Error] that offers the
+     * download again.
+     */
+    suspend fun downloadCompatibleModel(context: Context): ModelStatus {
+        val app = context.applicationContext
+        _modelStatus.value = ModelStatus.Downloading(percent = 0, needsConfirmation = false)
+        return try {
+            RecoveryModel.download(app) { progress ->
+                _modelStatus.value = ModelStatus.Downloading(progress.percent, progress.needsConfirmation)
+            }
+            ensureModelLoaded(app)
         } catch (e: Exception) {
-            Log.e(TAG, "Failed to initialize Embedder from ${modelFile.absolutePath}", e)
-            val err = ModelStatus.Error(
-                message = "Failed to load model: ${e.message ?: e.javaClass.simpleName}",
-                instructions = "Check that the model file is not corrupted and compatible with the device architecture."
-            )
-            _modelStatus.value = err
-            err
+            Log.e(TAG, "Downloading the compatible model failed", e)
+            ModelStatus.Error(
+                message = "Download failed: ${e.message ?: e.javaClass.simpleName}",
+                instructions = "Connect to the internet and try the download again, or tap 'Retry Loading'.",
+                canDownloadCompatibleModel = true
+            ).also { _modelStatus.value = it }
         }
     }
 
@@ -143,10 +205,10 @@ object EngineManager {
     /**
      * Returns the shared [EmbeddingModel], loading it first if needed.
      *
-     * With an explicit [accelerator] (the user's setting) the underlying [Embedder] is replaced when it
-     * was built for a different accelerator or a different resolved target, e.g. Smart mode switching
-     * between GPU and CPU. Without one, whatever is already loaded is reused, so searches never trigger
-     * a reload; only if nothing is loaded yet is the persisted setting used.
+     * With an explicit [accelerator] (the user's setting) the underlying [Embedder] is replaced when its load plan
+     * changed, e.g. a new setting or Smart mode switching between GPU and CPU. Without one, whatever is already
+     * loaded is reused, so searches never trigger a reload; only if nothing is loaded yet is the persisted
+     * setting used.
      * Note: Initializing loads the ~485MB model file from filesDir.
      */
     fun getEmbedder(
@@ -155,43 +217,55 @@ object EngineManager {
     ): EmbeddingModel {
         if (accelerator == null && embedder != null) return sharedEmbedder
         val configured = accelerator ?: SettingsStore(context).load().accelerator
-        val targetEffective = configured.resolveEffective(context)
-        if (isLoaded(configured, targetEffective)) return sharedEmbedder
+        val found = models ?: refreshModels(context.applicationContext)
+        // Capabilities are cached with the models: called for every indexing chunk, so no file checks here
+        val caps = _capabilities.value ?: capabilitiesOf(context, found)
+        val order = configured.loadOrder(context, caps)
+        val plan = order.firstOrNull()?.let { configured to it }
+        if (embedder != null && plan == loadedFor) return sharedEmbedder
         embedderLock.write {
-            if (!isLoaded(configured, targetEffective)) {
-                replaceEmbedder(context, configured, targetEffective)
+            if (embedder == null || plan != loadedFor) {
+                replaceEmbedder(context, found, order, plan)
             }
         }
         return sharedEmbedder
     }
 
-    private fun isLoaded(configured: HardwareAccelerator, effective: HardwareAccelerator): Boolean =
-        embedder?.let { it.effectiveAccelerator == effective && it.configuredAccelerator == configured } == true
-
-    /** Closes the current [Embedder] and builds a new one. Must be called with the write lock held. */
-    private fun replaceEmbedder(context: Context, configured: HardwareAccelerator, effective: HardwareAccelerator) {
+    /** Closes the current [Embedder] and loads the first of [order] that works. Must hold the write lock. */
+    private fun replaceEmbedder(
+        context: Context,
+        found: ModelFiles.Models,
+        order: List<HardwareAccelerator>,
+        plan: Pair<HardwareAccelerator, HardwareAccelerator>?
+    ) {
         try {
             embedder?.close()
         } catch (e: Exception) {
             Log.w(TAG, "Error closing previous embedder: ${e.message}")
         }
         embedder = null
-        embedder = Embedder(context.applicationContext, configured).also {
-            Log.i(TAG, "Initialized singleton Embedder instance with configured=$configured (effective=$effective).")
-            _embeddingSpaceId.value = it.embeddingSpaceId
-            val activeFile = ModelFiles.getActiveModelFile(context, effective)
-            if (activeFile.exists()) {
-                _modelStatus.value = ModelStatus.Loaded(activeFile.length())
-            }
-        }
+        loadedFor = null
+        val loaded = Embedder.open(context.applicationContext, found, order)
+        embedder = loaded
+        loadedFor = plan
+        Log.i(TAG, "Initialized singleton Embedder: plan=$plan, loaded=${loaded.effectiveAccelerator} (${loaded.model.name}).")
+        _embeddingSpaceId.value = loaded.embeddingSpaceId
+        _modelStatus.value = ModelStatus.Loaded(loaded.model.length())
     }
 
     /**
-     * Applies the hardware accelerator chosen in Settings, replacing the [Embedder] if the accelerator
-     * setting or its effective runtime target has changed. Waits for in-flight inference to finish.
+     * Applies the hardware accelerator chosen in Settings, replacing the [Embedder] if the load plan changed.
+     * Waits for in-flight inference to finish.
      */
     fun updateAccelerator(context: Context, accelerator: HardwareAccelerator) {
-        getEmbedder(context, accelerator)
+        try {
+            getEmbedder(context, accelerator)
+        } catch (e: Exception) {
+            // Called from a background coroutine on a settings change: an uncaught exception here would crash
+            // the app, so surface it as a model error instead.
+            Log.e(TAG, "Failed to switch accelerator to $accelerator", e)
+            _modelStatus.value = loadError(e, models)
+        }
     }
 
     /**

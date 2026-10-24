@@ -14,6 +14,7 @@ import com.localfind.data.EngineManager
 import com.localfind.core.settings.HardwareAccelerator
 import com.localfind.core.model.ImportedFile
 import com.localfind.embed.Embedder
+import com.localfind.embed.ModelFiles
 import com.localfind.core.model.IndexResult
 import com.localfind.index.Indexer
 import com.localfind.index.IndexingResumeManager
@@ -119,8 +120,8 @@ class PriorityAndAcceleratorBenchmarkTest {
         powerManager = context.getSystemService(Context.POWER_SERVICE) as PowerManager
 
         // Ensure model file exists
-        val model = Embedder.ensureModelFile(context)
-        assumeTrue("Embedding model must exist", model.exists() && model.length() > 0L)
+        val models = ModelFiles.locate(context)
+        assumeTrue("Embedding model must exist", models.npu != null || models.universal != null)
 
         // Locate Planet-Earth.mp4 (check filesDir, cacheDir, or fallback /data/local/tmp/)
         val candidates = listOf(
@@ -177,8 +178,8 @@ class PriorityAndAcceleratorBenchmarkTest {
         var isGpuActive = false
 
         EmbeddingStore.create(context).use { store ->
-            Embedder(context, accelerator).use { embedder ->
-                isGpuActive = embedder.isGpuVisionEnabled
+            openEmbedderOn(context, accelerator).use { embedder ->
+                isGpuActive = (embedder.effectiveAccelerator == HardwareAccelerator.GPU)
                 val indexer = Indexer(context, embedder, store, settings)
 
                 // Cooldown pause before measurement

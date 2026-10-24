@@ -34,6 +34,11 @@
     On NPU devices, also stage the universal model (embeddinggemma-2-740m.litertlm) next to the chipset NPU model,
     so Smart/GPU/CPU modes can be used and benchmarked. By default only the NPU model is staged, like Play delivers it.
 
+.PARAMETER WithRecoveryPack
+    Puts the universal model into the on-demand recovery AI pack and installs with bundletool --local-testing, so the
+    app's "Download compatible model" flow (offered when the NPU model cannot run) works without Play. Uninstalls the
+    app first, because local testing cannot update an install (app data is wiped).
+
 .EXAMPLE
     .\deploy-bundle.ps1
     .\deploy-bundle.ps1 -DeviceId "emulator-5554"
@@ -49,7 +54,8 @@ param(
     [switch]$Release,
     [switch]$SkipBuild,
     [switch]$SkipModelPush,
-    [switch]$WithUniversalModel
+    [switch]$WithUniversalModel,
+    [switch]$WithRecoveryPack
 )
 
 $ErrorActionPreference = "Stop"
@@ -92,20 +98,20 @@ foreach ($line in $AdbOutput) {
         if ($extra -match 'model:([^\s]+)') {
             $model = $matches[1].Trim()
         }
-        $propModel = (adb -s $serial shell getprop ro.product.model 2>$null).Trim()
+        $propModel = "$(adb -s $serial shell getprop ro.product.model 2>$null)".Trim()
         if (-not [string]::IsNullOrWhiteSpace($propModel)) {
             $model = $propModel
         }
 
         # Query device ABI
-        $abi = (adb -s $serial shell getprop ro.product.cpu.abi 2>$null).Trim()
+        $abi = "$(adb -s $serial shell getprop ro.product.cpu.abi 2>$null)".Trim()
         if ([string]::IsNullOrWhiteSpace($abi)) {
             $abi = "arm64-v8a"
         }
 
         # Query whether this is an emulator
-        $qemu = (adb -s $serial shell getprop ro.kernel.qemu 2>$null).Trim()
-        $hw = (adb -s $serial shell getprop ro.hardware 2>$null).Trim()
+        $qemu = "$(adb -s $serial shell getprop ro.kernel.qemu 2>$null)".Trim()
+        $hw = "$(adb -s $serial shell getprop ro.hardware 2>$null)".Trim()
         $isEmulator = ($qemu -eq "1") -or ($hw -match "goldfish|ranchu") -or ($serial -match "^emulator-")
         $typeStr = if ($isEmulator) { "Emulator" } else { "Physical" }
 
@@ -362,6 +368,25 @@ foreach ($Target in $TargetDevices) {
 
         # 4. Build App Bundle
         $NeedsBuild = $false
+
+        # The on-demand recovery pack (:ai_pack:universal_model) only holds the universal model when testing the
+        # "Download compatible model" flow (-WithRecoveryPack); otherwise its copy is removed to keep bundles small.
+        $RecoveryAsset = Join-Path $ScriptDir "ai_pack\universal_model\src\main\assets\model\embeddinggemma-2-740m.litertlm"
+        $RecoveryPackChanged = $false
+        if ($WithRecoveryPack) {
+            $UniversalSource = Join-Path (Split-Path -Parent $ScriptDir) ".local\models\embeddinggemma-2-740m.litertlm"
+            if (-not (Test-Path $UniversalSource)) {
+                throw "-WithRecoveryPack needs the universal model at $UniversalSource"
+            }
+            if (-not (Test-Path $RecoveryAsset) -or (Get-Item $RecoveryAsset).Length -ne (Get-Item $UniversalSource).Length) {
+                Write-Host "[4/8] Copying the universal model into the on-demand recovery pack..." -ForegroundColor Yellow
+                Copy-Item $UniversalSource $RecoveryAsset -Force
+                $RecoveryPackChanged = $true
+            }
+        } elseif (Test-Path $RecoveryAsset) {
+            Remove-Item $RecoveryAsset -Force
+            $RecoveryPackChanged = $true
+        }
         if ($LastBuiltAbi -eq $DeviceAbi -and (Test-Path $AabPath) -and (Test-AabContainsAbi -BundleFile $AabPath -Abi $DeviceAbi)) {
             Write-Host "[4/8] Reusing AAB built earlier in this session for ABI '$DeviceAbi'..." -ForegroundColor DarkCyan
         } elseif ($SkipBuild) {
@@ -377,6 +402,8 @@ foreach ($Target in $TargetDevices) {
         } else {
             $NeedsBuild = $true
         }
+        # A changed recovery pack makes an existing AAB stale, even with -SkipBuild
+        if ($RecoveryPackChanged) { $NeedsBuild = $true }
 
         if ($NeedsBuild) {
             Write-Host "[4/8] Building Android App Bundle (:$BuildType, targetAbi=$DeviceAbi)..." -ForegroundColor Yellow
@@ -406,6 +433,8 @@ foreach ($Target in $TargetDevices) {
                 "--output=$ApksPath",
                 "--overwrite"
             )
+            # Local testing serves on-demand packs from device storage instead of Play, so fetch() works offline
+            if ($WithRecoveryPack) { $BuildApksArgs += "--local-testing" }
 
             # For debug builds, sign with the standard Android debug keystore so instrumentation tests
             # and debuggers (which share ~/.android/debug.keystore) match the installed package signature.
@@ -434,6 +463,11 @@ foreach ($Target in $TargetDevices) {
         }
 
         # 6. Install onto device
+        if ($WithRecoveryPack) {
+            # bundletool local testing does not support updates: the previous install must be removed first
+            Write-Host "[6/8] -WithRecoveryPack: uninstalling com.localfind first (local testing cannot update; app data is wiped)..." -ForegroundColor Yellow
+            adb -s $DeviceId uninstall com.localfind | Out-Null
+        }
         Write-Host "[6/8] Installing matching APK splits to device $DeviceId..." -ForegroundColor Yellow
         $InstallArgs = @(
             "-jar", "$BundletoolJar",

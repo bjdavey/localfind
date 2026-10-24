@@ -64,10 +64,18 @@ class LibraryState(
     /**
      * Retries loading the model and resumes background indexing if files are pending.
      */
-    fun retryLoadModel() {
+    fun retryLoadModel() = loadModelAndResume { EngineManager.ensureModelLoaded(context) }
+
+    /**
+     * Downloads the universal GPU/CPU model from Play (when the NPU model cannot run), loads it, and resumes
+     * background indexing if files are pending. Progress shows through [EngineManager.modelStatus].
+     */
+    fun downloadCompatibleModel() = loadModelAndResume { EngineManager.downloadCompatibleModel(context) }
+
+    private fun loadModelAndResume(load: suspend () -> ModelStatus) {
         scope.launch(Dispatchers.IO) {
             status = "Loading model..."
-            val result = EngineManager.ensureModelLoaded(context)
+            val result = load()
             withContext(Dispatchers.Main) {
                 if (result is ModelStatus.Loaded) {
                     status = "Model loaded successfully"

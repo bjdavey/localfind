@@ -19,6 +19,21 @@ sealed interface ModelStatus {
      *
      * @property message Descriptive explanation of the issue.
      * @property instructions Clear action steps for loading the model on device or emulator.
+     * @property canDownloadCompatibleModel true when no GPU/CPU (universal) model is installed, so downloading it
+     *   from Play (on-demand AI pack) can make the app work, e.g. when the device's NPU model fails to load.
      */
-    data class Error(val message: String, val instructions: String) : ModelStatus
+    data class Error(
+        val message: String,
+        val instructions: String,
+        val canDownloadCompatibleModel: Boolean = false
+    ) : ModelStatus
+
+    /**
+     * The universal model is being downloaded by Play.
+     *
+     * @property percent Download progress, 0-100.
+     * @property needsConfirmation Play waits for the user (cellular download over 200MB, or an install Play
+     *   does not recognize) until its confirmation dialog is accepted.
+     */
+    data class Downloading(val percent: Int, val needsConfirmation: Boolean) : ModelStatus
 }

@@ -2,7 +2,6 @@ package com.localfind.embed
 
 import com.localfind.core.model.DEFAULT_VISION_TOKENS_PER_IMAGE
 import com.localfind.core.model.EmbeddingSpace
-import com.localfind.core.model.MODEL_FILE_NAME
 import android.content.Context
 import android.graphics.Bitmap
 import android.util.Log
@@ -10,6 +9,7 @@ import com.google.mediapipe.framework.image.BitmapImageBuilder
 import com.google.mediapipe.tasks.components.containers.AudioData
 import com.google.mediapipe.tasks.core.AudioPart
 import com.google.mediapipe.tasks.core.BaseOptions
+import com.google.mediapipe.tasks.core.Delegate
 import com.google.mediapipe.tasks.core.Part
 import com.google.mediapipe.tasks.retrieval.universalembedder.UniversalEmbedder
 import com.google.mediapipe.tasks.retrieval.universalembedder.UniversalEmbedderOptions
@@ -18,187 +18,52 @@ import java.io.File
 
 
 /**
- * Wrapper around MediaPipe's [UniversalEmbedder].
+ * Wrapper around MediaPipe's [UniversalEmbedder] for ONE model file on ONE accelerator.
  *
  * Responsible for:
- * 1. Loading the local weights file from the app's private files directory.
- * 2. Configuring L2 normalization so that cosine similarity can be computed via dot product.
- * 3. Setting the 70-token vision budget for fast image encoding.
- * 4. Producing 768-dimensional float embeddings for input text strings, passages, and images.
- * 5. Providing configurable NPU / GPU vision acceleration with graceful CPU fallback.
+ * 1. Loading [model] with text and vision on [effectiveAccelerator] (audio always on CPU, see [create]).
+ * 2. Verifying the load with one text embedding, so a model that cannot run there fails here, not at search.
+ * 3. Configuring L2 normalization so that cosine similarity can be computed via dot product.
+ * 4. Setting the 70-token vision budget for fast image encoding.
+ * 5. Producing 768-dimensional float embeddings for text, images, audio and video windows.
  *
- * Implements [AutoCloseable] to ensure underlying native C++ LiteRT resources are promptly freed.
+ * It makes no choices: which model and which accelerator (and the fallbacks) are decided by the caller, see
+ * [open] and `HardwareAccelerator.loadOrder`. Implements [AutoCloseable] to free native LiteRT memory promptly.
+ *
+ * @throws Exception from the constructor when the model cannot be loaded or run on [effectiveAccelerator].
  */
 class Embedder(
     context: Context,
-    val configuredAccelerator: HardwareAccelerator = HardwareAccelerator.NPU,
-    preferredModelName: String? = null
+    val model: File,
+    override val effectiveAccelerator: HardwareAccelerator
 ) : EmbeddingModel, AutoCloseable {
     private val embedder: UniversalEmbedder
 
-    /** Concrete accelerator in use after resolving any dynamic policy (e.g. [HardwareAccelerator.SMART]). */
-    override val effectiveAccelerator: HardwareAccelerator = configuredAccelerator.resolveEffective(context)
-
     /**
-     * Whether NPU acceleration is actively enabled for the vision encoder.
-     * When true, vision encoding executes via dedicated hardware NPU (e.g. Qualcomm Hexagon HTP).
-     */
-    val isNpuVisionEnabled: Boolean
-
-    /**
-     * Whether NPU acceleration is actively enabled for text encoding (e.g. PDF indexing, text files, queries).
-     * When true, text encoding executes via dedicated hardware NPU.
-     */
-    val isNpuTextEnabled: Boolean
-
-    /**
-     * Whether GPU acceleration is actively enabled for the vision encoder.
-     * When false, vision encoding executes via CPU (XNNPack).
-     */
-    val isGpuVisionEnabled: Boolean
-
-    /**
-     * [EmbeddingSpace] id of the vectors this instance produces. Reflects what actually loaded (an NPU request
-     * that fell back to GPU/CPU gives another id), so files are tagged with the space they really got.
+     * [EmbeddingSpace] id of the vectors this instance produces (NPU vectors differ from GPU/CPU ones), so files
+     * are tagged with the space they really got.
      */
     val embeddingSpaceId: String
 
     init {
-        // Locate the model file (from Play AI Pack or internal storage), copying from staging paths if missing.
-        val model = ModelFiles.ensureModelFile(context, effectiveAccelerator, preferredModelName)
+        require(effectiveAccelerator != HardwareAccelerator.SMART) { "Smart must be resolved before loading" }
+        require(model.exists() && model.length() > 0L) { "Embedding model not found at ${model.absolutePath}" }
 
-        require(model.exists() && model.length() > 0L) {
-            "Embedding model not found at ${model.absolutePath}. " +
-                    "For development on emulator or device, push the model file using:\n" +
-                    "adb push .local/models/${model.name} /data/local/tmp/"
-        }
-
-        var createdEmbedder: UniversalEmbedder? = null
-        var npuVisionSuccess = false
-        var npuTextSuccess = false
-        var gpuVisionSuccess = false
-
-        if (effectiveAccelerator == HardwareAccelerator.NPU) {
+        val onNpu = effectiveAccelerator == HardwareAccelerator.NPU
+        if (onNpu) {
             // Link NPU dispatch and QNN/NeuroPilot runtime libraries from nativeLibraryDir into filesDir
             SocDetector.ensureDispatchLibraries(context)
             model.parentFile?.takeIf { it != context.filesDir && it.canWrite() }?.let {
                 SocDetector.ensureDispatchLibraries(context, it)
             }
-
-            val npuBaseOptions = BaseOptions.builder()
-                .setModelAssetPath(model.absolutePath)
-                .setDelegate(com.google.mediapipe.tasks.core.Delegate.CPU)
-                .build()
-
-            // Attempt Text=NPU + Vision=NPU (Audio executes on CPU for DSP mel-spectrogram frontend)
-            try {
-                val textVisionOptions = commonOptions(context, npuBaseOptions)
-                    .setTextDelegate(com.google.mediapipe.tasks.core.Delegate.NPU)
-                    .setAudioDelegate(com.google.mediapipe.tasks.core.Delegate.CPU)
-                    .setVisionDelegate(com.google.mediapipe.tasks.core.Delegate.NPU)
-                    .build()
-
-                val candidate = UniversalEmbedder.createFromOptions(context, textVisionOptions)
-                // Warm up text embedding to verify graph execution on NPU
-                candidate.embedText("localfind npu warmup")
-                createdEmbedder = candidate
-                npuVisionSuccess = true
-                npuTextSuccess = true
-                Log.i(TAG, "UniversalEmbedder successfully initialized with Text=NPU and Vision=NPU (Audio=CPU).")
-            } catch (t: Throwable) {
-                Log.w(TAG, "Text+Vision NPU initialization or warmup failed: ${t.message}. Falling back to Vision-only NPU.", t)
-            }
-
-            // Fallback: Vision-only NPU (Text=CPU, Audio=CPU, Vision=NPU)
-            if (createdEmbedder == null) {
-                try {
-                    val visionOnlyOptions = commonOptions(context, npuBaseOptions)
-                        .setTextDelegate(com.google.mediapipe.tasks.core.Delegate.CPU)
-                        .setAudioDelegate(com.google.mediapipe.tasks.core.Delegate.CPU)
-                        .setVisionDelegate(com.google.mediapipe.tasks.core.Delegate.NPU)
-                        .build()
-
-                    createdEmbedder = UniversalEmbedder.createFromOptions(context, visionOnlyOptions)
-                    npuVisionSuccess = true
-                    npuTextSuccess = false
-                    Log.i(TAG, "UniversalEmbedder successfully initialized with Vision-only NPU (Text=CPU, Audio=CPU).")
-                } catch (t: Throwable) {
-                    Log.w(TAG, "NPU vision acceleration unavailable or failed to initialize (${t.message}). Falling back to Smart Mode (GPU/CPU).", t)
-                }
-            }
         }
-
-        // Resolve the Smart Mode target used when NPU init failed. The fallback loads the SAME model file as the
-        // NPU path: the device's NPU-compiled .litertlm also runs on the GPU / CPU delegates, so NPU phones do
-        // not need (or download) a second, generic model.
-        val fallbackEffective = if (effectiveAccelerator == HardwareAccelerator.NPU) {
-            HardwareAccelerator.SMART.resolveEffective(context)
-        } else {
-            effectiveAccelerator
-        }
-        val fallbackBaseOptions = BaseOptions.builder()
-            .setModelAssetPath(model.absolutePath)
-            .setDelegate(com.google.mediapipe.tasks.core.Delegate.CPU)
-            .build()
-
-        if (createdEmbedder == null && fallbackEffective == HardwareAccelerator.GPU) {
-            // Attempt 1: Text=GPU + Vision=GPU (Audio=CPU)
-            try {
-                val fullGpuOptions = commonOptions(context, fallbackBaseOptions)
-                    .setTextDelegate(com.google.mediapipe.tasks.core.Delegate.GPU)
-                    .setAudioDelegate(com.google.mediapipe.tasks.core.Delegate.CPU)
-                    .setVisionDelegate(com.google.mediapipe.tasks.core.Delegate.GPU)
-                    .build()
-
-                val candidate = UniversalEmbedder.createFromOptions(context, fullGpuOptions)
-                // Warm up text embedding to verify graph execution on GPU
-                candidate.embedText("localfind gpu warmup")
-                createdEmbedder = candidate
-                gpuVisionSuccess = true
-                Log.i(TAG, "UniversalEmbedder initialized with GPU text and vision acceleration (configured=$configuredAccelerator, effective=$fallbackEffective).")
-            } catch (t: Throwable) {
-                Log.w(TAG, "GPU text acceleration unavailable or failed to initialize (${t.message}). Falling back to GPU vision only.", t)
-            }
-
-            // Attempt 2: Vision-only GPU (Text=CPU, Audio=CPU, Vision=GPU)
-            if (createdEmbedder == null) {
-                try {
-                    val visionOnlyGpuOptions = commonOptions(context, fallbackBaseOptions)
-                        .setTextDelegate(com.google.mediapipe.tasks.core.Delegate.CPU)
-                        .setAudioDelegate(com.google.mediapipe.tasks.core.Delegate.CPU)
-                        .setVisionDelegate(com.google.mediapipe.tasks.core.Delegate.GPU)
-                        .build()
-
-                    createdEmbedder = UniversalEmbedder.createFromOptions(context, visionOnlyGpuOptions)
-                    gpuVisionSuccess = true
-                    Log.i(TAG, "UniversalEmbedder initialized with GPU vision acceleration (configured=$configuredAccelerator, effective=$fallbackEffective).")
-                } catch (t: Throwable) {
-                    Log.w(TAG, "GPU vision acceleration unavailable or failed to initialize (${t.message}). Falling back to CPU vision.", t)
-                }
-            }
-        }
-
-        if (createdEmbedder == null) {
-            // CPU mode or fallback: All modalities execute via CPU (XNNPack).
-            val cpuOptions = commonOptions(context, fallbackBaseOptions)
-                .setTextDelegate(com.google.mediapipe.tasks.core.Delegate.CPU)
-                .setAudioDelegate(com.google.mediapipe.tasks.core.Delegate.CPU)
-                .setVisionDelegate(com.google.mediapipe.tasks.core.Delegate.CPU)
-                .build()
-
-            createdEmbedder = UniversalEmbedder.createFromOptions(context, cpuOptions)
-            Log.i(TAG, "UniversalEmbedder initialized with CPU vision delegate (configured=$configuredAccelerator, effective=$fallbackEffective).")
-        }
-
-        embedder = createdEmbedder
-        isNpuVisionEnabled = npuVisionSuccess
-        isNpuTextEnabled = npuTextSuccess
-        isGpuVisionEnabled = gpuVisionSuccess
+        embedder = create(context, model, effectiveAccelerator)
+        Log.i(TAG, "UniversalEmbedder initialized: text+vision=$effectiveAccelerator, audio=CPU, model=${model.name}")
         embeddingSpaceId = EmbeddingSpace.id(
             activationDataType = ACTIVATION_PRECISION,
             modelBytes = model.length(),
-            textOnNpu = npuTextSuccess,
-            visionOnNpu = npuVisionSuccess
+            textOnNpu = onNpu,
+            visionOnNpu = onNpu
         )
     }
 
@@ -291,31 +156,91 @@ class Embedder(
          * Activation precision label for the [EmbeddingSpace] id. Deliberately NOT set on the options: when unset,
          * UniversalEmbedder 1.1.1 passes null and the engine uses the precision the model was built for. Forcing
          * FLOAT32 (the value Google's docs name as default) made the NPU text graph fail on a Galaxy S24 Ultra
-         * (SM8650) and fall back to CPU text. If a precision is ever pinned, change this label with it.
+         * (SM8650). If a precision is ever pinned, change this label with it.
          */
         private const val ACTIVATION_PRECISION = "ENGINE_DEFAULT"
 
         /**
-         * Options shared by every accelerator path, so they cannot drift apart:
+         * Loads the first accelerator of [order] that works and returns it, the way the app loads its model.
+         *
+         * NPU models go with NPU, the universal model with GPU/CPU ([ModelFiles.Models]); an accelerator whose model
+         * is missing is skipped. A failed NPU load is retried once, because the NPU can fail transiently (busy with
+         * another app, memory pressure). Before the retry the model's cache files are cleared in case one is stale;
+         * NPU models are precompiled, so on SM8650 that cache only holds XNNPack weights of the CPU audio encoder.
+         *
+         * @throws IllegalStateException when nothing in [order] loads, naming every attempt and its error.
+         */
+        fun open(context: Context, models: ModelFiles.Models, order: List<HardwareAccelerator>): Embedder {
+            check(order.isNotEmpty()) { "No installed model can run on this device" }
+            val failures = mutableListOf<String>()
+            for (accelerator in order) {
+                val model = (if (accelerator == HardwareAccelerator.NPU) models.npu else models.universal) ?: continue
+                val attempts = if (accelerator == HardwareAccelerator.NPU) 2 else 1
+                for (attempt in 1..attempts) {
+                    if (attempt > 1) clearCompiledCache(context, model)
+                    try {
+                        return Embedder(context, model, accelerator)
+                    } catch (t: Throwable) {
+                        val reason = t.message?.lineSequence()?.firstOrNull { it.isNotBlank() } ?: t.javaClass.simpleName
+                        Log.w(TAG, "Loading ${model.name} on $accelerator failed (attempt $attempt/$attempts): $reason", t)
+                        failures += "$accelerator: $reason"
+                    }
+                }
+            }
+            throw IllegalStateException("Could not load the model (${failures.joinToString("; ")})")
+        }
+
+        /**
+         * Deletes the cache files of [model] in `cacheDir` (named after the model file: XNNPack weight caches and
+         * compiled graphs); they are rebuilt on the next load.
+         */
+        private fun clearCompiledCache(context: Context, model: File) {
+            context.cacheDir.listFiles { file -> file.name.startsWith(model.name) }?.forEach { it.delete() }
+            Log.i(TAG, "Cleared the compiled cache of ${model.name} before retrying")
+        }
+
+        /**
+         * Builds the [UniversalEmbedder] with these options shared by every accelerator, so they cannot drift apart:
+         * - Text and vision on [accelerator]; audio always on CPU (the DSP mel-spectrogram frontend; even NPU models
+         *   keep a plain XNNPack audio encoder).
          * - L2 normalization, so cosine similarity is a plain dot product.
          * - The vision token budget.
          * - A compiled-model cache dir, so GPU / NPU graphs are not recompiled on every model load
          *   (matters most when Smart mode swaps the embedder).
          * - No activation type: see [ACTIVATION_PRECISION] (pinning FLOAT32 broke the NPU text graph).
+         *
+         * Then runs one text embedding, because a model can load fine on a delegate it cannot execute (an
+         * NPU-compiled model on CPU fails only at the first inference). Closes the instance when that fails, so a
+         * failed attempt does not leak ~500MB of native memory.
          */
-        private fun commonOptions(context: Context, baseOptions: BaseOptions) =
-            UniversalEmbedderOptions.builder()
-                .setBaseOptions(baseOptions)
+        private fun create(context: Context, model: File, accelerator: HardwareAccelerator): UniversalEmbedder {
+            val delegate = when (accelerator) {
+                HardwareAccelerator.NPU -> Delegate.NPU
+                HardwareAccelerator.GPU -> Delegate.GPU
+                else -> Delegate.CPU
+            }
+            val options = UniversalEmbedderOptions.builder()
+                .setBaseOptions(
+                    BaseOptions.builder()
+                        .setModelAssetPath(model.absolutePath)
+                        .setDelegate(Delegate.CPU)
+                        .build()
+                )
+                .setTextDelegate(delegate)
+                .setVisionDelegate(delegate)
+                .setAudioDelegate(Delegate.CPU)
                 .setL2Normalize(true)
                 .setVisionTokensPerImage(DEFAULT_VISION_TOKENS_PER_IMAGE)
                 .setCacheDir(context.cacheDir.absolutePath)
-
-        /**
-         * Ensures that the on-device model file exists in [context.filesDir].
-         * Delegates to [ModelFiles.ensureModelFile].
-         */
-        fun ensureModelFile(context: Context, modelName: String = MODEL_FILE_NAME): File {
-            return ModelFiles.ensureModelFile(context, modelName = modelName)
+                .build()
+            val candidate = UniversalEmbedder.createFromOptions(context, options)
+            try {
+                candidate.embedText("localfind $accelerator warmup")
+            } catch (t: Throwable) {
+                runCatching { candidate.close() }
+                throw t
+            }
+            return candidate
         }
     }
 }

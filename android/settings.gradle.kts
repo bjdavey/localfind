@@ -25,6 +25,7 @@ dependencyResolutionManagement {
 rootProject.name = "LocalFind"
 include(":app")
 include(":ai_pack:embedding_model")
+include(":ai_pack:universal_model")
 include(":litert_npu_runtime_libraries:runtime_strings")
 include(":litert_npu_runtime_libraries:mediatek_runtime_common")
 include(":litert_npu_runtime_libraries:mediatek_runtime_v8")

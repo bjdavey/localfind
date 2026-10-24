@@ -80,14 +80,14 @@
 - [x] SAF persisted-URI limit: no per-file grant inside an imported folder (the tree grant covers it), warn near the limit
 - [x] Storage checks: free-space check before model staging and indexing; pause with "Storage full" on `SQLiteFullException` / I/O errors
 - [x] AI pack: switch `fast-follow` to `install-time` so the model is present at first launch (copied once into `filesDir`; check Play's size limits for the larger NPU files before release)
-- [x] Use the NPU model file for GPU/CPU fallback on NPU devices (remove the separate fallback-model branch)
+- [x] Use the NPU model file for GPU/CPU fallback on NPU devices (remove the separate fallback-model branch). Superseded: NPU models cannot run on GPU/CPU (`DISPATCH_OP`), see "NPU/GPU/CPU rework" in Bugs / Issues
 - [x] Embedding-space id stored per file; banner offers re-analysis when it differs from the current one (GPU vs CPU vectors assumed to agree; unmeasured)
 - [x] Foreground service timeout (Android 15+): checkpoint + retry already existed on stop; now the user is told why indexing paused (`STOP_REASON_FOREGROUND_SERVICE_TIMEOUT`)
 - [x] ~~Use `NpuCompatibilityChecker`~~ skipped (needs the `litert` dependency and is documented for `CompiledModel`, not the MediaPipe path); fixed the `SocDetector` bugs directly: `"unknown"` handling and `sun` vs `sunfish` board match
 - [x] ~~Load only the needed encoders~~ spike result: `UniversalEmbedderOptions` (MediaPipe 1.1.1) has no per-modality switch (only delegates, `maxInputLength`, `visionTokensPerImage`), so nothing to do now; see Backlog
 - [x] Decide: LiteRT 2.3.0 Maven NPU packages vs current Feature Delivery modules + fetch scripts. Decision: keep Feature Delivery (it already uses the Maven dispatch libraries); documented in ARCHITECTURE §3.1
 - [x] Grouping matches by file (one card per file with its best hit; "N more matches" expands the rest)
-- [x] Split `SocDetector`: model file resolution/staging (`stageAiPackModel`, `ensureModelFile`, ...) moved to `ModelFiles`; the two temp-file copy blocks merged into one `copyAtomically`. `SocDetector` keeps chip detection + NPU runtime. (Follow-ups, not done: AI-pack model shares `MODEL_FILE_NAME` with the generic model; model location is resolved in 3 places; ADB staging paths are also checked in release builds)
+- [x] Split `SocDetector`: model file resolution/staging (`stageAiPackModel`, `ensureModelFile`, ...) moved to `ModelFiles`; the two temp-file copy blocks merged into one `copyAtomically`. `SocDetector` keeps chip detection + NPU runtime. (Follow-ups: the AI-pack model sharing `MODEL_FILE_NAME` and model location resolved in 3 places are done in the NPU/GPU/CPU rework; ADB staging paths in release builds remain, see Bugs / Issues)
 - [x] Support MKV and WebM video formats (.mkv, .webm)
 
 ## Milestone 7: First publish
@@ -113,6 +113,11 @@
 - [ ] Resume checkpoint ignores chunk-size setting changes
 - [ ] "Paused: Model not loaded" message is wiped by the worker's `finally` right after it is set
 - [ ] FileProvider `files-path "."` exposes all of `filesDir` (including DB and model); `data_extraction_rules.xml` is still an empty template (decide what to back up)
+- [x] NPU/GPU/CPU rework (switching to CPU crashed / model not loaded on NPU phones; the chipset NPU model cannot run text/vision on GPU/CPU, `DISPATCH_OP`):
+  - Models found once (`ModelFiles.locate`), the Play pack model stored under its real (chipset) name; `Capabilities` drive Settings (impossible modes disabled)
+  - One decision point: pure `HardwareAccelerator.loadOrder` (choice first, then what the device can run); `Embedder` loads one model on one accelerator, verified with a warmup embedding; the reported accelerator is the one that loaded; no mixed text/vision modes; NPU retried once
+  - Recovery: when the NPU model cannot load and no universal model exists, "Download compatible model" fetches the on-demand AI pack `:ai_pack:universal_model` via Play (`ai-delivery`); `deploy-bundle -WithRecoveryPack` tests it with `--local-testing`
+  - Fixed `deploy-bundle.ps1` crashing at device detection when a device returns empty `getprop` output
 - [x] App-wide crash resilience: defensive gallery grid keys, viewer fallbacks, and global crash guard
 - [x] Anything under search view is still clickable
 - [x] Fix app crash due to duplicate keys in search results list (LazyColumn crash on device)

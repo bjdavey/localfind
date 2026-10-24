@@ -76,6 +76,7 @@ fun GalleryScreen(
     onMoveMultipleFiles: (List<ImportedFile>, String?) -> Unit = { _, _ -> },
     onDeleteMultipleFiles: (List<ImportedFile>) -> Unit = {},
     onRetryLoadModel: () -> Unit = {},
+    onDownloadCompatibleModel: () -> Unit = {},
     onOpenSearch: () -> Unit,
     onSearchInFile: (ImportedFile) -> Unit,
     onImportFiles: () -> Unit,
@@ -331,7 +332,12 @@ fun GalleryScreen(
             // =====================================================================
             // 1.5. MODEL STATUS & ERROR BANNER
             // =====================================================================
-            ModelErrorBanner(modelStatus = modelStatus, onRetryLoadModel = onRetryLoadModel)
+            ModelErrorBanner(
+                modelStatus = modelStatus,
+                onRetryLoadModel = onRetryLoadModel,
+                onDownloadCompatibleModel = onDownloadCompatibleModel
+            )
+            ModelDownloadBanner(modelStatus = modelStatus)
             // =====================================================================
             // 2. LIVE INDEXING PROGRESS BANNER
             // =====================================================================

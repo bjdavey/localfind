@@ -40,7 +40,10 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import com.localfind.R
 import com.localfind.core.settings.AppSettings
+import com.localfind.core.settings.Capabilities
 import com.localfind.core.settings.HardwareAccelerator
+import com.localfind.data.EngineManager
+import androidx.compose.runtime.collectAsState
 import com.localfind.core.model.ModelStatus
 import kotlin.math.roundToInt
 
@@ -75,13 +78,16 @@ fun SettingsScreen(
     var showAcceleratorDialog by remember { mutableStateOf(false) }
     var showAdvanced by rememberSaveable { mutableStateOf(false) }
     val isSystemDark = isSystemInDarkTheme()
-    val context = androidx.compose.ui.platform.LocalContext.current
     val detectedSoc = remember { com.localfind.embed.SocDetector.detectSoc() }
-    val isNpuReady = remember(detectedSoc) { com.localfind.embed.SocDetector.isNpuRuntimeAvailable(context) }
-    val activeAcceleratorOption = if (!isNpuReady && settings.accelerator == HardwareAccelerator.NPU) {
-        HardwareAccelerator.SMART
-    } else {
-        settings.accelerator
+    // What the installed models can run, located by EngineManager (no file checks here). Until the first model
+    // load has located them nothing is disabled.
+    val caps = EngineManager.capabilities.collectAsState().value ?: Capabilities(npu = true, cpuGpu = true)
+    // The option in effect, mirroring HardwareAccelerator.resolve: NPU without NPU support falls back to Smart,
+    // and with only an NPU model installed every choice runs on NPU.
+    val activeAcceleratorOption = when {
+        settings.accelerator == HardwareAccelerator.NPU && !caps.npu -> HardwareAccelerator.SMART
+        settings.accelerator != HardwareAccelerator.NPU && !caps.cpuGpu && caps.npu -> HardwareAccelerator.NPU
+        else -> settings.accelerator
     }
 
     if (showThemeDialog) {
@@ -97,7 +103,7 @@ fun SettingsScreen(
         AcceleratorDialog(
             settings = settings,
             activeOption = activeAcceleratorOption,
-            isNpuReady = isNpuReady,
+            caps = caps,
             soc = detectedSoc,
             onSettingsChange = onSettingsChange,
             onDismiss = { showAcceleratorDialog = false }
@@ -434,18 +440,21 @@ fun SettingsScreen(
                             is ModelStatus.Loaded -> "Loaded (${modelStatus.sizeBytes / 1_048_576} MB)"
                             is ModelStatus.Loading -> "Loading..."
                             is ModelStatus.Error -> "Not Loaded"
+                            is ModelStatus.Downloading -> "Downloading (${modelStatus.percent}%)"
                         },
                         description = when (modelStatus) {
                             is ModelStatus.Loaded -> "EmbeddingGemma 2 (740M, 768-dim shared space) in app internal storage."
                             is ModelStatus.Loading -> "Warming up on-device LiteRT embedding model..."
                             is ModelStatus.Error -> modelStatus.message
+                            is ModelStatus.Downloading -> "Google Play is downloading the compatible GPU/CPU model."
                         },
                         buttonText = when (modelStatus) {
                             is ModelStatus.Loaded -> "Reload"
                             is ModelStatus.Loading -> "Loading"
                             is ModelStatus.Error -> "Load"
+                            is ModelStatus.Downloading -> "Downloading"
                         },
-                        enabled = modelStatus !is ModelStatus.Loading,
+                        enabled = modelStatus !is ModelStatus.Loading && modelStatus !is ModelStatus.Downloading,
                         onClick = onRetryLoadModel
                     )
                     SettingsInfoRow(

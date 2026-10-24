@@ -320,8 +320,8 @@ class CpuGpuNpuBenchmarkTest {
         val preferredAccel = if (soc.expectedNpuModelName != null) HardwareAccelerator.NPU else HardwareAccelerator.CPU
         val modelName = resolveModelForBenchmark(context, preferredAccel)
 
-        Embedder(context, preferredAccel, modelName).use { embedder ->
-            Log.i(TAG, "Embedder initialized: isNpuVision=${embedder.isNpuVisionEnabled}, isNpuText=${embedder.isNpuTextEnabled}, isGpuVision=${embedder.isGpuVisionEnabled}")
+        openEmbedderOn(context, preferredAccel).use { embedder ->
+            Log.i(TAG, "Embedder initialized: isNpuVision=${(embedder.effectiveAccelerator == HardwareAccelerator.NPU)}, isNpuText=${(embedder.effectiveAccelerator == HardwareAccelerator.NPU)}, isGpuVision=${(embedder.effectiveAccelerator == HardwareAccelerator.GPU)}")
 
             // 1. Text embedding test
             val t0 = System.currentTimeMillis()
@@ -396,9 +396,9 @@ class CpuGpuNpuBenchmarkTest {
         val soc = SocDetector.detectSoc()
         assumeTrue("NPU acceleration not supported on this chipset (${soc.marketingName})", soc.expectedNpuModelName != null)
 
-        val npuModelName = ModelFiles.resolveModelName(context, HardwareAccelerator.NPU)
-        val npuModel = Embedder.ensureModelFile(context, npuModelName)
-        assumeTrue("NPU model file ($npuModelName) must exist on device", npuModel.exists() && npuModel.length() > 0L)
+        val npuModel = modelFor(context, HardwareAccelerator.NPU)
+        assumeTrue("NPU model (${soc.expectedNpuModelName}) must exist on device", npuModel != null)
+        val npuModelName = npuModel!!.name
 
         // Check Qualcomm DSP FastRPC node if on Qualcomm chipset
         if (soc.vendor == "Qualcomm") {
@@ -455,9 +455,9 @@ class CpuGpuNpuBenchmarkTest {
         var isGpuActive = false
 
         EmbeddingStore.create(context).use { store ->
-            Embedder(context, accelerator, modelFileName).use { embedder ->
-                isNpuActive = embedder.isNpuVisionEnabled
-                isGpuActive = embedder.isGpuVisionEnabled
+            openEmbedderOn(context, accelerator).use { embedder ->
+                isNpuActive = (embedder.effectiveAccelerator == HardwareAccelerator.NPU)
+                isGpuActive = (embedder.effectiveAccelerator == HardwareAccelerator.GPU)
 
                 Log.i(TAG, "[$modeLabel] Embedder state: isNpuVisionEnabled=$isNpuActive, isGpuVisionEnabled=$isGpuActive, accelerator=${embedder.effectiveAccelerator}")
 
@@ -504,22 +504,12 @@ class CpuGpuNpuBenchmarkTest {
         return run
     }
 
-    private fun resolveModelForBenchmark(context: Context, accelerator: HardwareAccelerator): String {
-        val npuModelName = ModelFiles.resolveModelName(context, HardwareAccelerator.NPU)
-        if (accelerator == HardwareAccelerator.NPU) {
-            return npuModelName
-        }
-        val target = File(context.filesDir, MODEL_FILE_NAME)
-        val stagedCandidates = listOf(
-            File("/data/local/tmp", MODEL_FILE_NAME),
-            File("/sdcard/Download", MODEL_FILE_NAME),
-            File("/sdcard", MODEL_FILE_NAME)
-        )
-        if (target.exists() || stagedCandidates.any { it.exists() && it.length() > 0L }) {
-            return MODEL_FILE_NAME
-        }
-        return npuModelName
-    }
+    /**
+     * Name of the model a benchmark on [accelerator] uses (for the report). GPU/CPU need the universal model: the
+     * NPU model cannot run there, so the run is skipped by [openEmbedderOn] when it is not installed.
+     */
+    private fun resolveModelForBenchmark(context: Context, accelerator: HardwareAccelerator): String =
+        modelFor(context, accelerator)?.name ?: "(not installed)"
 
     private fun resolveHardwareName(mode: String, isNpu: Boolean, isGpu: Boolean): String {
         val soc = SocDetector.detectSoc()

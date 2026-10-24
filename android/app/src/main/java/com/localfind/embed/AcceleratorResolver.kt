@@ -2,18 +2,24 @@ package com.localfind.embed
 
 import android.content.Context
 import android.os.PowerManager
+import com.localfind.core.settings.Capabilities
 import com.localfind.core.settings.HardwareAccelerator
-import com.localfind.core.settings.resolve
+import com.localfind.core.settings.loadOrder
+
+/** What this device can run with [models]: NPU needs its runtime libraries and the NPU model, GPU/CPU the universal one. */
+fun capabilitiesOf(context: Context, models: ModelFiles.Models): Capabilities = Capabilities(
+    npu = models.npu != null && SocDetector.isNpuRuntimeAvailable(context),
+    cpuGpu = models.universal != null
+)
 
 /**
- * Resolves the effective concrete accelerator for this device by feeding the live device state
- * (NPU runtime availability, screen interactivity, Battery Saver) into the pure policy
- * [HardwareAccelerator.resolve].
+ * The accelerators to try for this setting, in order, feeding the live device state (screen interactivity,
+ * Battery Saver, for Smart mode) into the pure plan [HardwareAccelerator.loadOrder].
  */
-fun HardwareAccelerator.resolveEffective(context: Context): HardwareAccelerator {
+fun HardwareAccelerator.loadOrder(context: Context, caps: Capabilities): List<HardwareAccelerator> {
     val powerManager = context.getSystemService(Context.POWER_SERVICE) as? PowerManager
-    return resolve(
-        npuAvailable = { SocDetector.isNpuRuntimeAvailable(context) },
+    return loadOrder(
+        caps,
         screenOn = { powerManager?.isInteractive == true },
         powerSaveMode = { powerManager?.isPowerSaveMode == true }
     )

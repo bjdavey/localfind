@@ -47,12 +47,20 @@ import com.localfind.core.model.ImportedFile
 import com.localfind.core.model.IndexingProgress
 import com.localfind.core.model.IndexingStatus
 import com.localfind.core.model.ModelStatus
+import com.localfind.embed.RecoveryModel
 
 
 
-/** Red "Model not loaded" banner (with a help dialog explaining how to install the model) shown on model errors. */
+/**
+ * Red "Model not loaded" banner (with a help dialog explaining how to install the model) shown on model errors.
+ * When no GPU/CPU model is installed, the dialog also offers downloading it from Play ([onDownloadCompatibleModel]).
+ */
 @Composable
-internal fun ColumnScope.ModelErrorBanner(modelStatus: ModelStatus, onRetryLoadModel: () -> Unit) {
+internal fun ColumnScope.ModelErrorBanner(
+    modelStatus: ModelStatus,
+    onRetryLoadModel: () -> Unit,
+    onDownloadCompatibleModel: () -> Unit
+) {
     var showModelHelpDialog by remember { mutableStateOf(false) }
 
     if (showModelHelpDialog && modelStatus is ModelStatus.Error) {
@@ -73,6 +81,17 @@ internal fun ColumnScope.ModelErrorBanner(modelStatus: ModelStatus, onRetryLoadM
                                 style = MaterialTheme.typography.bodySmall,
                                 fontFamily = FontFamily.Monospace
                             )
+                        }
+                    }
+                    if (modelStatus.canDownloadCompatibleModel) {
+                        FilledTonalButton(
+                            onClick = {
+                                showModelHelpDialog = false
+                                onDownloadCompatibleModel()
+                            },
+                            modifier = Modifier.fillMaxWidth()
+                        ) {
+                            Text("Download compatible model (${RecoveryModel.DOWNLOAD_SIZE_MB} MB)")
                         }
                     }
                 }

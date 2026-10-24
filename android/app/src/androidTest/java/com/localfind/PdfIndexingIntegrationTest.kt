@@ -55,7 +55,7 @@ class PdfIndexingIntegrationTest {
         )
 
         // 2. Index the PDF using on-device Embedder and SQLite vector store
-        Embedder(context).use { embedder ->
+        openEmbedder(context).use { embedder ->
             EmbeddingStore.create(context).use { store ->
                 val indexer = Indexer(context, embedder, store)
 
