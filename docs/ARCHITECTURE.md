@@ -59,17 +59,17 @@ Running on hardware NPUs requires both the **pre-compiled model file** (delivere
 
 How the native libraries are packaged: the `libLiteRtDispatch_*.so` dispatch libraries come from the LiteRT 2.3.0 Maven artifacts (`litert-npu-runtime-*`), pulled in by each Feature Delivery module. The vendor SDK libraries (Qualcomm QAIRT `libQnn*`, MediaTek NeuroPilot) are downloaded into those modules by `fetch_qualcomm_library.sh` / `fetch_mediatek_library.sh`. Each phone installs only the modules matching its chipset. (Decision: keep Feature Delivery instead of putting every vendor's libraries into the base APK.)
 
-| Platform / Chipset | Marketing Name | Hardware Target | Delivery Module(s) | Native Binary Requirement |
+| Platform / Chipset | Marketing Name | Hardware Target | Delivery Module(s) | Test Status (4:35 min video) |
 | :--- | :--- | :--- | :--- | :--- |
-| **Qualcomm SM8550** | Snapdragon 8 Gen 2 (S23 series, OnePlus 11) | Hexagon HTP v73 NPU | `qualcomm_runtime_common` + `htp` + `v73` | Maven `litert-npu-runtime-qualcomm` (`libLiteRtDispatch_Qualcomm.so`) + QAIRT `libQnnSystem.so`, `libQnnHtp.so`, `libQnnHtpV73Stub.so`, `libQnnHtpV73Skel.so` (`fetch_qualcomm_library.sh`). |
-| **Qualcomm SM8650** | Snapdragon 8 Gen 3 (S24 Ultra, Fold 6, OnePlus 12) | **Hexagon HTP v75 NPU** | `qualcomm_runtime_common` + `htp` + `v75` | Verified 1.7x speedup over GPU. Bundled in `qualcomm_runtime_v75` and installed automatically via `deploy-bundle.ps1` / `deploy-bundle.sh`. |
-| **Qualcomm SM8750** | Snapdragon 8 Elite / Gen 4 (S25 series, OnePlus 13) | Hexagon HTP v79 NPU | `qualcomm_runtime_common` + `htp` + `v79` | Maven `litert-npu-runtime-qualcomm` + QAIRT `libQnnHtpV79Stub.so`, `libQnnHtpV79Skel.so` (`fetch_qualcomm_library.sh`). |
-| **Qualcomm SM8850** | Snapdragon 8 Elite Gen 5 (Galaxy S26 series, OnePlus 14, Xiaomi 16) | Hexagon HTP v81 NPU | `qualcomm_runtime_common` + `htp` + `v81` | Maven `litert-npu-runtime-qualcomm` + QAIRT `libQnnHtpV81Stub.so`, `libQnnHtpV81Skel.so` (`fetch_qualcomm_library.sh`). |
-| **MediaTek MT6991** | Dimensity 9400 (Vivo X200, Find X8) | MediaTek APU v8 | `mediatek_runtime_common` + `v8` | Maven `litert-npu-runtime-mediatek` (`libLiteRtDispatch_MediaTek.so`) + NeuroPilot `libneuronusdk_adapter.mtk.so` (`fetch_mediatek_library.sh`). |
-| **MediaTek MT6993** | Dimensity 9500 (Vivo X300, Find X9) | MediaTek APU v9 | `mediatek_runtime_common` + `v9` | Maven `litert-npu-runtime-mediatek` (`libLiteRtDispatch_MediaTek.so`) + NeuroPilot `libneuronusdk_adapter.so` (`fetch_mediatek_library.sh`). |
-| **Google Tensor G5/G6** | Pixel 10 / Pixel 11 | Google EdgeTPU | `google_tensor_runtime` | Maven `litert-npu-runtime-google-tensor` (`libLiteRtDispatch_GoogleTensor.so`). |
-| **Universal (All Phones)** | Any Qualcomm, MediaTek, Tensor, Exynos | **GPU (OpenCL / Vulkan)** | Base `:app` | Uses system GPU driver (`libOpenCL.so` or Vulkan driver). |
-| **Universal (All Phones)** | Any ARM64 device | **CPU (XNNPack FP16)** | Base `:app` | XNNPack is included in the MediaPipe / LiteRT-LM runtime. |
+| **Qualcomm SM8550** | Snapdragon 8 Gen 2 (S23 series, OnePlus 11) | Hexagon HTP v73 NPU | `qualcomm_runtime_common` + `htp` + `v73` | Tested on SM-S911B: NPU 13.51s, 5.37x vs CPU |
+| **Qualcomm SM8650** | Snapdragon 8 Gen 3 (S24 Ultra, Fold 6, OnePlus 12) | **Hexagon HTP v75 NPU** | `qualcomm_runtime_common` + `htp` + `v75` | Tested on SM-S928B: NPU 14.61s, 6.90x vs CPU |
+| **Qualcomm SM8750** | Snapdragon 8 Elite / Gen 4 (S25 series, OnePlus 13) | Hexagon HTP v79 NPU | `qualcomm_runtime_common` + `htp` + `v79` | Tested on SM-S931B: NPU 9.55s, 5.24x vs CPU |
+| **Qualcomm SM8850** | Snapdragon 8 Elite Gen 5 (Galaxy S26 series, OnePlus 14, Xiaomi 16) | Hexagon HTP v81 NPU | `qualcomm_runtime_common` + `htp` + `v81` | Tested on SM-S948B: NPU 8.99s, 3.79x vs CPU |
+| **MediaTek MT6991** | Dimensity 9400 (Vivo X200, Find X8) | MediaTek APU v8 | `mediatek_runtime_common` + `v8` | Not tested |
+| **MediaTek MT6993** | Dimensity 9500 (Vivo X300, Find X9) | MediaTek APU v9 | `mediatek_runtime_common` + `v9` | Not tested |
+| **Google Tensor G5/G6** | Pixel 10 / Pixel 11 | Google EdgeTPU | `google_tensor_runtime` | Tested on Pixel 10 (G5) and Pixel 11 Pro (G6) |
+| **Universal (All Phones)** | Any Qualcomm, MediaTek, Tensor, Exynos | **GPU (OpenCL / Vulkan)** | Base `:app` | Tested: 1.41x-3.72x vs CPU (SM-S928B: 27.12s) |
+| **Universal (All Phones)** | Any ARM64 device | **CPU (XNNPack FP16)** | Base `:app` | Tested: baseline (SM-S928B: 100.85s) |
 
 - **Default NPU Policy & Modality Delegates:**
   - `HardwareAccelerator.NPU` is the default setting on supported devices and never auto-switches on screen/battery state so all indexed vectors stay in a consistent vector space.
