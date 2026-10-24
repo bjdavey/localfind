@@ -335,6 +335,8 @@ Write-Host "      Running tests: Primitives Warmup -> CPU Benchmark -> GPU Bench
 # Force-stop app and clear logcat buffer
 adb -s $SelectedDevice.Serial shell am force-stop com.localfind
 adb -s $SelectedDevice.Serial logcat -c
+# Drop any report left by an earlier (or aborted) run so a failed run can't be reported as a success
+adb -s $SelectedDevice.Serial shell "run-as com.localfind rm -f cache/benchmark_report.md; rm -f /data/local/tmp/benchmark_report.md" 2>$null
 
 $TargetDeviceLabel = "$($SelectedDevice.Model)"
 
@@ -342,8 +344,10 @@ $InstrumentArgs = @(
     "-s", $SelectedDevice.Serial,
     "shell", "am", "instrument", "-w", "-r",
     "-e", "class", "com.localfind.CpuGpuNpuBenchmarkTest",
-    "-e", "video_name", "$($SelectedVideo.Name)",
-    "-e", "target_device", "$TargetDeviceLabel",
+    # adb shell joins args with spaces and no quoting, so values like "Pixel 10" must carry their own
+    # single quotes for the device shell (otherwise "10" becomes a stray arg -> "Invalid userId -2").
+    "-e", "video_name", "'$($SelectedVideo.Name)'",
+    "-e", "target_device", "'$TargetDeviceLabel'",
     "com.localfind.test/androidx.test.runner.AndroidJUnitRunner"
 )
 
@@ -462,7 +466,7 @@ Cumulative benchmark results across devices, chipsets, and video files.
     # Append the raw platform (e.g. "Qualcomm SM8550") unless the report's SoC cell already equals it
     if ($RunSoC -ne $SelectedDevice.Platform) { $RunSoC = "$RunSoC [$($SelectedDevice.Platform)]" }
 
-    $SummaryRow = "| $RunTimestamp | $RunDevice | $RunSoC | `$RunVideo` | $RunSize | $CpuCell | $GpuCell | $NpuCell | $SpeedupCell | [$OutputFileName](./$OutputFileName) |`r`n"
+    $SummaryRow = "| $RunTimestamp | $RunDevice | $RunSoC | ``$RunVideo`` | $RunSize | $CpuCell | $GpuCell | $NpuCell | $SpeedupCell | [$OutputFileName](./$OutputFileName) |`r`n"
     [System.IO.File]::AppendAllText($SummaryPath, $SummaryRow, [System.Text.Encoding]::UTF8)
 
     Write-Host "`n==========================================================" -ForegroundColor Green
