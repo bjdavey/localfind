@@ -51,3 +51,31 @@ svg.ic { width: 1.1em; height: 1.1em; fill: currentColor; vertical-align: -0.15e
 
 /* Privacy page: just a readable column. */
 main.text { max-width: 680px; padding-top: 48px; }
+
+/* Demo GIF next to the intro text; stacks on narrow screens. */
+.intro { display: grid; grid-template-columns: 320px 1fr; gap: 40px; align-items: center; margin-top: 40px; }
+.intro h2 { margin-top: 0; }
+.demo { width: 100%; height: auto; display: block; } /* the phone frame is baked into the GIF */
+@media (max-width: 700px) { .intro { grid-template-columns: 1fr; } .demo { max-width: 320px; } }
+
+/* Steps that light up in turn, in time with the demo GIF (26 s loop: search 1 = 0-8 s, 2 = 8-19 s, 3 = 19-26 s).
+   Paused until the GIF has loaded (class "play", set in index.html) so the two start together. */
+.steps { list-style: none; padding: 0; margin: 28px 0 0; }
+.steps li { display: grid; gap: 2px; padding: 14px 0 14px 18px; border-left: 3px solid var(--rule);
+            opacity: .35; animation-duration: 26s; animation-iteration-count: infinite; animation-play-state: paused; }
+.steps.play li { animation-play-state: running; }
+.steps q { font-family: Georgia, "Times New Roman", serif; font-size: 1.2rem; quotes: "“" "”"; }
+.steps b { color: var(--accent); }
+.steps span { color: var(--muted); }
+.steps .s1 { animation-name: step1; }
+.steps .s2 { animation-name: step2; }
+.steps .s3 { animation-name: step3; }
+@keyframes step1 { 0%, 30% { opacity: 1; border-color: var(--accent); transform: translateX(6px); }
+                   32%, 100% { opacity: .35; border-color: var(--rule); transform: none; } }
+@keyframes step2 { 0%, 30% { opacity: .35; border-color: var(--rule); transform: none; }
+                   32%, 72% { opacity: 1; border-color: var(--accent); transform: translateX(6px); }
+                   74%, 100% { opacity: .35; border-color: var(--rule); transform: none; } }
+@keyframes step3 { 0%, 72% { opacity: .35; border-color: var(--rule); transform: none; }
+                   74%, 99% { opacity: 1; border-color: var(--accent); transform: translateX(6px); }
+                   100% { opacity: .35; border-color: var(--rule); transform: none; } }
+@media (prefers-reduced-motion: reduce) { .steps li { animation: none; opacity: 1; } }

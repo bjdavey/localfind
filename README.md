@@ -2,19 +2,41 @@
 
 ![LocalFind](docs/images/feature-graphic/feature-graphic.png)
 
-**Find the exact moment in your videos, and anything else on your phone, just by describing it.**
+Android app. Coming soon to Google Play.
+
+[Website](https://bjdavey.github.io/localfind/) · [Privacy policy](https://bjdavey.github.io/localfind/privacy.html) · [Feedback](https://github.com/bjdavey/localfind/issues)
 
 ![License](https://img.shields.io/badge/license-Apache%202.0-blue)
 ![Platform](https://img.shields.io/badge/platform-Android%2012%2B-green)
 ![Offline](https://img.shields.io/badge/network-100%25%20offline-brightgreen)
 
-LocalFind is a private, 100% offline semantic search app for your personal files. Type what you remember, like *"kids blowing out candles"* or *"discussion about rent"*, and it jumps straight to the matching moment in a video, the right minute of a voice memo, the right page of a PDF, or the matching photo.
+<table>
+<tr>
+<td valign="top" width="300">
+<img src="docs/images/animation/demo.gif" width="300" alt="Demo: three searches, each opening a video, a PDF page and an audio file at the matching spot">
+</td>
+<td valign="top">
 
-<p align="center">
-  <img src="docs/images/screenshots/01-search-moments.png" width="32%" alt="Search results with video moments, a PDF page and a text passage">
-  <img src="docs/images/screenshots/02-search-by-image.png" width="32%" alt="Search by image">
-  <img src="docs/images/screenshots/04-library.png" width="32%" alt="Library with folders, videos, photos and audio">
-</p>
+## Search inside your files by meaning
+
+Find the exact moment in a video, the right page in a PDF, or the right second in a recording, in your own language. Private and 100% offline.
+
+### Describe it. Jump to it.
+
+Type what you remember. LocalFind jumps straight to the right spot in your files.
+
+**&ldquo;big bird flying&rdquo;**<br>
+A moment in a long video. Jumps to 06:16 and starts playing.
+
+**&ldquo;A sea captain trying to reach the North Pole&rdquo;**<br>
+A page in a PDF. Opens the book right at the matching page.
+
+**&ldquo;I have a dream&rdquo;**<br>
+A snippet in an audio recording. Plays the speech from the matching second.
+
+</td>
+</tr>
+</table>
 
 ## Features
 
@@ -26,6 +48,13 @@ LocalFind is a private, 100% offline semantic search app for your personal files
 - **Background indexing**: pause, resume and cancel; survives the app being closed or killed.
 - **Add files** with the system picker (files or whole folders) or share them from another app.
 - **Light and dark themes**, plus advanced tuning in Settings (similarity threshold, hardware accelerator, ...).
+
+<p align="center">
+  <img src="docs/images/screenshots/01-search-moments.png" width="24%" alt="Search results with video moments, a PDF page and a text passage">
+  <img src="docs/images/screenshots/02-search-by-image.png" width="24%" alt="Search by image">
+  <img src="docs/images/screenshots/03-your-language.png" width="24%" alt="Searching in German: 'Katze mit grünen Augen' finds the cat photos">
+  <img src="docs/images/screenshots/04-library.png" width="24%" alt="Library with folders, videos, photos and audio">
+</p>
 
 ### Supported files
 

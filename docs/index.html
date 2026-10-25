@@ -12,7 +12,7 @@
   <header class="hero">
     <div class="brand"><img src="art/play-store-icon-512.png" alt="">LocalFind</div>
     <h1>Find the exact moment in your videos.</h1>
-    <p class="tagline">And anything else on your phone, just by describing it. Private and 100% offline.</p>
+    <p class="tagline">And anything else on your phone, just by describing it in your language. Private and 100% offline.</p>
     <p class="status">Android app. Coming soon to Google Play.</p>
     <div class="buttons">
       <a class="btn primary" href="https://github.com/bjdavey/localfind"><svg class="ic" viewBox="0 0 16 16" aria-hidden="true"><path d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.013 8.013 0 0016 8c0-4.42-3.58-8-8-8z"/></svg> View on GitHub</a>
@@ -21,15 +21,19 @@
   </header>
 
   <main>
-    <div class="shots">
-      <img src="images/screenshots/01-search-moments.png" alt="Search results with video moments, a PDF page and a text passage">
-      <img src="images/screenshots/02-search-by-image.png" alt="Search by image" loading="lazy">
-      <img src="images/screenshots/04-library.png" alt="Library with folders, videos, photos and audio" loading="lazy">
-      <img src="images/screenshots/05-background-indexing.png" alt="Indexing in the background" loading="lazy">
-    </div>
-
-    <h2>Describe it. Jump to it.</h2>
-    <p class="lead">Type what you remember, like "kids blowing out candles" or "discussion about rent". LocalFind jumps straight to that moment in the right video, the right minute of a voice memo, the right page of a PDF, or the matching photo.</p>
+    <section class="intro">
+      <img class="demo" src="images/animation/demo.gif" onload="document.querySelector('.steps').classList.add('play')" alt="Demo: three searches, each opening a video, a PDF page and an audio file at the matching spot">
+      <div>
+        <h2>Describe it. Jump to it.</h2>
+        <p class="lead">Type what you remember. LocalFind jumps straight to the right spot in your files.</p>
+        <!-- Each step lights up while its search plays in the GIF (26 second loop, see style.css). -->
+        <ol class="steps">
+          <li class="s1"><q>big bird flying</q><b>A moment in a long video</b><span>Jumps to 06:16 and starts playing.</span></li>
+          <li class="s2"><q>A sea captain trying to reach the North Pole</q><b>A page in a PDF</b><span>Opens the book right at the matching page.</span></li>
+          <li class="s3"><q>I have a dream</q><b>A snippet in an audio recording</b><span>Plays the speech from the matching second.</span></li>
+        </ol>
+      </div>
+    </section>
 
     <div class="grid">
       <div class="card"><svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><path d="M11.99 2C6.47 2 2 6.48 2 12s4.47 10 9.99 10C17.52 22 22 17.52 22 12S17.52 2 11.99 2zM12 20c-4.42 0-8-3.58-8-8s3.58-8 8-8 8 3.58 8 8-3.58 8-8 8zm.5-13H11v6l5.25 3.15.75-1.23-4.5-2.67z"/></svg><h3>Exact moments</h3><p>Every result shows the time or page, and opens right there.</p></div>
@@ -38,6 +42,13 @@
       <div class="card"><svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><path d="M12.87 15.07l-2.54-2.51.03-.03c1.74-1.94 2.98-4.17 3.71-6.53H17V4h-7V2H8v2H1v1.99h11.17C11.5 7.92 10.44 9.75 9 11.35 8.07 10.32 7.3 9.19 6.69 8h-2c.73 1.63 1.73 3.17 2.98 4.56l-5.09 5.02L4 19l5-5 3.11 3.11.76-2.04zM18.5 10h-2L12 22h2l1.12-3h4.75L21 22h2l-4.5-12zm-2.62 7l1.62-4.33L19.12 17h-3.24z"/></svg><h3>100+ languages</h3><p>Search in the language you speak.</p></div>
       <div class="card"><svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><path d="M11 21h-1l1-7H7.5c-.58 0-.57-.32-.38-.66.19-.34.05-.08.07-.12C8.48 10.94 10.42 7.54 13 3h1l-1 7h3.5c.49 0 .56.33.47.51l-.07.15C12.96 17.55 11 21 11 21z"/></svg><h3>Fast on AI hardware</h3><p>Quicker on phones with built-in AI hardware, and works on any modern phone.</p></div>
       <div class="card"><svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 6v3l4-4-4-4v3c-4.42 0-8 3.58-8 8 0 1.57.46 3.03 1.24 4.26L6.7 14.8c-.45-.83-.7-1.79-.7-2.8 0-3.31 2.69-6 6-6zm6.76 1.74L17.3 9.2c.44.84.7 1.79.7 2.8 0 3.31-2.69 6-6 6v-3l-4 4 4 4v-3c4.42 0 8-3.58 8-8 0-1.57-.46-3.03-1.24-4.26z"/></svg><h3>Background indexing</h3><p>Keeps going while you use other apps. Pause and resume any time.</p></div>
+    </div>
+
+    <div class="shots">
+      <img src="images/screenshots/01-search-moments.png" alt="Search results with video moments, a PDF page and a text passage">
+      <img src="images/screenshots/02-search-by-image.png" alt="Search by image" loading="lazy">
+      <img src="images/screenshots/03-your-language.png" alt="Searching in German: 'Katze mit grünen Augen' finds the cat photos" loading="lazy">
+      <img src="images/screenshots/04-library.png" alt="Library with folders, videos, photos and audio" loading="lazy">
     </div>
 
     <section class="band">
