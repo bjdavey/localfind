@@ -96,6 +96,7 @@
 - [x] Real remote devices with CPU/GPU/NPU benchmarks (automated test and deployment runner script)
 - [x] App Icon
 - [x] Internal test release
+- [x] Open source release prep: README redesign, LICENSE (Apache 2.0), CONTRIBUTING, SECURITY, docs/PRIVACY.md
 - Screenshots
 - Landing page with features requests form
 - What else?
