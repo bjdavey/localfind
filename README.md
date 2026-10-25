@@ -1,5 +1,7 @@
 # LocalFind
 
+![LocalFind](docs/images/feature-graphic/feature-graphic.png)
+
 **Find the exact moment in your videos, and anything else on your phone, just by describing it.**
 
 ![License](https://img.shields.io/badge/license-Apache%202.0-blue)
@@ -8,11 +10,15 @@
 
 LocalFind is a private, 100% offline semantic search app for your personal files. Type what you remember, like *"kids blowing out candles"* or *"discussion about rent"*, and it jumps straight to the matching moment in a video, the right minute of a voice memo, the right page of a PDF, or the matching photo.
 
-<!-- TODO: add screenshots / demo GIF here once available -->
+<p align="center">
+  <img src="docs/images/screenshots/01-search-moments.png" width="32%" alt="Search results with video moments, a PDF page and a text passage">
+  <img src="docs/images/screenshots/02-search-by-image.png" width="32%" alt="Search by image">
+  <img src="docs/images/screenshots/04-library.png" width="32%" alt="Library with folders, videos, photos and audio">
+</p>
 
 ## Features
 
-- **Search by meaning**: natural language queries, ranked results with the file name, type and location (time or page).
+- **Search by meaning**: natural language queries, ranked results with the file name, type and location (time or page). Supports 100+ languages.
 - **Jump to the moment**: results open in the built-in viewer at the matching time, page or passage.
 - **Search by image**: use a photo to find similar photos and matching video scenes.
 - **Search inside a file**: scope a search to one document, video or audio file.
