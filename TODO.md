@@ -97,8 +97,8 @@
 - [x] App Icon
 - [x] Internal test release
 - [x] Open source release prep: README redesign, LICENSE (Apache 2.0), CONTRIBUTING, SECURITY, docs/privacy.html, docs/index.html (GitHub Pages)
-- Screenshots
-- Landing page with features requests form
+- [x] Screenshots
+- [x] Landing page with features requests form
 - What else?
 - Publish
 
