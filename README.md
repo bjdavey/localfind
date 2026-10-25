@@ -42,7 +42,7 @@ LocalFind is a private, 100% offline semantic search app for your personal files
 - Works in airplane mode. The app has **no `INTERNET` permission**.
 - No account, no ads, no analytics, no crash reporting, no cloud services.
 - Files are linked, not copied (files shared from other apps are the exception, see [ARCHITECTURE](docs/ARCHITECTURE.md)). Search data stays on the device.
-- See the [privacy policy](docs/PRIVACY.md).
+- See the [privacy policy](https://bjdavey.github.io/localfind/privacy.html).
 
 ## How it works
 
@@ -70,6 +70,16 @@ cd android
   ```
 
 **NPU acceleration** (several times faster indexing than CPU) is supported on Qualcomm Snapdragon 8 Gen 2, 8 Gen 3, 8 Elite and 8 Elite Gen 5, Google Tensor G5 and G6, and MediaTek Dimensity 9400 and 9500 (MediaTek untested). All other phones use the GPU or CPU. Test results: [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md#3-model-delivery--chipset-support). Small royalty-free test files are in [samples/](samples/README.md).
+
+## Roadmap
+
+Android is the first platform. Planned next (full list in the Backlog of [TODO.md](TODO.md)):
+
+- iOS and desktop apps
+- OCR for scanned PDFs
+- Keyword search combined with meaning search, including file names
+- More formats (WebP, HEIC, OGG, FLAC, MOV) and code files
+- Rescan imported folders for new files, and export / backup of the index
 
 ## Contributing
 

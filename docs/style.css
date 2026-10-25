@@ -1,0 +1,23 @@
+/* Shared styles for the GitHub Pages site (index.html, privacy.html). No JavaScript, no external requests. */
+:root { --bg: #f5f8ff; --text: #12233f; --muted: #3b4a63; --blue: #1a73e8; --card: #ffffff; }
+@media (prefers-color-scheme: dark) {
+  :root { --bg: #0e1626; --text: #e8eefc; --muted: #a9b6d0; --blue: #7ab0ff; --card: #17233a; }
+}
+* { box-sizing: border-box; }
+body { margin: 0; background: var(--bg); color: var(--text); line-height: 1.6;
+       font-family: "Segoe UI", Roboto, Arial, sans-serif; }
+main { max-width: 760px; margin: 0 auto; padding: 0 20px 64px; }
+a { color: var(--blue); }
+header.hero { text-align: center; padding: 56px 20px 24px; }
+header.hero img.icon { width: 96px; height: 96px; border-radius: 22px; }
+h1 { font-size: 2.4rem; line-height: 1.15; margin: 12px 0; letter-spacing: -0.5px; }
+h2 { margin-top: 40px; }
+.tagline { font-size: 1.3rem; color: var(--muted); margin: 0 auto 20px; max-width: 560px; }
+.badge { display: inline-block; padding: 6px 16px; border-radius: 999px; background: #1a73e8;
+         color: #fff; font-weight: 600; }
+.shots { display: flex; gap: 16px; overflow-x: auto; padding: 8px 0 16px; }
+.shots img { height: 460px; width: auto; border-radius: 16px; flex: none; }
+ul.features { padding-left: 20px; }
+ul.features li { margin: 8px 0; }
+.card { background: var(--card); border-radius: 16px; padding: 4px 24px 12px; }
+footer { text-align: center; color: var(--muted); font-size: .9rem; padding: 24px 20px 48px; }
