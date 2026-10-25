@@ -19,7 +19,7 @@ android {
         applicationId = "com.localfind"
         minSdk = 31
         targetSdk = 37
-        versionCode = 1
+        versionCode = 2
         versionName = "1.0"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"

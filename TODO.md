@@ -95,6 +95,7 @@
 - [x] Final E2E test with edge cases
 - [x] Real remote devices with CPU/GPU/NPU benchmarks (automated test and deployment runner script)
 - [x] App Icon
+- [x] Internal test release
 - Screenshots
 - Landing page with features requests form
 - What else?

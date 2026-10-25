@@ -38,3 +38,7 @@ Thumbs.db
 
 # Qualcomm/MediaTek NPU runtime libraries fetched by android/litert_npu_runtime_libraries/fetch_*_library.sh
 android/litert_npu_runtime_libraries/**/src/main/jni/
+
+# Play release secrets (see android/release.ps1)
+keystore.properties
+play-service-account*.json
