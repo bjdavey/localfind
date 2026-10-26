@@ -2,20 +2,28 @@
 
 ![LocalFind](docs/images/feature-graphic/feature-graphic.png)
 
-<!-- Floated right instead of a table so the text wraps on narrow screens (GitHub strips CSS). -->
-<img src="docs/images/animation/demo.gif" align="right" width="280" alt="LocalFind demo">
-
 [Website](https://bjdavey.github.io/localfind/) · [Privacy policy](https://bjdavey.github.io/localfind/privacy.html) · [Feedback](https://github.com/bjdavey/localfind/issues)
 
 ![License](https://img.shields.io/badge/license-Apache%202.0-blue)
 ![Platform](https://img.shields.io/badge/platform-Android%2012%2B-green)
 ![Offline](https://img.shields.io/badge/network-100%25%20offline-brightgreen)
 
-Search your videos, audio, PDFs, photos and notes by describing what you remember, in your own language. LocalFind opens the result at the matching moment, page or passage.
+<!-- GIF floats left so the text sits beside it on desktop. The first line is a spacer image
+     (360 px wide, 1 px high, translucent gray like GitHub's divider lines): images cannot wrap, so on a phone it does not fit beside the GIF and the text
+     drops underneath it. GitHub strips CSS, so this is the only way to get "side by side on web, stacked on mobile". -->
+<img src="docs/images/animation/demo.gif" align="left" width="240" hspace="20" vspace="8" alt="LocalFind demo">
+
+<img src="docs/images/spacer.png" width="360" height="1" alt="">
+
+**Search inside your files by meaning**
+
+Describe what you remember, in your own language, to find videos, audio, PDFs, photos and notes. LocalFind opens the result at the matching moment, page or passage.
 
 Edge AI that runs on your phone, accelerated by the NPU on supported chips, so your files stay private and the app works 100% offline.
 
 Android app, coming soon to Google Play.
+
+<br clear="all">
 
 ## Features
 
@@ -26,8 +34,6 @@ Android app, coming soon to Google Play.
 - **Background indexing**: pause, resume and cancel; survives the app being closed or killed.
 - **Add files** with the system picker (files or whole folders) or share them from another app.
 - **Light and dark themes**, plus advanced tuning in Settings (similarity threshold, hardware accelerator and more).
-
-<br clear="right">
 
 <p align="center">
   <img src="docs/images/screenshots/01-search-moments.png" width="24%" alt="Search results with video moments, a PDF page and a text passage">
