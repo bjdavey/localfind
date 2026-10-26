@@ -8,10 +8,10 @@
 ![Platform](https://img.shields.io/badge/platform-Android%2012%2B-green)
 ![Offline](https://img.shields.io/badge/network-100%25%20offline-brightgreen)
 
-<!-- GIF floats left so the text sits beside it on desktop. The first line is a spacer image
+<!-- GIF floats right so the text sits beside it on desktop. The first line is a spacer image
      (360 px wide, 1 px high, translucent gray like GitHub's divider lines): images cannot wrap, so on a phone it does not fit beside the GIF and the text
      drops underneath it. GitHub strips CSS, so this is the only way to get "side by side on web, stacked on mobile". -->
-<img src="docs/images/animation/demo.gif" align="left" width="240" hspace="20" vspace="8" alt="LocalFind demo">
+<img src="docs/images/animation/demo.gif" align="right" width="240" hspace="20" vspace="8" alt="LocalFind demo">
 
 <img src="docs/images/spacer.png" width="360" height="1" alt="">
 
