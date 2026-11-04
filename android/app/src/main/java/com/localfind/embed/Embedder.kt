@@ -181,7 +181,9 @@ class Embedder(
                     try {
                         return Embedder(context, model, accelerator)
                     } catch (t: Throwable) {
-                        val reason = t.message?.lineSequence()?.firstOrNull { it.isNotBlank() } ?: t.javaClass.simpleName
+                        // Native errors are a chain of source locations; the last line is the actual cause
+                        val reason = t.message?.lineSequence()?.lastOrNull { it.isNotBlank() }?.trimStart('└', ' ')
+                            ?: t.javaClass.simpleName
                         Log.w(TAG, "Loading ${model.name} on $accelerator failed (attempt $attempt/$attempts): $reason", t)
                         failures += "$accelerator: $reason"
                     }

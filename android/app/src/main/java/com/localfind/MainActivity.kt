@@ -54,10 +54,10 @@ import com.localfind.data.ShareImporter
 import com.localfind.core.settings.ThemeMode
 import com.localfind.index.IndexingProgressState
 import com.localfind.index.IndexingResumeManager
-import com.localfind.ui.ModelLoadingOverlay
 import com.localfind.core.library.GalleryCategory
 import com.localfind.ui.main.ConfirmRemoveFileDialog
 import com.localfind.ui.main.MissingFileDialog
+import com.localfind.ui.main.SEARCH_UNAVAILABLE_MESSAGE
 import com.localfind.ui.main.rememberLibraryState
 import com.localfind.ui.main.rememberSearchState
 import com.localfind.ui.gallery.FileDetailsDialog
@@ -458,7 +458,7 @@ fun MainScreen(
                 },
                 targetFile = search.activeSearchFile,
                 onClearTargetFile = search::clearTargetFile,
-                errorMessage = search.searchError ?: if (modelStatus is ModelStatus.Error) (modelStatus as ModelStatus.Error).message else null,
+                errorMessage = search.searchError ?: if (modelStatus is ModelStatus.Error) SEARCH_UNAVAILABLE_MESSAGE else null,
                 indexedChunksCount = indexedChunksCount,
                 onClose = search::close,
                 queryImageUri = search.searchImageUri,
@@ -529,11 +529,6 @@ fun MainScreen(
                     }
                 }
             }
-        )
-
-        // 5. Model Loading Splash / Modal Progress Overlay (Blocks user interactions while LiteRT engine loads)
-        ModelLoadingOverlay(
-            isLoading = modelStatus is ModelStatus.Loading
         )
     }
 }

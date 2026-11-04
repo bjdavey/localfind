@@ -99,6 +99,7 @@
 - [x] Open source release prep: README redesign, LICENSE (Apache 2.0), CONTRIBUTING, SECURITY, docs/privacy.html, docs/index.html (GitHub Pages)
 - [x] Screenshots
 - [x] Landing page with features requests form
+- [ ] Play rejection "App is not responding": model loading no longer blocks the UI (banner instead of the full-screen overlay), library shows before the model loads, searches wait for the model, a failed load is not retried by the indexing worker, content provider calls moved off the main thread. Done when Play accepts the build
 - What else?
 - Publish
 

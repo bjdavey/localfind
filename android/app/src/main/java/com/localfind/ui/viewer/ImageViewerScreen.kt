@@ -92,13 +92,20 @@ fun ImageViewerScreen(
 ) {
     val context = LocalContext.current
 
-    // Detect if this image is a GIF (animated or static)
-    val isGif = remember(params.fileName, params.uri) {
-        FileTypes.isGifNameOrMime(params.fileName, null) ||
-            FileTypes.isGifNameOrMime(
+    // Detect if this image is a GIF (animated or static): by name right away, else by MIME type off the main
+    // thread, because content provider access is IPC and must not run during composition
+    var isGif by remember(params.fileName, params.uri) {
+        mutableStateOf(FileTypes.isGifNameOrMime(params.fileName, null))
+    }
+    LaunchedEffect(params.fileName, params.uri) {
+        if (!isGif) {
+            isGif = FileTypes.isGifNameOrMime(
                 "",
-                try { context.contentResolver.getType(params.uri.toUri()) } catch (_: Exception) { null }
+                withContext(Dispatchers.IO) {
+                    try { context.contentResolver.getType(params.uri.toUri()) } catch (_: Exception) { null }
+                }
             )
+        }
     }
 
     // GIF animation state using Android's native ImageDecoder / AnimatedImageDrawable

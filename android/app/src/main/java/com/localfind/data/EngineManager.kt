@@ -121,13 +121,17 @@ object EngineManager {
     private val _embeddingSpaceId = MutableStateFlow<String?>(null)
     val embeddingSpaceId: StateFlow<String?> = _embeddingSpaceId.asStateFlow()
 
+    /** Serializes [refreshModels]: its first run can copy ~500MB, and two copies would share one temp file. */
+    private val locateLock = Any()
+
     /** Locates the installed models (staging them if needed) and updates [capabilities]. */
-    private fun refreshModels(context: Context): ModelFiles.Models =
+    private fun refreshModels(context: Context): ModelFiles.Models = synchronized(locateLock) {
         ModelFiles.locate(context).also {
             models = it
             _capabilities.value = capabilitiesOf(context, it)
             Log.i(TAG, "Models: npu=${it.npu?.name}, universal=${it.universal?.name}, capabilities=${_capabilities.value}")
         }
+    }
 
     /**
      * Locates the installed models and loads the embedder for the accelerator chosen in Settings (NPU by default
@@ -137,7 +141,8 @@ object EngineManager {
      * Emits state to [modelStatus] for live UI observation.
      */
     suspend fun ensureModelLoaded(context: Context, retryNpu: Boolean = false): ModelStatus = withContext(Dispatchers.IO) {
-        _modelStatus.value = ModelStatus.Loading
+        // The indexing worker calls this at every run: an already loaded model must not look like it is loading
+        if (embedder == null || retryNpu) _modelStatus.value = ModelStatus.Loading
         if (retryNpu) _npuUnavailable.value = false
         val app = context.applicationContext
         // The mutex serializes concurrent model-load requests from coroutines, and getEmbedder takes the write
