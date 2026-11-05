@@ -2,8 +2,6 @@
 
 ![LocalFind](docs/images/feature-graphic/feature-graphic.png)
 
-[Website](https://bjdavey.github.io/localfind/) · [Privacy policy](https://bjdavey.github.io/localfind/privacy.html) · [Feedback](https://github.com/bjdavey/localfind/issues)
-
 ![License](https://img.shields.io/badge/license-Apache%202.0-blue)
 ![Platform](https://img.shields.io/badge/platform-Android%2012%2B-green)
 ![Offline](https://img.shields.io/badge/network-100%25%20offline-brightgreen)
@@ -15,13 +13,17 @@
 
 <img src="docs/images/spacer.png" width="360" height="1" alt="">
 
+<a href="https://play.google.com/store/apps/details?id=com.localfind">
+  <img alt="Get it on Google Play" height="80" src="https://play.google.com/intl/en_us/badges/static/images/badges/en_badge_web_generic.png">
+</a>
+
+[Website](https://bjdavey.github.io/localfind/) · [Privacy policy](https://bjdavey.github.io/localfind/privacy.html) · [Feedback](https://github.com/bjdavey/localfind/issues)
+
 **Search inside your files by meaning**
 
 Describe what you remember, in your own language, to find videos, audio, PDFs, photos and notes. LocalFind opens the result at the matching moment, page or passage.
 
 Edge AI that runs on your phone, accelerated by the NPU on supported chips, so your files stay private and the app works 100% offline.
-
-Android app, coming soon to Google Play.
 
 <br clear="all">
 

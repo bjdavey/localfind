@@ -20,9 +20,12 @@ h1 { font-size: clamp(2.2rem, 6.5vw, 3.6rem); line-height: 1.08; margin: 40px 0 
 .tagline { font-size: 1.25rem; color: var(--muted); margin: 0 0 24px; max-width: 34em; }
 .status { color: var(--muted); font-size: .95rem; margin: 0 0 24px; }
 .buttons { display: flex; gap: 12px; flex-wrap: wrap; align-items: center; }
-.btn { display: inline-block; padding: 10px 20px; border-radius: 6px; font-weight: 600; text-decoration: none;
-       border: 1px solid var(--text); color: var(--text); }
+.btn { display: inline-flex; align-items: center; justify-content: center; height: 48px; padding: 0 20px; border-radius: 6px; font-weight: 600; text-decoration: none;
+       border: 1px solid var(--text); color: var(--text); line-height: 1; }
 .btn.primary { background: var(--text); color: var(--bg); }
+.play-badge { display: inline-flex; align-items: center; justify-content: center; height: 48px; width: 162px;
+              overflow: hidden; border-radius: 6px; text-decoration: none; flex-shrink: 0; }
+.play-badge img { height: 72px; width: auto; max-width: none; display: block; }
 
 /* Screenshots: a row that fits the page, wrapping to two columns on narrow screens. No scrolling. */
 .shots { display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 16px; padding: 40px 0 8px; }

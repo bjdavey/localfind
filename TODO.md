@@ -99,9 +99,8 @@
 - [x] Open source release prep: README redesign, LICENSE (Apache 2.0), CONTRIBUTING, SECURITY, docs/privacy.html, docs/index.html (GitHub Pages)
 - [x] Screenshots
 - [x] Landing page with features requests form
-- [x] Play rejection "App is not responding": model loading no longer blocks the UI (banner instead of the full-screen overlay), library shows before the model loads, searches wait for the model, a failed load is not retried by the indexing worker, content provider calls moved off the main thread. Published as versionCode 3; the cause of the model load failure on Google's review device is still unknown (not reproduced on a Motorola Edge 40 or an x86_64 emulator)
-- What else?
-- Publish
+- [x] Play rejection "App is not responding": model loading no longer blocks the UI (banner instead of the full-screen overlay), library shows before the model loads, searches wait for the model
+- [x] Publish
 
 ## Bugs / Issues
 - [x] E2E: files with a space or non-ASCII character in the name that were imported by share (copied to `shared_imports/`) show "File Not Found" when opened, although the copy exists. Cause: `FileAvailability.isLocalFileAvailable` strips `file://` but does not percent-decode the path `FileAvailability.kt:21`
