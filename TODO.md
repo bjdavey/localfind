@@ -99,7 +99,7 @@
 - [x] Open source release prep: README redesign, LICENSE (Apache 2.0), CONTRIBUTING, SECURITY, docs/privacy.html, docs/index.html (GitHub Pages)
 - [x] Screenshots
 - [x] Landing page with features requests form
-- [ ] Play rejection "App is not responding": model loading no longer blocks the UI (banner instead of the full-screen overlay), library shows before the model loads, searches wait for the model, a failed load is not retried by the indexing worker, content provider calls moved off the main thread. Done when Play accepts the build
+- [x] Play rejection "App is not responding": model loading no longer blocks the UI (banner instead of the full-screen overlay), library shows before the model loads, searches wait for the model, a failed load is not retried by the indexing worker, content provider calls moved off the main thread. Published as versionCode 3; the cause of the model load failure on Google's review device is still unknown (not reproduced on a Motorola Edge 40 or an x86_64 emulator)
 - What else?
 - Publish
 
@@ -154,6 +154,8 @@
 - Move `uri` / `name` out of every chunk into `FileStore` (`fileId` and `type` must stay for pre-filtering)
 - Prompt a re-index when indexing settings change
 - Rescan imported folders for new files
+- Model delivery: ship a marker file in `group_other` so the app knows which model it received instead of guessing from the chip name (a chip `SocDetector` recognises but Play's exact `device_targeting_configuration.xml` match misses, e.g. a SoC string with a suffix like `MT6891Z_Z/CZA`, would store the universal model under the NPU filename). Check the exact SoC strings in Play Console's Device catalog first
+- `FileOpener.resolveMimeType`: move the `contentResolver.getType` call off the main thread (only runs when the file's type is unknown)
 - Storage screen (index and model size) with "Clear index"
 - Onboarding (privacy, notifications, battery) and accessibility (TalkBack, font scaling)
 - State on rotation at target SDK 37 (`remember` vs `rememberSaveable` / ViewModel)
