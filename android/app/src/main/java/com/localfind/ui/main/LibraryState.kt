@@ -130,10 +130,12 @@ class LibraryState(
         }
     }
 
-    /** Loads the model and persisted library on startup, resuming interrupted indexing unless paused. */
+    /**
+     * Loads the persisted library and then the model on startup, resuming interrupted indexing unless paused.
+     * The library comes first: the model can take minutes on first launch and the app stays usable meanwhile.
+     */
     suspend fun loadInitial() {
         withContext(Dispatchers.IO) {
-            EngineManager.ensureModelLoaded(context)
             val store = FileStore.getInstance(context)
             // Re-queue files left in INDEXING status by an interrupted session (or fail them if they keep crashing)
             val pending = store.getPendingFiles()
@@ -144,6 +146,7 @@ class LibraryState(
             }
             importedFiles = store.getAll()
             folders = store.getAllFolders()
+            EngineManager.ensureModelLoaded(context)
             // If the app was closed/killed while indexing was in-flight, resume immediately via WorkManager unless paused
             if (store.getPendingFiles().isNotEmpty()) {
                 enqueueOrMarkPaused(replace = true)

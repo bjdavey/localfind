@@ -25,6 +25,7 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.produceState
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
@@ -44,6 +45,8 @@ import com.localfind.core.model.Folder
 import com.localfind.core.model.ImportedFile
 import com.localfind.core.model.IndexingStatus
 import com.localfind.data.FilePathHelper
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
 
 /**
  * Dialog displaying file metadata and providing quick actions ("Open", "Open with/Gallery", "Search in File", "Move", "Remove from Library").
@@ -61,8 +64,11 @@ internal fun FileDetailsDialog(
     onCancelSync: () -> Unit
 ) {
     val context = LocalContext.current
-    val originalPath = remember(file.uri, file.displayName) {
-        FilePathHelper.resolveDisplayPath(context, file.uri, file.displayName)
+    // Resolved off the main thread: it queries content providers (IPC). Blank hides the path row until it is known.
+    val originalPath by produceState("", file.uri, file.displayName) {
+        value = withContext(Dispatchers.IO) {
+            FilePathHelper.resolveDisplayPath(context, file.uri, file.displayName)
+        }
     }
     val friendlyPath = remember(originalPath) {
         FilePathHelper.formatUserFriendlyPath(originalPath)

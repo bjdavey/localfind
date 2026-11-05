@@ -29,6 +29,47 @@ import com.localfind.core.model.ModelStatus
 import com.localfind.embed.RecoveryModel
 
 /**
+ * Banner while the model is copied and loaded ([ModelStatus.Loading]). Deliberately not a blocking screen: on first
+ * launch this can take minutes on slower phones, and browsing, importing and Settings all work meanwhile (a search
+ * started now simply waits for the model). Google Play rejected a build that locked the whole UI here.
+ */
+@Composable
+internal fun ColumnScope.ModelLoadingBanner(modelStatus: ModelStatus) {
+    AnimatedVisibility(
+        visible = modelStatus is ModelStatus.Loading,
+        enter = fadeIn() + expandVertically(),
+        exit = fadeOut() + shrinkVertically()
+    ) {
+        Surface(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 16.dp, vertical = 6.dp),
+            shape = RoundedCornerShape(12.dp),
+            color = MaterialTheme.colorScheme.secondaryContainer
+        ) {
+            Column(
+                modifier = Modifier.padding(horizontal = 14.dp, vertical = 10.dp),
+                verticalArrangement = Arrangement.spacedBy(6.dp)
+            ) {
+                Text(
+                    text = "Preparing on-device search",
+                    style = MaterialTheme.typography.labelLarge,
+                    fontWeight = FontWeight.Bold,
+                    color = MaterialTheme.colorScheme.onSecondaryContainer
+                )
+                Text(
+                    text = "This can take a few minutes the first time. You can keep using the app.",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSecondaryContainer.copy(alpha = 0.85f)
+                )
+                // Indeterminate: neither the model copy nor the native load reports progress
+                LinearProgressIndicator(modifier = Modifier.fillMaxWidth())
+            }
+        }
+    }
+}
+
+/**
  * Progress banner while Play downloads the universal GPU/CPU model ([ModelStatus.Downloading]).
  *
  * When Play waits for the user (cellular download over 200MB, or an install Play does not recognize), a

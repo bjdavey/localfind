@@ -339,6 +339,7 @@ fun GalleryScreen(
                 onRetryLoadModel = onRetryLoadModel,
                 onDownloadCompatibleModel = onDownloadCompatibleModel
             )
+            ModelLoadingBanner(modelStatus = modelStatus)
             ModelDownloadBanner(modelStatus = modelStatus)
             // =====================================================================
             // 2. LIVE INDEXING PROGRESS BANNER

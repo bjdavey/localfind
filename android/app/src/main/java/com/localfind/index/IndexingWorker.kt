@@ -158,10 +158,13 @@ class IndexingWorker(
                 return@withContext Result.success()
             }
 
-            // Ensure model is loaded; if missing or failed, pause indexing and retry later rather than failing files
-            val modelStatus = EngineManager.ensureModelLoaded(context)
+            // Ensure model is loaded; if missing or failed, keep the files queued rather than failing them. A failed
+            // load is not repeated here: each attempt loads ~485MB at full CPU, and a device that cannot run the model
+            // would redo that forever with WorkManager backoff. The next app start or "Retry Loading" resumes the queue.
+            val modelStatus = EngineManager.modelStatus.value as? ModelStatus.Error
+                ?: EngineManager.ensureModelLoaded(context)
             if (modelStatus is ModelStatus.Error) {
-                Log.w(TAG_INDEXING, "Indexing paused: ${modelStatus.message}. WorkManager will retry when model is loaded.")
+                Log.w(TAG_INDEXING, "Indexing paused: ${modelStatus.message}. Waiting for a model reload.")
                 IndexingProgressState.update(
                     isIndexing = false,
                     currentUri = null,
@@ -172,7 +175,7 @@ class IndexingWorker(
                     progressFraction = 0f,
                     message = "Paused: Model not loaded"
                 )
-                return@withContext Result.retry()
+                return@withContext Result.success()
             }
 
             // Elevate to Foreground Service with ongoing notification so Android keeps indexing alive in background

@@ -27,8 +27,13 @@ import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+
+/** Shown instead of the search UI when the model failed to load; the technical cause is in the gallery banner. */
+const val SEARCH_UNAVAILABLE_MESSAGE =
+    "Search isn't available because the AI model could not start on this device. Your files are still here to browse."
 
 /**
  * Holds the state of the dedicated search screen (query, filters, results, optional query image or
@@ -87,6 +92,17 @@ class SearchState(
         searchError = null
     }
 
+    /**
+     * Suspends while the model is still loading or downloading, so a search started early just shows its progress
+     * spinner a little longer. Called before any embedder access.
+     *
+     * @throws IllegalStateException with [SEARCH_UNAVAILABLE_MESSAGE] when the model failed to load.
+     */
+    private suspend fun awaitModel() {
+        val status = EngineManager.modelStatus.first { it is ModelStatus.Loaded || it is ModelStatus.Error }
+        check(status is ModelStatus.Loaded) { SEARCH_UNAVAILABLE_MESSAGE }
+    }
+
     /** Scrolls the results list back to the first hit after new results arrive. */
     fun scrollResultsToTop() {
         scope.launch {
@@ -109,12 +125,6 @@ class SearchState(
         excludeUri: String? = null,
         useCachedEmbedding: Boolean = false
     ) {
-        if (EngineManager.modelStatus.value is ModelStatus.Error) {
-            searchError = "Search unavailable: Embedding model is not loaded."
-            hasSearched = true
-            return
-        }
-
         currentSearchJob?.cancel()
 
         // If searching inside a specific target file (e.g. video or PDF), scope results to that file
@@ -134,7 +144,7 @@ class SearchState(
         searchCategory = targetCategory
 
         searchImageUri = imageUri
-        searchImageName = imageName ?: FileImporter.resolveDisplayName(context.contentResolver, imageUri)
+        searchImageName = imageName
         searchQuery = ""
         excludeSourceUri = excludeUri
         val categoryTypes = if (activeSearchFile != null) null else targetCategory.types
@@ -143,6 +153,13 @@ class SearchState(
             isSearching = true
             searchError = null
             try {
+                if (imageName == null) {
+                    // Content provider access is IPC, so the name lookup must not run on the main thread
+                    searchImageName = withContext(Dispatchers.IO) {
+                        FileImporter.resolveDisplayName(context.contentResolver, imageUri)
+                    }
+                }
+                awaitModel()
                 val results = withContext(Dispatchers.Default) {
                     val embedding = if (useCachedEmbedding && searchImageEmbeddingCache[0] != null) {
                         searchImageEmbeddingCache[0]!!
@@ -256,11 +273,6 @@ class SearchState(
     fun performSearch(queryText: String, category: GalleryCategory = searchCategory) {
         val trimmed = queryText.trim()
         if (trimmed.isBlank()) return
-        if (EngineManager.modelStatus.value is ModelStatus.Error) {
-            searchError = "Search unavailable: Embedding model is not loaded."
-            hasSearched = true
-            return
-        }
         currentSearchJob?.cancel()
         val fileFilter = activeSearchFile?.let { mapOf("fileId" to it.uri) } ?: emptyMap()
         val categoryTypes = if (activeSearchFile != null) null else category.types
@@ -268,6 +280,7 @@ class SearchState(
             isSearching = true
             searchError = null
             try {
+                awaitModel()
                 val results = withContext(Dispatchers.Default) {
                     EngineManager.withSearcher(context) { searcher ->
                         searcher.search(
